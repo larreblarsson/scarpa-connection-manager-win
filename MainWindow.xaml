@@ -55,6 +55,11 @@
 
         <!-- Tree View -->
         <TreeView x:Name="Tree" Grid.Row="1" DoubleTapped="Tree_DoubleClick" KeyDown="Tree_KeyDown" AllowDrop="True">
+            <TreeView.ItemTemplate>
+                <DataTemplate>
+                    <ContentPresenter Content="{Binding Content}" />
+                </DataTemplate>
+            </TreeView.ItemTemplate>
             <TreeView.ContextFlyout>
                 <MenuFlyout>
                     <MenuFlyoutItem Text="SSH" Click="Ssh_Click" />

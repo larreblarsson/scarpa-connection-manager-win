@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
@@ -12,12 +12,6 @@
     <EnableMsixTooling>true</EnableMsixTooling>
     <Nullable>enable</Nullable>
   </PropertyGroup>
-  <ItemGroup>
-    <Compile Remove="Dialogs\**" />
-    <EmbeddedResource Remove="Dialogs\**" />
-    <None Remove="Dialogs\**" />
-    <Page Remove="Dialogs\**" />
-  </ItemGroup>
 
   <ItemGroup>
     <Content Include="Assets\SplashScreen.scale-200.png" />
@@ -65,12 +59,12 @@
     <PublishTrimmed Condition="'$(Configuration)' != 'Debug'">True</PublishTrimmed>
   </PropertyGroup>
   <ItemGroup>
-    <PRIResource Remove="Dialogs\**" />
-  </ItemGroup>
-  <ItemGroup>
     <Compile Remove="Views\SftpWindow.xaml.cs" />
   </ItemGroup>
   <ItemGroup>
+    <None Remove="Dialogs\PassphraseDialog.xaml" />
+    <None Remove="Dialogs\ServerDialog.xaml" />
+    <None Remove="ServerDialog.xaml" />
     <None Remove="Views\SftpWindow.xaml" />
   </ItemGroup>
   <ItemGroup>
@@ -78,5 +72,20 @@
   </ItemGroup>
   <ItemGroup>
     <Folder Include="Views\" />
+  </ItemGroup>
+  <ItemGroup>
+    <Page Update="Dialogs\ServerDialog.xaml">
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+  </ItemGroup>
+  <ItemGroup>
+    <Page Update="ServerDialog.xaml">
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
+  </ItemGroup>
+  <ItemGroup>
+    <Page Update="Dialogs\PassphraseDialog.xaml">
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
   </ItemGroup>
 </Project>

@@ -24,22 +24,100 @@ public sealed partial class MainWindow : Window
     public MainWindow()
     {
         this.InitializeComponent();
+
+        // 1. Set the Title
+        this.Title = "Scarpa Connection Manager";
+
+        // 2. Access the WinUI 3 AppWindow API to resize the window
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        var windowId = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hwnd);
+        var appWindow = Microsoft.UI.Windowing.AppWindow.GetFromWindowId(windowId);
+        appWindow.Resize(new Windows.Graphics.SizeInt32(700, 600));
+
         if (this.Content is FrameworkElement root)
         {
             root.Loaded += OnLoaded;
         }
     }
 
-    private void OnLoaded(object sender, RoutedEventArgs e)
+    private async void OnLoaded(object sender, RoutedEventArgs e)
     {
         AppPaths.EnsureDirectories();
+        _settings = SettingsService.Load();
 
-        // TEMPORARY BYPASS: Since your custom Passphrase Dialogs haven't been ported 
-        // to WinUI 3 yet, we will bypass the locking mechanism just to get the UI rendering.
-        // We will wire up the asynchronous unlock logic in the next step!
+        if (string.IsNullOrEmpty(_settings.MasterHashHex))
+        {
+            if (!await CreateMasterPassphraseAsync()) { Close(); return; }
+        }
+        else if (!await UnlockVaultAsync()) { Close(); return; }
 
         RebuildTree();
-        Log("Application loaded successfully in WinUI 3.");
+        Log($"Loaded {_servers.Count} server(s) from {AppPaths.ServerFile}");
+    }
+
+    private async Task<bool> CreateMasterPassphraseAsync()
+    {
+        var dlg = new Dialogs.PassphraseDialog("Set master passphrase",
+            "Your connections are encrypted with AES-256. Choose a master passphrase — it cannot be recovered if lost.",
+            requireConfirm: true, showRemember: true)
+        {
+            XamlRoot = this.Content.XamlRoot // Required in WinUI 3
+        };
+
+        if (await dlg.ShowAsync() != ContentDialogResult.Primary) return false;
+
+        var salt = CryptoStore.GenerateSalt();
+        _settings.MasterSaltHex = Convert.ToHexString(salt);
+        _settings.MasterHashHex = CryptoStore.HashPassphrase(dlg.Passphrase, salt);
+        _settings.RememberMaster = dlg.RememberMe;
+        SettingsService.Save(_settings);
+
+        _passphrase = dlg.Passphrase;
+        _servers = new List<ServerConfig>();
+        CryptoStore.Save(_servers, _passphrase);
+
+        if (dlg.RememberMe) CredentialVault.Set(_passphrase); else CredentialVault.Clear();
+        return true;
+    }
+
+    private async Task<bool> UnlockVaultAsync()
+    {
+        var salt = Convert.FromHexString(_settings.MasterSaltHex ?? "");
+        var saved = _settings.RememberMaster ? (CredentialVault.Get() ?? "") : "";
+
+        for (var attempt = 0; attempt < 3; attempt++)
+        {
+            var dlg = new Dialogs.PassphraseDialog("Unlock vault", "Enter your master passphrase.",
+                showRemember: true, rememberChecked: _settings.RememberMaster, defaultPassword: saved)
+            {
+                XamlRoot = this.Content.XamlRoot
+            };
+
+            if (await dlg.ShowAsync() != ContentDialogResult.Primary) return false;
+
+            if (CryptoStore.HashPassphrase(dlg.Passphrase, salt) != _settings.MasterHashHex)
+            {
+                await ShowAlertAsync("Scarpa", "Incorrect master passphrase.");
+                saved = "";
+                continue;
+            }
+
+            _passphrase = dlg.Passphrase;
+            _settings.RememberMaster = dlg.RememberMe;
+
+            if (dlg.RememberMe) CredentialVault.Set(_passphrase);
+            else CredentialVault.Clear();
+
+            SettingsService.Save(_settings);
+
+            try { _servers = CryptoStore.Load(_passphrase); return true; }
+            catch (Exception ex)
+            {
+                await ShowAlertAsync("Could not open vault", ex.Message);
+                return false;
+            }
+        }
+        return false;
     }
 
     // --- UI Helpers ---
@@ -178,8 +256,53 @@ public sealed partial class MainWindow : Window
     }
 
     private void SftpGui_Click(object sender, RoutedEventArgs e) { Log("SFTP GUI window needs porting."); }
-    private void AddServer_Click(object sender, RoutedEventArgs e) { Log("Server Dialog needs porting."); }
-    private void EditServer_Click(object sender, RoutedEventArgs e) { Log("Server Dialog needs porting."); }
+    
+    private IEnumerable<string> AllFolders() =>
+    _servers.Select(s => s.Folder ?? "")
+        .Concat(_settings.Folders)
+        .Append(AppPaths.RootFolder)
+        .Where(f => !string.IsNullOrWhiteSpace(f))
+        .Distinct();
+
+private void Persist()
+{
+    try { CryptoStore.Save(_servers, _passphrase); }
+    catch (Exception ex) { Log($"ERROR saving vault: {ex.Message}"); }
+}
+    
+    private async void AddServer_Click(object sender, RoutedEventArgs e)
+    {
+        var dlg = new Dialogs.ServerDialog(null, AllFolders(), SelectedFolder() ?? SelectedServer()?.Folder)
+        {
+            XamlRoot = this.Content.XamlRoot
+        };
+
+        if (await dlg.ShowAsync() != ContentDialogResult.Primary) return;
+
+        _servers.Add(dlg.Config);
+        Persist();
+        RebuildTree();
+        Log($"Added server {dlg.Config.Name}");
+    }
+
+    private async void EditServer_Click(object sender, RoutedEventArgs e)
+    {
+        var cfg = SelectedServer();
+        if (cfg == null) { Log("Select a server first."); return; }
+
+        var dlg = new Dialogs.ServerDialog(cfg, AllFolders())
+        {
+            XamlRoot = this.Content.XamlRoot
+        };
+
+        if (await dlg.ShowAsync() != ContentDialogResult.Primary) return;
+
+        _servers[_servers.IndexOf(cfg)] = dlg.Config;
+        Persist();
+        RebuildTree();
+        Log($"Updated {dlg.Config.Name}");
+    }
+
     private void Duplicate_Click(object sender, RoutedEventArgs e) { Log("Duplicate requires active servers."); }
     private void Rename_Click(object sender, RoutedEventArgs e) { Log("Rename Dialog needs porting."); }
     private void DeleteSelected_Click(object sender, RoutedEventArgs e) { Log("Delete confirmation Dialog needs porting."); }

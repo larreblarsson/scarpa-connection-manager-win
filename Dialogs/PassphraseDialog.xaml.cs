@@ -1,106 +1,49 @@
-using System;
-using System.Windows;
-using System.Windows.Controls;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
 
-namespace ScarpaConnectionManager.Dialogs;
+namespace scarpa_connection_manager_win.Dialogs;
 
-public partial class PassphraseDialog : Wpf.Ui.Controls.FluentWindow
+public sealed partial class PassphraseDialog : ContentDialog
 {
-    // Point the property to the cleartext box to guarantee we always get the synced value
-    public string Passphrase => Pass1Visible.Text;
-    public bool RememberMe => RememberBox.IsChecked == true;
+    public string Passphrase => PassphraseInput.Password;
+    public bool RememberMe => RememberCheck.IsChecked == true;
+    private bool _requireConfirm;
 
-    private readonly bool _requireConfirm;
-    private bool _isSyncing;
-
-    public PassphraseDialog(string title, string prompt, bool requireConfirm = false,
-        bool showRemember = false, bool rememberChecked = false, string defaultPassword = "")
+    public PassphraseDialog(string title, string message, bool requireConfirm = false, bool showRemember = false, bool rememberChecked = false, string defaultPassword = "")
     {
-        InitializeComponent();
-        Title = title;
-        PromptText.Text = prompt;
+        this.InitializeComponent();
+        this.Title = title;
+        MessageText.Text = message;
         _requireConfirm = requireConfirm;
-        ConfirmPanel.Visibility = requireConfirm ? Visibility.Visible : Visibility.Collapsed;
-        RememberBox.Visibility = showRemember ? Visibility.Visible : Visibility.Collapsed;
-        RememberBox.IsChecked = rememberChecked;
 
+        if (requireConfirm) ConfirmInput.Visibility = Visibility.Visible;
+        if (showRemember)
+        {
+            RememberCheck.Visibility = Visibility.Visible;
+            RememberCheck.IsChecked = rememberChecked;
+        }
         if (!string.IsNullOrEmpty(defaultPassword))
         {
-            Pass1.Password = defaultPassword;
-            // The Pass1_Changed event will automatically sync this to Pass1Visible
+            PassphraseInput.Password = defaultPassword;
         }
-
-        Loaded += (_, _) => Pass1.Focus();
     }
 
-    public void ShowError(string message)
+    private void ContentDialog_PrimaryButtonClick(ContentDialog sender, ContentDialogButtonClickEventArgs args)
     {
-        ErrorText.Text = message;
-        ErrorText.Visibility = Visibility.Visible;
-    }
-
-    private void Ok_Click(object sender, RoutedEventArgs e)
-    {
-        if (string.IsNullOrEmpty(Passphrase)) { ShowError("Passphrase cannot be empty."); return; }
-        if (_requireConfirm && Passphrase != Pass2Visible.Text) { ShowError("Passphrases do not match."); return; }
-        DialogResult = true;
-    }
-
-    private void Cancel_Click(object sender, RoutedEventArgs e) => DialogResult = false;
-
-    // --- Password Visibility & Sync Logic ---
-
-    private void SyncPasswords(PasswordBox pb, TextBox tb, bool fromPasswordBox)
-    {
-        if (_isSyncing) return;
-        _isSyncing = true;
-        if (fromPasswordBox) tb.Text = pb.Password;
-        else pb.Password = tb.Text;
-        _isSyncing = false;
-    }
-
-    private void Pass1_Changed(object sender, RoutedEventArgs e) => SyncPasswords(Pass1, Pass1Visible, true);
-    private void Pass1Visible_Changed(object sender, TextChangedEventArgs e) => SyncPasswords(Pass1, Pass1Visible, false);
-    
-    private void Pass2_Changed(object sender, RoutedEventArgs e) => SyncPasswords(Pass2, Pass2Visible, true);
-    private void Pass2Visible_Changed(object sender, TextChangedEventArgs e) => SyncPasswords(Pass2, Pass2Visible, false);
-
-    private void TogglePass1_Click(object sender, RoutedEventArgs e) => ToggleVisibility(Pass1, Pass1Visible);
-    private void TogglePass2_Click(object sender, RoutedEventArgs e) => ToggleVisibility(Pass2, Pass2Visible);
-
-    private void ToggleVisibility(PasswordBox pb, TextBox tb)
-    {
-        if (pb.Visibility == Visibility.Visible)
+        if (string.IsNullOrEmpty(PassphraseInput.Password))
         {
-            pb.Visibility = Visibility.Collapsed;
-            tb.Visibility = Visibility.Visible;
-            tb.Focus();
-            tb.Select(tb.Text.Length, 0); // Keep cursor at the end
+            args.Cancel = true; // Stops the dialog from closing
+            ErrorText.Text = "Passphrase cannot be empty.";
+            ErrorText.Visibility = Visibility.Visible;
+            return;
         }
-        else
+
+        if (_requireConfirm && PassphraseInput.Password != ConfirmInput.Password)
         {
-            tb.Visibility = Visibility.Collapsed;
-            pb.Visibility = Visibility.Visible;
-            pb.Focus();
+            args.Cancel = true;
+            ErrorText.Text = "Passphrases do not match.";
+            ErrorText.Visibility = Visibility.Visible;
+            return;
         }
     }
-
-	private void RememberBox_Checked(object sender, RoutedEventArgs e)
-	{
-		// Do not prompt if the window is simply initializing saved settings
-		if (!IsLoaded) return;
-	
-		var message = "Security Warning:\n\n" +
-					"Saving this passphrase means anyone with access to your Windows user account " +
-					"can open this application, access all your sessions, and view your master password in clear text.\n\n" +
-					"Are you sure you want to accept this risk?";
-	
-		var result = MessageBox.Show(this, message, "Security Risk Acceptance", 
-			MessageBoxButton.YesNo, MessageBoxImage.Warning);
-		
-		if (result == MessageBoxResult.No)
-		{
-			RememberBox.IsChecked = false;
-		}
-	}
 }

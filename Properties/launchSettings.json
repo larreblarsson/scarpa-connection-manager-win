@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "scarpa-connection-manager_win (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "scarpa-connection-manager_win (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}

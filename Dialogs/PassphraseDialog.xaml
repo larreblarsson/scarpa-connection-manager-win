@@ -1,0 +1,55 @@
+<ui:FluentWindow x:Class="ScarpaConnectionManager.Dialogs.PassphraseDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+        Title="Master Passphrase" Width="440" SizeToContent="Height"
+        WindowStartupLocation="CenterScreen" ResizeMode="NoResize"
+        WindowBackdropType="Mica"
+        ExtendsContentIntoTitleBar="True">
+    
+    <Window.Resources>
+        <Style x:Key="EyeButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Width" Value="30"/>
+            <Setter Property="HorizontalAlignment" Value="Right"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+    </Window.Resources>
+
+    <DockPanel LastChildFill="True">
+        <ui:TitleBar Title="Master Passphrase" DockPanel.Dock="Top" />
+        
+        <StackPanel Margin="18">
+            <TextBlock x:Name="PromptText" TextWrapping="Wrap" Margin="0,0,0,12" />
+            
+            <Label Content="Passphrase" Padding="0,0,0,5" />
+            <Grid>
+                <PasswordBox x:Name="Pass1" Padding="5,5,30,5" PasswordChanged="Pass1_Changed" />
+                <TextBox x:Name="Pass1Visible" Padding="5,5,30,5" Visibility="Collapsed" TextChanged="Pass1Visible_Changed" />
+                <Button Style="{StaticResource EyeButtonStyle}" Click="TogglePass1_Click">
+                    <TextBlock FontFamily="Segoe Fluent Icons" Text="&#xE890;" FontSize="14" VerticalAlignment="Center" />
+                </Button>
+            </Grid>
+
+            <StackPanel x:Name="ConfirmPanel" Visibility="Collapsed">
+                <Label Content="Confirm passphrase" Margin="0,8,0,5" Padding="0" />
+                <Grid>
+                    <PasswordBox x:Name="Pass2" Padding="5,5,30,5" PasswordChanged="Pass2_Changed" />
+                    <TextBox x:Name="Pass2Visible" Padding="5,5,30,5" Visibility="Collapsed" TextChanged="Pass2Visible_Changed" />
+                    <Button Style="{StaticResource EyeButtonStyle}" Click="TogglePass2_Click">
+                        <TextBlock FontFamily="Segoe Fluent Icons" Text="&#xE890;" FontSize="14" VerticalAlignment="Center" />
+                    </Button>
+                </Grid>
+            </StackPanel>
+
+            <CheckBox x:Name="RememberBox" Content="Remember on this Windows account (DPAPI protected)" Margin="0,12,0,0" Checked="RememberBox_Checked" />
+            <TextBlock x:Name="ErrorText" Foreground="#E0603E" Margin="0,10,0,0" Visibility="Collapsed" TextWrapping="Wrap" />
+            
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+                <Button Content="Cancel" IsCancel="True" Click="Cancel_Click" Margin="0,0,8,0" Width="70" />
+                <Button Content="OK" IsDefault="True" Click="Ok_Click" Width="70" />
+            </StackPanel>
+        </StackPanel>
+    </DockPanel>
+</ui:FluentWindow>

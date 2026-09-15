@@ -269,15 +269,13 @@ private void Persist()
     try { CryptoStore.Save(_servers, _passphrase); }
     catch (Exception ex) { Log($"ERROR saving vault: {ex.Message}"); }
 }
-    
+
     private async void AddServer_Click(object sender, RoutedEventArgs e)
     {
-        var dlg = new Dialogs.ServerDialog(null, AllFolders(), SelectedFolder() ?? SelectedServer()?.Folder)
-        {
-            XamlRoot = this.Content.XamlRoot
-        };
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        var dlg = new Dialogs.ServerDialog(null, AllFolders(), hwnd, SelectedFolder() ?? SelectedServer()?.Folder);
 
-        if (await dlg.ShowAsync() != ContentDialogResult.Primary) return;
+        if (!await dlg.ShowModalAsync()) return;
 
         _servers.Add(dlg.Config);
         Persist();
@@ -290,12 +288,10 @@ private void Persist()
         var cfg = SelectedServer();
         if (cfg == null) { Log("Select a server first."); return; }
 
-        var dlg = new Dialogs.ServerDialog(cfg, AllFolders())
-        {
-            XamlRoot = this.Content.XamlRoot
-        };
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        var dlg = new Dialogs.ServerDialog(cfg, AllFolders(), hwnd);
 
-        if (await dlg.ShowAsync() != ContentDialogResult.Primary) return;
+        if (!await dlg.ShowModalAsync()) return;
 
         _servers[_servers.IndexOf(cfg)] = dlg.Config;
         Persist();

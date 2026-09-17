@@ -107,22 +107,35 @@ public static class ConnectionLauncher
         bool usePassword = cfg.AuthMethod == "password" && !string.IsNullOrEmpty(cfg.Password);
 
         // 1. Password Injection via VBScript
+        // 1. Password Injection via VBScript
         if (isHostOnline && usePassword)
         {
-            string sendKeysPassword = cfg.Password
-                .Replace("{", "{{}").Replace("}", "{}}")
-                .Replace("+", "{+}").Replace("^", "{^}")
-                .Replace("%", "{%}").Replace("~", "{~}")
-                .Replace("(", "{(}").Replace(")", "{)}")
-                .Replace("\"", "\"\"");
+            // Safely convert the password into a VBScript array of individually escaped keys
+            var escapedChars = cfg.Password.Select(c =>
+            {
+                string s = c.ToString();
+                if ("{}+^%~()".Contains(s)) return $"\"{{{s}}}\"";
+                if (s == "\"") return "\"\"\"\""; // VBScript double-quote escape
+                return $"\"{s}\"";
+            });
+            string vbsArray = string.Join(", ", escapedChars);
 
             string vbsFile = Path.Combine(Path.GetTempPath(), $"scarpa_auth_{Guid.NewGuid():N}.vbs");
             string vbsCode = $@"
-WScript.Sleep 3000
+WScript.Sleep 2500
 Set ws = CreateObject(""WScript.Shell"")
 ws.AppActivate ""{cfg.Name}"" 
-WScript.Sleep 100
-ws.SendKeys ""{sendKeysPassword}{{ENTER}}""
+WScript.Sleep 500
+
+' Type the password one character at a time to prevent OpenSSH buffer drops
+Dim keys
+keys = Array({vbsArray})
+For Each k In keys
+ws.SendKeys k
+WScript.Sleep 20
+Next
+ws.SendKeys ""{{ENTER}}""
+
 CreateObject(""Scripting.FileSystemObject"").DeleteFile WScript.ScriptFullName
 ";
             File.WriteAllText(vbsFile, vbsCode);

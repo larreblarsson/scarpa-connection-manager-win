@@ -3,34 +3,21 @@ using Microsoft.UI.Xaml.Controls;
 using ScarpaConnectionManager.Models;
 using System;
 using System.Collections.Generic;
-using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 
 namespace scarpa_connection_manager_win.Dialogs;
 
-public sealed partial class ServerDialog : Window
+public sealed partial class ServerDialog : ContentDialog
 {
-    // Win32 API to lock/unlock the parent window
-    [DllImport("user32.dll")]
-    private static extern bool EnableWindow(IntPtr hWnd, bool bEnable);
-
     public ServerConfig Config { get; private set; }
     public bool Saved { get; private set; } = false;
 
-    private IntPtr _parentHwnd;
-    private TaskCompletionSource<bool> _tcs;
-
-    public ServerDialog(ServerConfig? existingConfig, IEnumerable<string> folders, IntPtr parentHwnd, string? defaultFolder = null)
+    public ServerDialog(ServerConfig? existingConfig, IEnumerable<string> folders, XamlRoot root, string? defaultFolder = null)
     {
         this.InitializeComponent();
-        _parentHwnd = parentHwnd;
 
-        // Set the standalone window title and size
-        this.Title = "Server Configuration";
-        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
-        var windowId = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hwnd);
-        var appWindow = Microsoft.UI.Windowing.AppWindow.GetFromWindowId(windowId);
-        appWindow.Resize(new Windows.Graphics.SizeInt32(800, 600));
+        // Native WinUI 3 way to attach a dialog to the main window
+        this.XamlRoot = root;
 
         foreach (var f in folders) FolderBox.Items.Add(f);
 
@@ -43,9 +30,11 @@ public sealed partial class ServerDialog : Window
             FolderBox.Text = Config.Folder ?? "";
             UserBox.Text = Config.User ?? "";
             PassBox.Password = Config.Password ?? "";
+
             foreach (ComboBoxItem item in AuthMethodBox.Items)
             {
-                if (item.Content?.ToString() == Config.AuthMethod) AuthMethodBox.SelectedItem = item;
+                if (item != null && item.Content?.ToString() == Config.AuthMethod)
+                    AuthMethodBox.SelectedItem = item;
             }
         }
         else
@@ -56,30 +45,33 @@ public sealed partial class ServerDialog : Window
         }
 
         NavView.SelectedItem = NavView.MenuItems[0];
-        this.Closed += ServerDialog_Closed;
     }
 
-    public Task<bool> ShowModalAsync()
+    public async Task<bool> ShowModalAsync()
     {
-        _tcs = new TaskCompletionSource<bool>();
-        EnableWindow(_parentHwnd, false); // Lock main window
-        this.Activate(); // Show this window
-        return _tcs.Task;
+        var result = await this.ShowAsync();
+        return result == ContentDialogResult.Primary;
     }
 
-    private void ServerDialog_Closed(object sender, WindowEventArgs args)
+    private void NavView_SelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
     {
-        EnableWindow(_parentHwnd, true); // Unlock main window
-        _tcs.TrySetResult(Saved);
+        if (args?.SelectedItem is NavigationViewItem item)
+        {
+            var tag = item.Tag?.ToString();
+            GeneralPage.Visibility = tag == "General" ? Visibility.Visible : Visibility.Collapsed;
+            RdpPage.Visibility = tag == "RDP" ? Visibility.Visible : Visibility.Collapsed;
+            PlaceholderPage.Visibility = (tag != "General" && tag != "RDP") ? Visibility.Visible : Visibility.Collapsed;
+        }
     }
 
-    private void NavView_SelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args) { }
-
-    private void CancelBtn_Click(object sender, RoutedEventArgs e) => this.Close();
-
-    private void SaveBtn_Click(object sender, RoutedEventArgs e)
+    private void ContentDialog_PrimaryButtonClick(ContentDialog sender, ContentDialogButtonClickEventArgs args)
     {
-        if (string.IsNullOrWhiteSpace(NameBox.Text) || string.IsNullOrWhiteSpace(HostBox.Text)) return;
+        // Input validation
+        if (string.IsNullOrWhiteSpace(NameBox.Text) || string.IsNullOrWhiteSpace(HostBox.Text))
+        {
+            args.Cancel = true; // Prevents the dialog from closing!
+            return;
+        }
 
         Config.Name = NameBox.Text;
         Config.Host = HostBox.Text;
@@ -87,9 +79,10 @@ public sealed partial class ServerDialog : Window
         Config.Folder = FolderBox.Text;
         Config.User = UserBox.Text;
         Config.Password = PassBox.Password;
-        if (AuthMethodBox.SelectedItem is ComboBoxItem item) Config.AuthMethod = item.Content?.ToString() ?? "password";
+
+        if (AuthMethodBox.SelectedItem is ComboBoxItem item)
+            Config.AuthMethod = item.Content?.ToString() ?? "password";
 
         Saved = true;
-        this.Close();
     }
 }

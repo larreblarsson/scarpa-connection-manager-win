@@ -99,66 +99,85 @@ public static class ConnectionLauncher
     }
 
     private static void LaunchInTerminal(string exe, string args, ServerConfig cfg, AppSettings settings)
-	{
-		AppPaths.EnsureDirectories();
-	
-		string script = "";
-	
-		if (cfg.AuthMethod == "password" && !string.IsNullOrEmpty(cfg.Password))
-		{
-			// Print visual feedback to the console window so the user sees something is happening
-			script += "Write-Host 'Auto-authenticating with saved password: ' -NoNewline -ForegroundColor DarkGray; ";
-	
-			// Escape special characters for SendKeys
-			string sendKeysPassword = cfg.Password
-				.Replace("{", "{{}").Replace("}", "{}}")
-				.Replace("+", "{+}").Replace("^", "{^}")
-				.Replace("%", "{%}").Replace("~", "{~}")
-				.Replace("(", "{(}").Replace(")", "{)}")
-				.Replace("'", "''");
-	
-			// Background job to inject the password after the prompt appears
-			script += $"$job = Start-Job -ScriptBlock {{ Start-Sleep -Milliseconds 1200; $wshell = New-Object -ComObject WScript.Shell; $wshell.SendKeys('{sendKeysPassword}{{ENTER}}') }}; ";
-		}
-	
-		if (cfg.LoggingEnabled)
-		{
-			var logPath = ResolveLogPath(cfg);
-			Directory.CreateDirectory(Path.GetDirectoryName(logPath)!);
-			var redirect = cfg.LogMode == "append" ? "Tee-Object -Append -FilePath" : "Tee-Object -FilePath";
-			script += $"{exe} {args} 2>&1 | {redirect} '{logPath}'; ";
-		}
-		else
-		{
-			script += $"{exe} {args}; ";
-		}
-	
-		if (cfg.AuthMethod == "password" && !string.IsNullOrEmpty(cfg.Password))
-		{
-			script += "Remove-Job -Job $job -Force -ErrorAction SilentlyContinue; ";
-		}
-	
-		// Encode the script in Base64
-		var bytes = System.Text.Encoding.Unicode.GetBytes(script);
-		var encodedCommand = Convert.ToBase64String(bytes);
-		var psCommand = $"-NoLogo -NoExit -EncodedCommand {encodedCommand}";
-	
-		var useWt = settings.TerminalHost == "wt" ||
-					(settings.TerminalHost == "auto" && WindowsTerminalAvailable());
-	
-		var psi = useWt
-			? new ProcessStartInfo("wt.exe", $"new-tab --title \"{cfg.Name}\" -- powershell.exe {psCommand}")
-			: new ProcessStartInfo("powershell.exe", psCommand);
-	
-		psi.UseShellExecute = true;
-		System.Diagnostics.Process.Start(psi);
-	}
+    {
+        AppPaths.EnsureDirectories();
+
+        int port = cfg.Port > 0 ? cfg.Port : 22;
+        bool isHostOnline = CheckHost(cfg.Host, port, 2);
+        bool usePassword = cfg.AuthMethod == "password" && !string.IsNullOrEmpty(cfg.Password);
+
+        // 1. Password Injection via VBScript
+        if (isHostOnline && usePassword)
+        {
+            string sendKeysPassword = cfg.Password
+                .Replace("{", "{{}").Replace("}", "{}}")
+                .Replace("+", "{+}").Replace("^", "{^}")
+                .Replace("%", "{%}").Replace("~", "{~}")
+                .Replace("(", "{(}").Replace(")", "{)}")
+                .Replace("\"", "\"\"");
+
+            string vbsFile = Path.Combine(Path.GetTempPath(), $"scarpa_auth_{Guid.NewGuid():N}.vbs");
+            string vbsCode = $@"
+WScript.Sleep 3000
+Set ws = CreateObject(""WScript.Shell"")
+ws.AppActivate ""{cfg.Name}"" 
+WScript.Sleep 100
+ws.SendKeys ""{sendKeysPassword}{{ENTER}}""
+CreateObject(""Scripting.FileSystemObject"").DeleteFile WScript.ScriptFullName
+";
+            File.WriteAllText(vbsFile, vbsCode);
+            Process.Start(new ProcessStartInfo("wscript.exe", $"\"{vbsFile}\"") { UseShellExecute = true });
+        }
+
+        // 2. Build a pure cmd.exe command chain
+        string cmdCommand = "";
+        if (!isHostOnline) cmdCommand += $"echo WARNING: {cfg.Host} is offline or unreachable. & ";
+        else if (usePassword) cmdCommand += "echo Auto-authenticating with saved password... & ";
+
+        if (cfg.LoggingEnabled)
+        {
+            var logPath = ResolveLogPath(cfg);
+            Directory.CreateDirectory(Path.GetDirectoryName(logPath)!);
+            var redirect = cfg.LogMode == "append" ? ">>" : ">";
+            // Pure CMD redirection
+            cmdCommand += $"{exe} {args} {redirect} \"{logPath}\" 2>&1";
+        }
+        else
+        {
+            cmdCommand += $"{exe} {args}";
+        }
+
+        var useWt = settings.TerminalHost == "wt" || (settings.TerminalHost == "auto" && WindowsTerminalAvailable());
+
+        // 3. Launch using cmd.exe /k to keep the window open after exit
+        var psi = useWt
+            ? new ProcessStartInfo("wt.exe", $"new-tab --title \"{cfg.Name}\" cmd.exe /k \"{cmdCommand}\"")
+            : new ProcessStartInfo("cmd.exe", $"/k \"{cmdCommand}\"");
+
+        psi.UseShellExecute = true;
+        Process.Start(psi);
+    }
 
     public static string ResolveLogPath(ServerConfig cfg)
     {
         var template = string.IsNullOrWhiteSpace(cfg.LogPath)
             ? Path.Combine(AppPaths.LogDir, "%N_%Y-%M-%D_%h%m%s.log")
             : cfg.LogPath!;
+
+        // Detect if the user provided a static path without time variables
+        // If so, automatically append the date and time variables before the extension
+        if (!template.Contains("%h") && !template.Contains("%s"))
+        {
+            var dir = Path.GetDirectoryName(template);
+            if (string.IsNullOrWhiteSpace(dir)) dir = AppPaths.LogDir;
+
+            var name = Path.GetFileNameWithoutExtension(template);
+            var ext = Path.GetExtension(template);
+            if (string.IsNullOrEmpty(ext)) ext = ".log";
+
+            template = Path.Combine(dir, $"{name}_%Y%M%D_%h%m%s{ext}");
+        }
+
         var now = DateTime.Now;
         return template
             .Replace("%N", Sanitize(cfg.Name))

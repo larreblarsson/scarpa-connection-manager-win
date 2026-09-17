@@ -5,45 +5,34 @@ namespace scarpa_connection_manager_win.Dialogs;
 
 public sealed partial class PassphraseDialog : ContentDialog
 {
-    public string Passphrase => PassphraseInput.Password;
+    public string Passphrase => PassBox.Password;
     public bool RememberMe => RememberCheck.IsChecked == true;
-    private bool _requireConfirm;
+
+    public bool IsSuccess { get; private set; } = false;
 
     public PassphraseDialog(string title, string message, bool requireConfirm = false, bool showRemember = false, bool rememberChecked = false, string defaultPassword = "")
     {
         this.InitializeComponent();
-        this.Title = title;
-        MessageText.Text = message;
-        _requireConfirm = requireConfirm;
 
-        if (requireConfirm) ConfirmInput.Visibility = Visibility.Visible;
+        MessageText.Text = message;
+        PassBox.Password = defaultPassword;
+
         if (showRemember)
         {
             RememberCheck.Visibility = Visibility.Visible;
             RememberCheck.IsChecked = rememberChecked;
         }
-        if (!string.IsNullOrEmpty(defaultPassword))
-        {
-            PassphraseInput.Password = defaultPassword;
-        }
     }
 
     private void ContentDialog_PrimaryButtonClick(ContentDialog sender, ContentDialogButtonClickEventArgs args)
     {
-        if (string.IsNullOrEmpty(PassphraseInput.Password))
+        // Input validation: Don't let them click OK if it is blank
+        if (string.IsNullOrWhiteSpace(PassBox.Password))
         {
-            args.Cancel = true; // Stops the dialog from closing
-            ErrorText.Text = "Passphrase cannot be empty.";
-            ErrorText.Visibility = Visibility.Visible;
+            args.Cancel = true;
             return;
         }
 
-        if (_requireConfirm && PassphraseInput.Password != ConfirmInput.Password)
-        {
-            args.Cancel = true;
-            ErrorText.Text = "Passphrases do not match.";
-            ErrorText.Visibility = Visibility.Visible;
-            return;
-        }
+        IsSuccess = true;
     }
 }

@@ -12,32 +12,49 @@ using ScarpaConnectionManager.Services;
 
 namespace scarpa_connection_manager_win;
 
+// 1. Pure Data Model for the TreeView
+public class TreeItemData
+{
+    public string Name { get; set; }
+    public string IconGlyph { get; set; }
+    public Brush IconColor { get; set; }
+}
+
 public sealed partial class MainWindow : Window
 {
     private AppSettings _settings = new();
     private List<ServerConfig> _servers = new();
     private string _passphrase = "";
 
-    // WinUI 3 TreeViewNodes don't have a Tag property, so we map the data here
     private Dictionary<TreeViewNode, object> _nodeTags = new();
 
     public MainWindow()
     {
         this.InitializeComponent();
 
-        // 1. Set the Title
         this.Title = "Scarpa Connection Manager";
 
-        // 2. Access the WinUI 3 AppWindow API to resize the window
         var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
         var windowId = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hwnd);
         var appWindow = Microsoft.UI.Windowing.AppWindow.GetFromWindowId(windowId);
-        appWindow.Resize(new Windows.Graphics.SizeInt32(700, 600));
 
-        if (this.Content is FrameworkElement root)
+        var windowWidth = 800;
+        var windowHeight = 700;
+
+        var displayArea = Microsoft.UI.Windowing.DisplayArea.GetFromWindowId(windowId, Microsoft.UI.Windowing.DisplayAreaFallback.Primary);
+        if (displayArea != null)
         {
-            root.Loaded += OnLoaded;
+            var workArea = displayArea.WorkArea;
+            var x = (workArea.Width - windowWidth) / 2;
+            var y = (workArea.Height - windowHeight) / 2;
+            appWindow.MoveAndResize(new Windows.Graphics.RectInt32(x, y, windowWidth, windowHeight));
         }
+        else
+        {
+            appWindow.Resize(new Windows.Graphics.SizeInt32(windowWidth, windowHeight));
+        }
+
+        // Constructor is now 100% clean of layout hacks and inline events!
     }
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
@@ -55,16 +72,60 @@ public sealed partial class MainWindow : Window
         Log($"Loaded {_servers.Count} server(s) from {AppPaths.ServerFile}");
     }
 
+    // --- Drag and Drop Logic (Now a proper event handler) ---
+    private void Tree_DragItemsCompleted(TreeView sender, TreeViewDragItemsCompletedEventArgs args)
+    {
+        this.DispatcherQueue.TryEnqueue(() =>
+        {
+            string newFolderPath = "";
+            if (args.NewParentItem is TreeViewNode parentNode && _nodeTags.TryGetValue(parentNode, out var parentTag))
+            {
+                if (parentTag is string path) newFolderPath = path;
+            }
+
+            bool modified = false;
+            foreach (var item in args.Items)
+            {
+                if (item is TreeViewNode draggedNode && _nodeTags.TryGetValue(draggedNode, out var draggedObj))
+                {
+                    if (draggedObj is ServerConfig server)
+                    {
+                        server.Folder = newFolderPath;
+                        modified = true;
+                    }
+                    else if (draggedObj is string oldFolder)
+                    {
+                        string folderName = oldFolder.Contains("\\") ? oldFolder.Substring(oldFolder.LastIndexOf('\\') + 1) : oldFolder;
+                        string newPath = string.IsNullOrEmpty(newFolderPath) ? folderName : $"{newFolderPath}\\{folderName}";
+
+                        foreach (var srv in _servers.Where(x => x.Folder == oldFolder || (x.Folder != null && x.Folder.StartsWith(oldFolder + "\\"))))
+                        {
+                            srv.Folder = newPath + srv.Folder.Substring(oldFolder.Length);
+                            modified = true;
+                        }
+                    }
+                }
+            }
+
+            if (modified)
+            {
+                CryptoStore.Save(_servers, _passphrase);
+                RebuildTree();
+            }
+        });
+    }
+
     private async Task<bool> CreateMasterPassphraseAsync()
     {
         var dlg = new Dialogs.PassphraseDialog("Set master passphrase",
             "Your connections are encrypted with AES-256. Choose a master passphrase — it cannot be recovered if lost.",
             requireConfirm: true, showRemember: true)
         {
-            XamlRoot = this.Content.XamlRoot // Required in WinUI 3
+            XamlRoot = this.Content.XamlRoot
         };
 
-        if (await dlg.ShowAsync() != ContentDialogResult.Primary) return false;
+        await dlg.ShowAsync();
+        if (!dlg.IsSuccess) return false;
 
         var salt = CryptoStore.GenerateSalt();
         _settings.MasterSaltHex = Convert.ToHexString(salt);
@@ -93,7 +154,8 @@ public sealed partial class MainWindow : Window
                 XamlRoot = this.Content.XamlRoot
             };
 
-            if (await dlg.ShowAsync() != ContentDialogResult.Primary) return false;
+            await dlg.ShowAsync();
+            if (!dlg.IsSuccess) return false;
 
             if (CryptoStore.HashPassphrase(dlg.Passphrase, salt) != _settings.MasterHashHex)
             {
@@ -120,8 +182,6 @@ public sealed partial class MainWindow : Window
         return false;
     }
 
-    // --- UI Helpers ---
-
     private async Task ShowAlertAsync(string title, string message)
     {
         var dialog = new ContentDialog
@@ -137,32 +197,37 @@ public sealed partial class MainWindow : Window
     private void Log(string message)
     {
         LogBox.Text += $"[{DateTime.Now:HH:mm:ss}] {message}{Environment.NewLine}";
-        LogBox.SelectionStart = LogBox.Text.Length; // Scrolls to bottom
+        LogBox.SelectionStart = LogBox.Text.Length;
     }
 
-    // --- TreeView Logic ---
+    // --- TreeView Logic (Strict Data Binding) ---
 
     private void RebuildTree()
     {
+        // 1. Capture the currently expanded folders before we destroy the tree
+        var expandedFolders = new HashSet<string>();
+        bool isFirstLoad = Tree.RootNodes.Count == 0;
+
+        void SaveExpandedState(TreeViewNode node)
+        {
+            if (node.IsExpanded && _nodeTags.TryGetValue(node, out var tag) && tag is string path)
+            {
+                expandedFolders.Add(path);
+            }
+            foreach (var child in node.Children) SaveExpandedState(child);
+        }
+
+        // Run the scan
+        foreach (var root in Tree.RootNodes) SaveExpandedState(root);
+
+        // Now clear the tree safely
         Tree.RootNodes.Clear();
         _nodeTags.Clear();
 
-        Border CreateHeader(string iconGlyph, string text, Brush iconColor)
-        {
-            var sp = new StackPanel { Orientation = Orientation.Horizontal };
-            sp.Children.Add(new TextBlock { Text = iconGlyph, Foreground = iconColor, FontFamily = new FontFamily("Segoe Fluent Icons"), FontSize = 16, Margin = new Thickness(0, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center });
-            sp.Children.Add(new TextBlock { Text = text, VerticalAlignment = VerticalAlignment.Center });
+        var rootData = new TreeItemData { Name = AppPaths.RootFolder, IconGlyph = "\uE8D5", IconColor = new SolidColorBrush(Microsoft.UI.Colors.Gold) };
 
-            return new Border
-            {
-                Child = sp,
-                Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent),
-                CornerRadius = new CornerRadius(4),
-                Padding = new Thickness(4, 2, 4, 2)
-            };
-        }
-
-        var rootNode = new TreeViewNode { Content = CreateHeader("\uE8D5", AppPaths.RootFolder, new SolidColorBrush(Microsoft.UI.Colors.Gold)), IsExpanded = true };
+        // Root is expanded on first load, or if it was previously expanded
+        var rootNode = new TreeViewNode { Content = rootData, IsExpanded = isFirstLoad || expandedFolders.Contains(AppPaths.RootFolder) };
         _nodeTags[rootNode] = AppPaths.RootFolder;
 
         TreeViewNode GetOrCreateNode(string folderPath)
@@ -185,7 +250,10 @@ public sealed partial class MainWindow : Window
 
                 if (found == null)
                 {
-                    found = new TreeViewNode { Content = CreateHeader("\uE8D5", part, new SolidColorBrush(Microsoft.UI.Colors.Gold)), IsExpanded = true };
+                    var folderData = new TreeItemData { Name = part, IconGlyph = "\uE8D5", IconColor = new SolidColorBrush(Microsoft.UI.Colors.Gold) };
+
+                    // 2. Restore the expanded state, defaulting to false (collapsed) if it wasn't open
+                    found = new TreeViewNode { Content = folderData, IsExpanded = expandedFolders.Contains(currentPath) };
                     _nodeTags[found] = currentPath;
 
                     int insertIndex = 0;
@@ -203,11 +271,13 @@ public sealed partial class MainWindow : Window
         foreach (var s in _servers.OrderBy(s => s.Name, StringComparer.OrdinalIgnoreCase))
         {
             var parent = GetOrCreateNode(s.Folder ?? AppPaths.RootFolder);
-            var serverNode = new TreeViewNode { Content = CreateHeader("\uE7F4", s.Name, new SolidColorBrush(Microsoft.UI.Colors.SteelBlue)) };
+            var serverData = new TreeItemData { Name = s.Name, IconGlyph = "\uE7F4", IconColor = new SolidColorBrush(Microsoft.UI.Colors.SteelBlue) };
+            var serverNode = new TreeViewNode { Content = serverData };
             _nodeTags[serverNode] = s;
             parent.Children.Add(serverNode);
         }
 
+        SortTreeNodes(rootNode);
         Tree.RootNodes.Add(rootNode);
     }
 
@@ -237,8 +307,6 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    // --- Connections & Stubs (Awaiting Dialog Migrations) ---
-
     private void Ssh_Click(object sender, RoutedEventArgs e)
     {
         var cfg = SelectedServer();
@@ -256,7 +324,7 @@ public sealed partial class MainWindow : Window
     }
 
     private void SftpGui_Click(object sender, RoutedEventArgs e) { Log("SFTP GUI window needs porting."); }
-    
+
     private IEnumerable<string> AllFolders() =>
     _servers.Select(s => s.Folder ?? "")
         .Concat(_settings.Folders)
@@ -264,16 +332,16 @@ public sealed partial class MainWindow : Window
         .Where(f => !string.IsNullOrWhiteSpace(f))
         .Distinct();
 
-private void Persist()
-{
-    try { CryptoStore.Save(_servers, _passphrase); }
-    catch (Exception ex) { Log($"ERROR saving vault: {ex.Message}"); }
-}
+    private void Persist()
+    {
+        try { CryptoStore.Save(_servers, _passphrase); }
+        catch (Exception ex) { Log($"ERROR saving vault: {ex.Message}"); }
+    }
 
     private async void AddServer_Click(object sender, RoutedEventArgs e)
     {
-        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
-        var dlg = new Dialogs.ServerDialog(null, AllFolders(), hwnd, SelectedFolder() ?? SelectedServer()?.Folder);
+        // No more hwnd! We just pass this.Content.XamlRoot
+        var dlg = new Dialogs.ServerDialog(null, AllFolders(), this.Content.XamlRoot, SelectedFolder() ?? SelectedServer()?.Folder);
 
         if (!await dlg.ShowModalAsync()) return;
 
@@ -288,8 +356,8 @@ private void Persist()
         var cfg = SelectedServer();
         if (cfg == null) { Log("Select a server first."); return; }
 
-        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
-        var dlg = new Dialogs.ServerDialog(cfg, AllFolders(), hwnd);
+        // No more hwnd! We just pass this.Content.XamlRoot
+        var dlg = new Dialogs.ServerDialog(cfg, AllFolders(), this.Content.XamlRoot);
 
         if (!await dlg.ShowModalAsync()) return;
 
@@ -307,6 +375,14 @@ private void Persist()
     private void ForgetPassphrase_Click(object sender, RoutedEventArgs e) { Log("Forgot passphrase."); }
     private void Exit_Click(object sender, RoutedEventArgs e) => Close();
 
+    private void Tree_ItemInvoked(TreeView sender, TreeViewItemInvokedEventArgs args)
+    {
+        if (args.InvokedItem is TreeViewNode node && node.Children.Count > 0)
+        {
+            node.IsExpanded = !node.IsExpanded;
+        }
+    }
+
     private async void About_Click(object sender, RoutedEventArgs e)
     {
         await ShowAlertAsync("About", "Scarpa Connection Manager\nNative WinUI 3 Edition");
@@ -317,7 +393,6 @@ private void Persist()
     private async Task<string?> PickFileAsync(string filterExtension)
     {
         var picker = new Windows.Storage.Pickers.FileOpenPicker();
-        // WinUI 3 requires linking the Picker to the Window Handle explicitly
         var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
         WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
 
@@ -353,4 +428,31 @@ private void Persist()
 
     private void ImportPuttyRegistry_Click(object sender, RoutedEventArgs e) { Log("Importing from registry."); }
     private void Export_Click(object sender, RoutedEventArgs e) { Log("Export File Picker needs porting."); }
+
+    private void SortTreeNodes(TreeViewNode node)
+    {
+        if (node.Children.Count == 0) return;
+
+        var sortedChildren = node.Children
+            .OrderByDescending(n => _nodeTags.ContainsKey(n) && _nodeTags[n] is string) // Folders first
+            .ThenBy(n =>
+            {
+                if (_nodeTags.TryGetValue(n, out var tag))
+                {
+                    if (tag is string folderPath)
+                        return folderPath.Contains("\\") ? folderPath.Substring(folderPath.LastIndexOf('\\') + 1) : folderPath;
+                    if (tag is ServerConfig srv)
+                        return srv.Name ?? "";
+                }
+                return "";
+            })
+            .ToList();
+
+        node.Children.Clear();
+        foreach (var child in sortedChildren)
+        {
+            SortTreeNodes(child);
+            node.Children.Add(child);
+        }
+    }
 }

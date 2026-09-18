@@ -107,22 +107,22 @@ public static class ConnectionLauncher
         bool usePassword = cfg.AuthMethod == "password" && !string.IsNullOrEmpty(cfg.Password);
 
         // 1. Password Injection via VBScript
-        // 1. Password Injection via VBScript
         if (isHostOnline && usePassword)
         {
             // Safely convert the password into a VBScript array of individually escaped keys
-            var escapedChars = cfg.Password.Select(c =>
+            var escapedChars = (cfg.Password ?? "").Select(c =>
             {
                 string s = c.ToString();
                 if ("{}+^%~()".Contains(s)) return $"\"{{{s}}}\"";
                 if (s == "\"") return "\"\"\"\""; // VBScript double-quote escape
                 return $"\"{s}\"";
             });
+
             string vbsArray = string.Join(", ", escapedChars);
 
             string vbsFile = Path.Combine(Path.GetTempPath(), $"scarpa_auth_{Guid.NewGuid():N}.vbs");
             string vbsCode = $@"
-WScript.Sleep 2500
+WScript.Sleep 3500
 Set ws = CreateObject(""WScript.Shell"")
 ws.AppActivate ""{cfg.Name}"" 
 WScript.Sleep 500
@@ -139,7 +139,13 @@ ws.SendKeys ""{{ENTER}}""
 CreateObject(""Scripting.FileSystemObject"").DeleteFile WScript.ScriptFullName
 ";
             File.WriteAllText(vbsFile, vbsCode);
-            Process.Start(new ProcessStartInfo("wscript.exe", $"\"{vbsFile}\"") { UseShellExecute = true });
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = "wscript.exe",
+                Arguments = $"//E:vbs \"{vbsFile}\"",
+                UseShellExecute = false,
+                CreateNoWindow = true
+            });
         }
 
         // 2. Build a pure cmd.exe command chain

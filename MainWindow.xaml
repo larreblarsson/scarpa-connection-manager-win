@@ -54,9 +54,10 @@
         </MenuBar>
 
         <!-- Tree View -->
-        <!-- Drag/Drop events are properly wired here now -->
         <TreeView x:Name="Tree" Grid.Row="1" 
-                  DoubleTapped="Tree_DoubleClick" 
+                  DoubleTapped="Tree_DoubleClick"
+                  Tapped="Tree_Tapped"
+                  RightTapped="Tree_RightTapped"
                   KeyDown="Tree_KeyDown" 
                   ItemInvoked="Tree_ItemInvoked"
                   AllowDrop="True" 
@@ -65,13 +66,22 @@
                   DragItemsCompleted="Tree_DragItemsCompleted">
             <TreeView.ItemTemplate>
                 <DataTemplate>
-                    <Border Background="Transparent" CornerRadius="4" Padding="4,2,4,2" MinHeight="32">
-                        <StackPanel Orientation="Horizontal">
-                            <!-- Added "Content." to the bindings so WinUI knows where to look! -->
-                            <TextBlock Text="{Binding Content.IconGlyph}" Foreground="{Binding Content.IconColor}" FontFamily="Segoe Fluent Icons" FontSize="16" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                            <TextBlock Text="{Binding Content.Name}" VerticalAlignment="Center"/>
-                        </StackPanel>
-                    </Border>
+                    <StackPanel Orientation="Horizontal" Spacing="8" MinHeight="32">
+                        <FontIcon Glyph="{Binding Content.IconGlyph}" Foreground="{Binding Content.IconColor}" VerticalAlignment="Center"/>
+
+                        <!-- Standard View -->
+                        <TextBlock Text="{Binding Content.Name}" 
+                       Visibility="{Binding Content.ReadVisibility}" 
+                       VerticalAlignment="Center"/>
+
+                        <!-- Inline Edit View -->
+                        <TextBox Text="{Binding Content.Name}" 
+                     Visibility="{Binding Content.EditVisibility}"
+                     Loaded="RenameTextBox_Loaded"
+                     KeyDown="RenameTextBox_KeyDown"
+                     LostFocus="RenameTextBox_LostFocus"
+                     MinHeight="24" Padding="4,2" VerticalAlignment="Center"/>
+                    </StackPanel>
                 </DataTemplate>
             </TreeView.ItemTemplate>
 
@@ -85,6 +95,8 @@
                     <MenuFlyoutItem Text="Duplicate" Click="Duplicate_Click" />
                     <MenuFlyoutItem Text="Rename…" Click="Rename_Click" />
                     <MenuFlyoutItem Text="Delete" Click="DeleteSelected_Click" />
+                    <MenuFlyoutItem Text="Add Folder" Click="ContextMenu_AddFolder_Click" />
+                    <MenuFlyoutItem Text="Add Server" Click="ContextMenu_AddServer_Click" />
                 </MenuFlyout>
             </TreeView.ContextFlyout>
         </TreeView>

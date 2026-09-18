@@ -2,22 +2,48 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using ScarpaConnectionManager.Models;
+using ScarpaConnectionManager.Services;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Windows.System;
-using ScarpaConnectionManager.Models;
-using ScarpaConnectionManager.Services;
 
 namespace scarpa_connection_manager_win;
 
 // 1. Pure Data Model for the TreeView
-public class TreeItemData
+public class TreeItemData : System.ComponentModel.INotifyPropertyChanged
 {
-    public string Name { get; set; }
-    public string IconGlyph { get; set; }
-    public Brush IconColor { get; set; }
+    private string _name = "";
+    private bool _isEditing;
+
+    public string Name
+    {
+        get => _name;
+        set { _name = value; OnPropertyChanged(nameof(Name)); }
+    }
+
+    public string IconGlyph { get; set; } = "";
+    public Brush IconColor { get; set; } = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+
+    public bool IsEditing
+    {
+        get => _isEditing;
+        set
+        {
+            _isEditing = value;
+            OnPropertyChanged(nameof(IsEditing));
+            OnPropertyChanged(nameof(ReadVisibility));
+            OnPropertyChanged(nameof(EditVisibility));
+        }
+    }
+
+    public Visibility ReadVisibility => IsEditing ? Visibility.Collapsed : Visibility.Visible;
+    public Visibility EditVisibility => IsEditing ? Visibility.Visible : Visibility.Collapsed;
+
+    public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
+    protected void OnPropertyChanged(string name) => PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(name));
 }
 
 public sealed partial class MainWindow : Window
@@ -25,13 +51,15 @@ public sealed partial class MainWindow : Window
     private AppSettings _settings = new();
     private List<ServerConfig> _servers = new();
     private string _passphrase = "";
+    private TreeViewNode? _lastClickedNode;
+    private DateTime _lastClickTime = DateTime.MinValue;
+    private DispatcherTimer? _renameTimer;
 
     private Dictionary<TreeViewNode, object> _nodeTags = new();
 
     public MainWindow()
     {
         this.InitializeComponent();
-
         this.Title = "Scarpa Connection Manager";
 
         var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
@@ -53,8 +81,6 @@ public sealed partial class MainWindow : Window
         {
             appWindow.Resize(new Windows.Graphics.SizeInt32(windowWidth, windowHeight));
         }
-
-        // Constructor is now 100% clean of layout hacks and inline events!
     }
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
@@ -72,7 +98,6 @@ public sealed partial class MainWindow : Window
         Log($"Loaded {_servers.Count} server(s) from {AppPaths.ServerFile}");
     }
 
-    // --- Drag and Drop Logic (Now a proper event handler) ---
     private void Tree_DragItemsCompleted(TreeView sender, TreeViewDragItemsCompletedEventArgs args)
     {
         this.DispatcherQueue.TryEnqueue(() =>
@@ -200,11 +225,10 @@ public sealed partial class MainWindow : Window
         LogBox.SelectionStart = LogBox.Text.Length;
     }
 
-    // --- TreeView Logic (Strict Data Binding) ---
+    // --- TreeView Logic ---
 
     private void RebuildTree()
     {
-        // 1. Capture the currently expanded folders before we destroy the tree
         var expandedFolders = new HashSet<string>();
         bool isFirstLoad = Tree.RootNodes.Count == 0;
 
@@ -217,16 +241,12 @@ public sealed partial class MainWindow : Window
             foreach (var child in node.Children) SaveExpandedState(child);
         }
 
-        // Run the scan
         foreach (var root in Tree.RootNodes) SaveExpandedState(root);
 
-        // Now clear the tree safely
         Tree.RootNodes.Clear();
         _nodeTags.Clear();
 
         var rootData = new TreeItemData { Name = AppPaths.RootFolder, IconGlyph = "\uE8D5", IconColor = new SolidColorBrush(Microsoft.UI.Colors.Gold) };
-
-        // Root is expanded on first load, or if it was previously expanded
         var rootNode = new TreeViewNode { Content = rootData, IsExpanded = isFirstLoad || expandedFolders.Contains(AppPaths.RootFolder) };
         _nodeTags[rootNode] = AppPaths.RootFolder;
 
@@ -241,7 +261,6 @@ public sealed partial class MainWindow : Window
             foreach (var part in parts)
             {
                 currentPath = string.IsNullOrEmpty(currentPath) ? part : $"{currentPath}/{part}";
-
                 TreeViewNode? found = null;
                 foreach (var item in current.Children)
                 {
@@ -251,8 +270,6 @@ public sealed partial class MainWindow : Window
                 if (found == null)
                 {
                     var folderData = new TreeItemData { Name = part, IconGlyph = "\uE8D5", IconColor = new SolidColorBrush(Microsoft.UI.Colors.Gold) };
-
-                    // 2. Restore the expanded state, defaulting to false (collapsed) if it wasn't open
                     found = new TreeViewNode { Content = folderData, IsExpanded = expandedFolders.Contains(currentPath) };
                     _nodeTags[found] = currentPath;
 
@@ -295,7 +312,121 @@ public sealed partial class MainWindow : Window
 
     private void Tree_DoubleClick(object sender, DoubleTappedRoutedEventArgs e)
     {
-        if (SelectedServer() != null) Ssh_Click(sender, new RoutedEventArgs());
+        // Cancel the rename timer if a fast double-click is detected
+        _renameTimer?.Stop();
+
+        if (Tree.SelectedNodes.Count > 0)
+        {
+            var node = Tree.SelectedNodes[0];
+
+            if (_nodeTags.TryGetValue(node, out var tag))
+            {
+                if (tag is ServerConfig)
+                {
+                    // Fast double-click on a server
+                    Ssh_Click(sender, new RoutedEventArgs());
+                }
+                else if (tag is string)
+                {
+                    // Fast double-click on a folder
+                    node.IsExpanded = !node.IsExpanded;
+                }
+            }
+        }
+    }
+    private void Tree_Tapped(object sender, TappedRoutedEventArgs e)
+    {
+        if (e.OriginalSource is DependencyObject element)
+        {
+            // Ignore clicks on the scrollbar so we don't deselect while scrolling
+            if (FindParent<Microsoft.UI.Xaml.Controls.Primitives.ScrollBar>(element) != null)
+                return;
+
+            // If the clicked element is not part of a TreeViewItem, it's empty space
+            if (FindParent<TreeViewItem>(element) == null)
+            {
+                Tree.SelectedNodes.Clear();
+            }
+        }
+    }
+    private void Tree_RightTapped(object sender, RightTappedRoutedEventArgs e)
+    {
+        if (e.OriginalSource is DependencyObject element)
+        {
+            var treeViewItem = FindParent<TreeViewItem>(element);
+            if (treeViewItem != null)
+            {
+                // Select the item that was right-clicked
+                var node = Tree.NodeFromContainer(treeViewItem);
+                if (node != null)
+                {
+                    Tree.SelectedNodes.Clear();
+                    Tree.SelectedNodes.Add(node);
+                }
+            }
+            else
+            {
+                // Right-clicked in white space, clear selection
+                Tree.SelectedNodes.Clear();
+            }
+        }
+    }
+    private void ContextMenu_AddFolder_Click(object sender, RoutedEventArgs e)
+    {
+        // Expand the target folder so the user can see the new item when it's added
+        var targetNode = GetTargetParentNode();
+        targetNode.IsExpanded = true;
+
+        // Call your existing folder creation logic
+        NewFolder_Click(sender, e);
+    }
+
+    private void ContextMenu_AddServer_Click(object sender, RoutedEventArgs e)
+    {
+        // Expand the target folder so the user can see the new item when it's added
+        var targetNode = GetTargetParentNode();
+        targetNode.IsExpanded = true;
+
+        // Call your existing server creation logic
+        AddServer_Click(sender, e);
+    }
+
+    private TreeViewNode GetTargetParentNode()
+    {
+        if (Tree.SelectedNodes.Count > 0)
+        {
+            var node = Tree.SelectedNodes[0];
+
+            if (_nodeTags.TryGetValue(node, out var tag))
+            {
+                if (tag is string)
+                {
+                    // It's a folder, return it directly
+                    return node;
+                }
+                else if (tag is ServerConfig)
+                {
+                    // It's a server, return its parent folder
+                    return node.Parent;
+                }
+            }
+        }
+
+        // Fallback: Return the root folder if nothing is selected (white space)
+        return Tree.RootNodes[0];
+    }
+
+    private static T? FindParent<T>(DependencyObject child) where T : DependencyObject
+    {
+        var parent = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(child);
+
+        if (parent == null)
+            return null;
+
+        if (parent is T typedParent)
+            return typedParent;
+
+        return FindParent<T>(parent);
     }
 
     private void Tree_KeyDown(object sender, KeyRoutedEventArgs e)
@@ -340,9 +471,7 @@ public sealed partial class MainWindow : Window
 
     private async void AddServer_Click(object sender, RoutedEventArgs e)
     {
-        // No more hwnd! We just pass this.Content.XamlRoot
         var dlg = new Dialogs.ServerDialog(null, AllFolders(), this.Content.XamlRoot, SelectedFolder() ?? SelectedServer()?.Folder);
-
         if (!await dlg.ShowModalAsync()) return;
 
         _servers.Add(dlg.Config);
@@ -356,9 +485,7 @@ public sealed partial class MainWindow : Window
         var cfg = SelectedServer();
         if (cfg == null) { Log("Select a server first."); return; }
 
-        // No more hwnd! We just pass this.Content.XamlRoot
         var dlg = new Dialogs.ServerDialog(cfg, AllFolders(), this.Content.XamlRoot);
-
         if (!await dlg.ShowModalAsync()) return;
 
         _servers[_servers.IndexOf(cfg)] = dlg.Config;
@@ -368,18 +495,249 @@ public sealed partial class MainWindow : Window
     }
 
     private void Duplicate_Click(object sender, RoutedEventArgs e) { Log("Duplicate requires active servers."); }
-    private void Rename_Click(object sender, RoutedEventArgs e) { Log("Rename Dialog needs porting."); }
-    private void DeleteSelected_Click(object sender, RoutedEventArgs e) { Log("Delete confirmation Dialog needs porting."); }
-    private void NewFolder_Click(object sender, RoutedEventArgs e) { Log("New Folder Dialog needs porting."); }
+
+    // --- Inline Rename Logic ---
+    private void Rename_Click(object sender, RoutedEventArgs e)
+    {
+        if (Tree.SelectedNodes.Count == 0) return;
+
+        var node = Tree.SelectedNodes[0];
+        if (node.Content is TreeItemData data)
+        {
+            if (data.Name == AppPaths.RootFolder)
+            {
+                Log("Cannot rename the root folder.");
+                return;
+            }
+            data.IsEditing = true;
+        }
+    }
+
+    private void RenameTextBox_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is TextBox tb)
+        {
+            // Trigger immediately if it happens to load in a visible state
+            if (tb.Visibility == Visibility.Visible)
+            {
+                tb.Focus(FocusState.Programmatic);
+                tb.SelectAll();
+            }
+
+            // Listen for future visibility changes (when IsEditing becomes true)
+            tb.RegisterPropertyChangedCallback(UIElement.VisibilityProperty, (s, dp) =>
+            {
+                if (s is TextBox t && t.Visibility == Visibility.Visible)
+                {
+                    // Use DispatcherQueue to ensure the UI has finished rendering the TextBox before focusing
+                    t.DispatcherQueue.TryEnqueue(() =>
+                    {
+                        t.Focus(FocusState.Programmatic);
+                        t.SelectAll();
+                    });
+                }
+            });
+        }
+    }
+
+    private void RenameTextBox_KeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (e.Key == VirtualKey.Enter)
+        {
+            CommitRename((TextBox)sender);
+            e.Handled = true;
+        }
+        else if (e.Key == VirtualKey.Escape)
+        {
+            CancelRename((TextBox)sender);
+            e.Handled = true;
+        }
+    }
+
+    private void RenameTextBox_LostFocus(object sender, RoutedEventArgs e) => CommitRename((TextBox)sender);
+
+    private void CancelRename(TextBox textBox)
+    {
+        if (textBox.DataContext is TreeViewNode node && node.Content is TreeItemData data && data.IsEditing)
+        {
+            data.IsEditing = false;
+        }
+    }
+
+    private void CommitRename(TextBox textBox)
+    {
+        // Cast DataContext to TreeViewNode, then check its Content
+        if (!(textBox.DataContext is TreeViewNode treeNode) || !(treeNode.Content is TreeItemData data) || !data.IsEditing) return;
+
+        data.IsEditing = false;
+
+        string newName = textBox.Text.Trim().Replace("/", "").Replace("\\", "");
+        if (string.IsNullOrWhiteSpace(newName) || newName == data.Name) return;
+
+        // We already have the treeNode, so we can look it up in _nodeTags directly
+        if (!_nodeTags.TryGetValue(treeNode, out var tag)) return;
+
+        if (tag is ServerConfig server)
+        {
+            server.Name = newName;
+            Persist();
+            Log($"Renamed server to '{newName}'");
+        }
+        else if (tag is string oldFolder)
+        {
+            string parentPath = oldFolder.Contains('/') ? oldFolder.Substring(0, oldFolder.LastIndexOf('/')) : "";
+            string newFolder = string.IsNullOrEmpty(parentPath) ? newName : $"{parentPath}/{newName}";
+
+            for (int i = 0; i < _settings.Folders.Count; i++)
+            {
+                if (_settings.Folders[i] == oldFolder) _settings.Folders[i] = newFolder;
+                else if (_settings.Folders[i].StartsWith(oldFolder + "/"))
+                    _settings.Folders[i] = newFolder + _settings.Folders[i].Substring(oldFolder.Length);
+            }
+            SettingsService.Save(_settings);
+
+            foreach (var srv in _servers)
+            {
+                if (srv.Folder == oldFolder) srv.Folder = newFolder;
+                else if (srv.Folder != null && srv.Folder.StartsWith(oldFolder + "/"))
+                    srv.Folder = newFolder + srv.Folder.Substring(oldFolder.Length);
+            }
+            Persist();
+            Log($"Renamed folder to '{newName}'");
+        }
+        RebuildTree();
+    }
+
+    private async void DeleteSelected_Click(object sender, RoutedEventArgs e)
+    {
+        if (Tree.SelectedNodes.Count == 0)
+        {
+            Log("Select an item to delete first.");
+            return;
+        }
+
+        var selectedNode = Tree.SelectedNodes[0];
+        if (!_nodeTags.TryGetValue(selectedNode, out var tag)) return;
+
+        string itemName = "";
+        string message = "";
+        bool isFolder = false;
+
+        if (tag is ServerConfig server)
+        {
+            itemName = server.Name;
+            message = $"Are you sure you want to delete the server '{itemName}'?";
+        }
+        else if (tag is string folderPath)
+        {
+            if (folderPath == AppPaths.RootFolder)
+            {
+                Log("Cannot delete the root folder.");
+                return;
+            }
+            isFolder = true;
+            itemName = folderPath.Contains('/') ? folderPath.Substring(folderPath.LastIndexOf('/') + 1) : folderPath;
+            message = $"Are you sure you want to delete the folder '{itemName}' and ALL servers inside it?";
+        }
+        else return;
+
+        var dialog = new ContentDialog
+        {
+            Title = "Confirm Deletion",
+            Content = message,
+            PrimaryButtonText = "Delete",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Close,
+            XamlRoot = this.Content.XamlRoot
+        };
+
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+
+        if (isFolder)
+        {
+            string folderPath = (string)tag;
+            _settings.Folders.RemoveAll(f => f == folderPath || f.StartsWith(folderPath + "/"));
+            SettingsService.Save(_settings);
+
+            _servers.RemoveAll(s => s.Folder == folderPath || (s.Folder != null && s.Folder.StartsWith(folderPath + "/")));
+            Persist();
+            Log($"Deleted folder '{itemName}' and its contents.");
+        }
+        else
+        {
+            var srv = (ServerConfig)tag;
+            _servers.Remove(srv);
+            Persist();
+            Log($"Deleted server '{itemName}'.");
+        }
+        RebuildTree();
+    }
+
+    private async void NewFolder_Click(object sender, RoutedEventArgs e)
+    {
+        var inputBox = new TextBox { PlaceholderText = "Enter folder name", AcceptsReturn = false };
+        var dialog = new ContentDialog
+        {
+            Title = "Create Folder",
+            Content = inputBox,
+            PrimaryButtonText = "Create",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Primary,
+            XamlRoot = this.Content.XamlRoot
+        };
+
+        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+        {
+            string newName = inputBox.Text.Trim().Replace("/", "").Replace("\\", "");
+            if (string.IsNullOrWhiteSpace(newName)) { Log("Folder creation cancelled."); return; }
+
+            string? parentFolder = SelectedFolder();
+            if (parentFolder == AppPaths.RootFolder) parentFolder = null;
+            string fullPath = string.IsNullOrEmpty(parentFolder) ? newName : $"{parentFolder}/{newName}";
+
+            if (!_settings.Folders.Contains(fullPath))
+            {
+                _settings.Folders.Add(fullPath);
+                SettingsService.Save(_settings);
+                RebuildTree();
+                Log($"Created folder '{fullPath}'.");
+            }
+            else { Log($"Folder '{fullPath}' already exists."); }
+        }
+    }
+
     private void ChangePassphrase_Click(object sender, RoutedEventArgs e) { Log("Passphrase Dialog needs porting."); }
     private void ForgetPassphrase_Click(object sender, RoutedEventArgs e) { Log("Forgot passphrase."); }
     private void Exit_Click(object sender, RoutedEventArgs e) => Close();
 
     private void Tree_ItemInvoked(TreeView sender, TreeViewItemInvokedEventArgs args)
     {
-        if (args.InvokedItem is TreeViewNode node && node.Children.Count > 0)
+        if (args.InvokedItem is TreeViewNode node)
         {
-            node.IsExpanded = !node.IsExpanded;
+            var now = DateTime.Now;
+            if (_lastClickedNode == node)
+            {
+                var elapsed = (now - _lastClickTime).TotalMilliseconds;
+
+                if (elapsed > 500 && elapsed < 3000)
+                {
+                    // Delay the rename slightly to see if this is actually the start of a fast double-click
+                    _renameTimer?.Stop();
+                    _renameTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
+                    _renameTimer.Tick += (s, e) =>
+                    {
+                        _renameTimer.Stop();
+                        if (node.Content is TreeItemData data && data.Name != AppPaths.RootFolder)
+                        {
+                            data.IsEditing = true;
+                        }
+                    };
+                    _renameTimer.Start();
+                }
+            }
+
+            _lastClickedNode = node;
+            _lastClickTime = now;
         }
     }
 
@@ -389,7 +747,6 @@ public sealed partial class MainWindow : Window
     }
 
     // --- Async File Pickers ---
-
     private async Task<string?> PickFileAsync(string filterExtension)
     {
         var picker = new Windows.Storage.Pickers.FileOpenPicker();
@@ -434,7 +791,7 @@ public sealed partial class MainWindow : Window
         if (node.Children.Count == 0) return;
 
         var sortedChildren = node.Children
-            .OrderByDescending(n => _nodeTags.ContainsKey(n) && _nodeTags[n] is string) // Folders first
+            .OrderByDescending(n => _nodeTags.ContainsKey(n) && _nodeTags[n] is string)
             .ThenBy(n =>
             {
                 if (_nodeTags.TryGetValue(n, out var tag))

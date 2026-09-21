@@ -9,14 +9,15 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Windows.System;
+using System.Text.RegularExpressions;
 
 namespace scarpa_connection_manager_win;
 
-// 1. Pure Data Model for the TreeView
 public class TreeItemData : System.ComponentModel.INotifyPropertyChanged
 {
     private string _name = "";
     private bool _isEditing;
+    private bool _isSelected;
 
     public string Name
     {
@@ -39,6 +40,26 @@ public class TreeItemData : System.ComponentModel.INotifyPropertyChanged
         }
     }
 
+    public bool IsSelected
+    {
+        get => _isSelected;
+        set
+        {
+            _isSelected = value;
+            OnPropertyChanged(nameof(IsSelected));
+            OnPropertyChanged(nameof(BackgroundBrush));
+            OnPropertyChanged(nameof(IndicatorVisibility));
+        }
+    }
+
+    // Controls the blue vertical rectangle on the left
+    public Visibility IndicatorVisibility => IsSelected ? Visibility.Visible : Visibility.Collapsed;
+
+    // Classic Windows 11 subtle grey full-row highlight (works in both light & dark mode)
+    public Brush BackgroundBrush => IsSelected
+        ? new SolidColorBrush(Windows.UI.Color.FromArgb(20, 128, 128, 128))
+        : new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+
     public Visibility ReadVisibility => IsEditing ? Visibility.Collapsed : Visibility.Visible;
     public Visibility EditVisibility => IsEditing ? Visibility.Visible : Visibility.Collapsed;
 
@@ -51,10 +72,14 @@ public sealed partial class MainWindow : Window
     private AppSettings _settings = new();
     private List<ServerConfig> _servers = new();
     private string _passphrase = "";
+
+    private List<TreeViewNode> _selectedNodes = new();
+    private List<object>? _clipboardData = null;
+    private bool _isCutOperation = false;
+
     private TreeViewNode? _lastClickedNode;
     private DateTime _lastClickTime = DateTime.MinValue;
     private DispatcherTimer? _renameTimer;
-
     private Dictionary<TreeViewNode, object> _nodeTags = new();
 
     public MainWindow()
@@ -98,6 +123,283 @@ public sealed partial class MainWindow : Window
         Log($"Loaded {_servers.Count} server(s) from {AppPaths.ServerFile}");
     }
 
+    // --- Custom Classic Multiple Selection Logic ---
+    private void HandleSelection(TreeViewNode clickedNode, bool isCtrlDown, bool isShiftDown)
+    {
+        if (isCtrlDown)
+        {
+            ToggleNodeSelection(clickedNode);
+        }
+        else if (isShiftDown && _lastClickedNode != null)
+        {
+            SelectRange(_lastClickedNode, clickedNode);
+        }
+        else
+        {
+            ClearSelection();
+            SetNodeSelection(clickedNode, true);
+        }
+    }
+
+    private void SetNodeSelection(TreeViewNode node, bool isSelected)
+    {
+        if (node.Content is TreeItemData data)
+        {
+            data.IsSelected = isSelected;
+            if (isSelected && !_selectedNodes.Contains(node)) _selectedNodes.Add(node);
+            else if (!isSelected) _selectedNodes.Remove(node);
+        }
+    }
+
+    private void ToggleNodeSelection(TreeViewNode node)
+    {
+        if (node.Content is TreeItemData data)
+        {
+            SetNodeSelection(node, !data.IsSelected);
+        }
+    }
+
+    private void ClearSelection()
+    {
+        foreach (var node in _selectedNodes.ToList()) SetNodeSelection(node, false);
+        _selectedNodes.Clear();
+    }
+
+    private void SelectRange(TreeViewNode startNode, TreeViewNode endNode)
+    {
+        var visibleNodes = GetVisibleNodes(Tree.RootNodes);
+        int startIndex = visibleNodes.IndexOf(startNode);
+        int endIndex = visibleNodes.IndexOf(endNode);
+
+        if (startIndex == -1 || endIndex == -1) return;
+
+        int min = Math.Min(startIndex, endIndex);
+        int max = Math.Max(startIndex, endIndex);
+
+        ClearSelection();
+        for (int i = min; i <= max; i++)
+        {
+            SetNodeSelection(visibleNodes[i], true);
+        }
+    }
+
+    private List<TreeViewNode> GetVisibleNodes(IList<TreeViewNode> nodes)
+    {
+        var list = new List<TreeViewNode>();
+        foreach (var node in nodes)
+        {
+            list.Add(node);
+            if (node.IsExpanded)
+            {
+                list.AddRange(GetVisibleNodes(node.Children));
+            }
+        }
+        return list;
+    }
+
+    // --- Clipboard & Iterative Naming Logic ---
+
+    private string GetUniqueServerName(string baseName, string? targetFolder, ServerConfig? serverToIgnore = null, bool isCopy = false)
+    {
+        string normTarget = (targetFolder == AppPaths.RootFolder || string.IsNullOrWhiteSpace(targetFolder)) ? "" : targetFolder;
+
+        var existingNames = _servers
+            .Where(s => s != serverToIgnore)
+            .Where(s => (s.Folder == AppPaths.RootFolder || string.IsNullOrWhiteSpace(s.Folder) ? "" : s.Folder) == normTarget)
+            .Select(s => s.Name ?? "")
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        if (isCopy) baseName = Regex.Replace(baseName, @" \(\d+\)$", "");
+
+        if (!existingNames.Contains(baseName)) return baseName;
+
+        int counter = 1;
+        while (existingNames.Contains($"{baseName} ({counter})")) counter++;
+        return $"{baseName} ({counter})";
+    }
+
+    private string GetUniqueFolderPath(string baseFolderPath, bool isCopy = false)
+    {
+        var existingFolders = AllFolders().ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        if (isCopy) baseFolderPath = Regex.Replace(baseFolderPath, @" \(\d+\)$", "");
+
+        if (!existingFolders.Contains(baseFolderPath)) return baseFolderPath;
+
+        int counter = 1;
+        while (existingFolders.Contains($"{baseFolderPath} ({counter})")) counter++;
+        return $"{baseFolderPath} ({counter})";
+    }
+
+    private void Copy_Click(object sender, RoutedEventArgs e)
+    {
+        Tree.ContextFlyout?.Hide();
+        ExecuteCopyCut(false);
+    }
+
+    private void Cut_Click(object sender, RoutedEventArgs e)
+    {
+        Tree.ContextFlyout?.Hide();
+        ExecuteCopyCut(true);
+    }
+
+    private void ExecuteCopyCut(bool isCut)
+    {
+        if (_selectedNodes.Count == 0) return;
+
+        var itemsToCopy = new List<object>();
+        foreach (var node in _selectedNodes)
+        {
+            if (_nodeTags.TryGetValue(node, out var tag))
+            {
+                if (tag is string path && path == AppPaths.RootFolder) continue;
+                itemsToCopy.Add(tag);
+            }
+        }
+
+        if (itemsToCopy.Count == 0)
+        {
+            Log("Cannot cut or copy the root folder.");
+            return;
+        }
+
+        _isCutOperation = isCut;
+        _clipboardData = itemsToCopy;
+        Log($"{(isCut ? "Cut" : "Copied")} {itemsToCopy.Count} item(s).");
+    }
+
+    private void Paste_Click(object sender, RoutedEventArgs e)
+    {
+        Tree.ContextFlyout?.Hide();
+
+        if (_clipboardData == null || _clipboardData.Count == 0)
+        {
+            Log("Clipboard is empty.");
+            return;
+        }
+
+        string targetFolder = "";
+        if (_selectedNodes.Count == 1 && _nodeTags.TryGetValue(_selectedNodes[0], out var tag))
+        {
+            targetFolder = tag is string path ? path : ((tag as ServerConfig)?.Folder ?? "");
+        }
+
+        if (targetFolder == AppPaths.RootFolder) targetFolder = "";
+
+        foreach (var clipboardItem in _clipboardData)
+        {
+            if (clipboardItem is ServerConfig sourceServer)
+            {
+                if (_isCutOperation)
+                {
+                    if ((sourceServer.Folder ?? "") != targetFolder)
+                    {
+                        sourceServer.Name = GetUniqueServerName(sourceServer.Name ?? "", targetFolder, sourceServer, isCopy: false);
+                        sourceServer.Folder = targetFolder;
+                    }
+                    Log($"Moved server '{sourceServer.Name}'.");
+                }
+                else
+                {
+                    var newServer = sourceServer.Clone();
+                    newServer.Folder = targetFolder;
+                    newServer.Name = GetUniqueServerName(sourceServer.Name ?? "", targetFolder, null, isCopy: true);
+                    _servers.Add(newServer);
+                    Log($"Pasted copied server '{newServer.Name}'.");
+                }
+            }
+            else if (clipboardItem is string sourceFolder)
+            {
+                if (_isCutOperation)
+                {
+                    if (targetFolder == sourceFolder || (!string.IsNullOrEmpty(targetFolder) && targetFolder.StartsWith(sourceFolder + "/")))
+                    {
+                        Log($"Error: Cannot move '{sourceFolder}' into itself.");
+                        continue;
+                    }
+
+                    string folderName = sourceFolder.Contains('/') ? sourceFolder.Substring(sourceFolder.LastIndexOf('/') + 1) : sourceFolder;
+                    string newFolderPath = string.IsNullOrEmpty(targetFolder) ? folderName : $"{targetFolder}/{folderName}";
+
+                    if (newFolderPath == sourceFolder)
+                    {
+                        Log($"Target is the same as the source for '{folderName}'.");
+                        continue;
+                    }
+
+                    newFolderPath = GetUniqueFolderPath(newFolderPath, isCopy: false);
+
+                    for (int i = 0; i < _settings.Folders.Count; i++)
+                    {
+                        if (_settings.Folders[i] == sourceFolder) _settings.Folders[i] = newFolderPath;
+                        else if (_settings.Folders[i].StartsWith(sourceFolder + "/"))
+                            _settings.Folders[i] = newFolderPath + _settings.Folders[i].Substring(sourceFolder.Length);
+                    }
+
+                    if (!_settings.Folders.Contains(newFolderPath)) _settings.Folders.Add(newFolderPath);
+
+                    SettingsService.Save(_settings);
+
+                    foreach (var srv in _servers)
+                    {
+                        if (srv.Folder == sourceFolder) srv.Folder = newFolderPath;
+                        else if (srv.Folder != null && srv.Folder.StartsWith(sourceFolder + "/"))
+                            srv.Folder = newFolderPath + srv.Folder.Substring(sourceFolder.Length);
+                    }
+                    Log($"Moved folder '{folderName}'.");
+                }
+                else
+                {
+                    string finalTarget = targetFolder;
+                    if (finalTarget == sourceFolder)
+                    {
+                        finalTarget = sourceFolder.Contains('/') ? sourceFolder.Substring(0, sourceFolder.LastIndexOf('/')) : "";
+                    }
+                    else if (!string.IsNullOrEmpty(finalTarget) && finalTarget.StartsWith(sourceFolder + "/"))
+                    {
+                        Log($"Error: Cannot copy '{sourceFolder}' into its own subfolder.");
+                        continue;
+                    }
+
+                    string folderName = sourceFolder.Contains('/') ? sourceFolder.Substring(sourceFolder.LastIndexOf('/') + 1) : sourceFolder;
+                    string newFolderPath = string.IsNullOrEmpty(finalTarget) ? folderName : $"{finalTarget}/{folderName}";
+
+                    newFolderPath = GetUniqueFolderPath(newFolderPath, isCopy: true);
+
+                    var foldersToAdd = new List<string> { newFolderPath };
+                    foreach (var f in _settings.Folders)
+                    {
+                        if (f.StartsWith(sourceFolder + "/")) foldersToAdd.Add(newFolderPath + f.Substring(sourceFolder.Length));
+                    }
+                    _settings.Folders.AddRange(foldersToAdd.Distinct());
+                    SettingsService.Save(_settings);
+
+                    var serversToAdd = new List<ServerConfig>();
+                    foreach (var srv in _servers)
+                    {
+                        if (srv.Folder == sourceFolder || (srv.Folder != null && srv.Folder.StartsWith(sourceFolder + "/")))
+                        {
+                            var clone = srv.Clone();
+                            clone.Folder = clone.Folder == sourceFolder ? newFolderPath : newFolderPath + clone.Folder!.Substring(sourceFolder.Length);
+                            serversToAdd.Add(clone);
+                        }
+                    }
+                    _servers.AddRange(serversToAdd);
+                    Log($"Pasted copied folder '{folderName}'.");
+                }
+            }
+        }
+
+        if (_isCutOperation)
+        {
+            _clipboardData = null;
+            _isCutOperation = false;
+        }
+
+        Persist();
+        RebuildTree();
+    }
+
     private void Tree_DragItemsCompleted(TreeView sender, TreeViewDragItemsCompletedEventArgs args)
     {
         this.DispatcherQueue.TryEnqueue(() =>
@@ -105,7 +407,7 @@ public sealed partial class MainWindow : Window
             string newFolderPath = "";
             if (args.NewParentItem is TreeViewNode parentNode && _nodeTags.TryGetValue(parentNode, out var parentTag))
             {
-                if (parentTag is string path) newFolderPath = path;
+                if (parentTag is string path) newFolderPath = path == AppPaths.RootFolder ? "" : path;
             }
 
             bool modified = false;
@@ -115,15 +417,17 @@ public sealed partial class MainWindow : Window
                 {
                     if (draggedObj is ServerConfig server)
                     {
+                        server.Name = GetUniqueServerName(server.Name ?? "", newFolderPath, server, isCopy: false);
                         server.Folder = newFolderPath;
                         modified = true;
                     }
                     else if (draggedObj is string oldFolder)
                     {
-                        string folderName = oldFolder.Contains("\\") ? oldFolder.Substring(oldFolder.LastIndexOf('\\') + 1) : oldFolder;
-                        string newPath = string.IsNullOrEmpty(newFolderPath) ? folderName : $"{newFolderPath}\\{folderName}";
+                        string folderName = oldFolder.Contains('/') ? oldFolder.Substring(oldFolder.LastIndexOf('/') + 1) : oldFolder;
+                        string newPath = string.IsNullOrEmpty(newFolderPath) ? folderName : $"{newFolderPath}/{folderName}";
+                        newPath = GetUniqueFolderPath(newPath, isCopy: false);
 
-                        foreach (var srv in _servers.Where(x => x.Folder == oldFolder || (x.Folder != null && x.Folder.StartsWith(oldFolder + "\\"))))
+                        foreach (var srv in _servers.Where(x => x.Folder == oldFolder || (x.Folder != null && x.Folder.StartsWith(oldFolder + "/"))))
                         {
                             srv.Folder = newPath + srv.Folder.Substring(oldFolder.Length);
                             modified = true;
@@ -225,8 +529,6 @@ public sealed partial class MainWindow : Window
         LogBox.SelectionStart = LogBox.Text.Length;
     }
 
-    // --- TreeView Logic ---
-
     private void RebuildTree()
     {
         var expandedFolders = new HashSet<string>();
@@ -245,6 +547,7 @@ public sealed partial class MainWindow : Window
 
         Tree.RootNodes.Clear();
         _nodeTags.Clear();
+        ClearSelection();
 
         var rootData = new TreeItemData { Name = AppPaths.RootFolder, IconGlyph = "\uE8D5", IconColor = new SolidColorBrush(Microsoft.UI.Colors.Gold) };
         var rootNode = new TreeViewNode { Content = rootData, IsExpanded = isFirstLoad || expandedFolders.Contains(AppPaths.RootFolder) };
@@ -288,7 +591,7 @@ public sealed partial class MainWindow : Window
         foreach (var s in _servers.OrderBy(s => s.Name, StringComparer.OrdinalIgnoreCase))
         {
             var parent = GetOrCreateNode(s.Folder ?? AppPaths.RootFolder);
-            var serverData = new TreeItemData { Name = s.Name, IconGlyph = "\uE7F4", IconColor = new SolidColorBrush(Microsoft.UI.Colors.SteelBlue) };
+            var serverData = new TreeItemData { Name = s.Name ?? "", IconGlyph = "\uE7F4", IconColor = new SolidColorBrush(Microsoft.UI.Colors.SteelBlue) };
             var serverNode = new TreeViewNode { Content = serverData };
             _nodeTags[serverNode] = s;
             parent.Children.Add(serverNode);
@@ -298,57 +601,44 @@ public sealed partial class MainWindow : Window
         Tree.RootNodes.Add(rootNode);
     }
 
-    private ServerConfig? SelectedServer()
-    {
-        if (Tree.SelectedNodes.Count > 0 && _nodeTags.TryGetValue(Tree.SelectedNodes[0], out var tag)) return tag as ServerConfig;
-        return null;
-    }
-
-    private string? SelectedFolder()
-    {
-        if (Tree.SelectedNodes.Count > 0 && _nodeTags.TryGetValue(Tree.SelectedNodes[0], out var tag)) return tag as string;
-        return null;
-    }
-
     private void Tree_DoubleClick(object sender, DoubleTappedRoutedEventArgs e)
     {
-        // Cancel the rename timer if a fast double-click is detected
         _renameTimer?.Stop();
 
-        if (Tree.SelectedNodes.Count > 0)
+        if (_selectedNodes.Count > 0)
         {
-            var node = Tree.SelectedNodes[0];
+            var node = _selectedNodes[0];
 
             if (_nodeTags.TryGetValue(node, out var tag))
             {
                 if (tag is ServerConfig)
                 {
-                    // Fast double-click on a server
                     Ssh_Click(sender, new RoutedEventArgs());
                 }
                 else if (tag is string)
                 {
-                    // Fast double-click on a folder
                     node.IsExpanded = !node.IsExpanded;
                 }
             }
         }
     }
+
     private void Tree_Tapped(object sender, TappedRoutedEventArgs e)
     {
         if (e.OriginalSource is DependencyObject element)
         {
-            // Ignore clicks on the scrollbar so we don't deselect while scrolling
             if (FindParent<Microsoft.UI.Xaml.Controls.Primitives.ScrollBar>(element) != null)
                 return;
 
-            // If the clicked element is not part of a TreeViewItem, it's empty space
             if (FindParent<TreeViewItem>(element) == null)
             {
-                Tree.SelectedNodes.Clear();
+                ClearSelection();
+                // FIX: User clicked empty space, reset the rename "memory"
+                _lastClickedNode = null;
             }
         }
     }
+
     private void Tree_RightTapped(object sender, RightTappedRoutedEventArgs e)
     {
         if (e.OriginalSource is DependencyObject element)
@@ -356,81 +646,86 @@ public sealed partial class MainWindow : Window
             var treeViewItem = FindParent<TreeViewItem>(element);
             if (treeViewItem != null)
             {
-                // Select the item that was right-clicked
                 var node = Tree.NodeFromContainer(treeViewItem);
-                if (node != null)
+                if (node != null && !_selectedNodes.Contains(node))
                 {
-                    Tree.SelectedNodes.Clear();
-                    Tree.SelectedNodes.Add(node);
+                    ClearSelection();
+                    SetNodeSelection(node, true);
+                    _lastClickedNode = node;
                 }
             }
             else
             {
-                // Right-clicked in white space, clear selection
-                Tree.SelectedNodes.Clear();
+                ClearSelection();
+                // FIX: User right-clicked empty space, reset the rename "memory"
+                _lastClickedNode = null;
             }
         }
     }
+
     private void ContextMenu_AddFolder_Click(object sender, RoutedEventArgs e)
     {
-        // Expand the target folder so the user can see the new item when it's added
         var targetNode = GetTargetParentNode();
         targetNode.IsExpanded = true;
-
-        // Call your existing folder creation logic
         NewFolder_Click(sender, e);
     }
 
-    private void ContextMenu_AddServer_Click(object sender, RoutedEventArgs e)
+    private async void ContextMenu_AddServer_Click(object sender, RoutedEventArgs e)
     {
-        // Expand the target folder so the user can see the new item when it's added
         var targetNode = GetTargetParentNode();
         targetNode.IsExpanded = true;
 
-        // Call your existing server creation logic
-        AddServer_Click(sender, e);
+        string? targetFolder = null;
+        if (_nodeTags.TryGetValue(targetNode, out var tag) && tag is string path)
+        {
+            targetFolder = path == AppPaths.RootFolder ? null : path;
+        }
+
+        var dlg = new Dialogs.ServerDialog(null, AllFolders(), this.Content.XamlRoot, targetFolder);
+        if (!await dlg.ShowModalAsync()) return;
+
+        _servers.Add(dlg.Config);
+        Persist();
+        RebuildTree();
+
+        string locationName = string.IsNullOrEmpty(targetFolder) ? "Root" : targetFolder;
+        Log($"Added server '{dlg.Config.Name}' to {locationName}");
     }
 
     private TreeViewNode GetTargetParentNode()
     {
-        if (Tree.SelectedNodes.Count > 0)
+        if (_selectedNodes.Count > 0)
         {
-            var node = Tree.SelectedNodes[0];
-
+            var node = _selectedNodes[0];
             if (_nodeTags.TryGetValue(node, out var tag))
             {
-                if (tag is string)
-                {
-                    // It's a folder, return it directly
-                    return node;
-                }
-                else if (tag is ServerConfig)
-                {
-                    // It's a server, return its parent folder
-                    return node.Parent;
-                }
+                if (tag is string) return node;
+                else if (tag is ServerConfig) return node.Parent;
             }
         }
-
-        // Fallback: Return the root folder if nothing is selected (white space)
         return Tree.RootNodes[0];
     }
 
     private static T? FindParent<T>(DependencyObject child) where T : DependencyObject
     {
         var parent = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(child);
-
-        if (parent == null)
-            return null;
-
-        if (parent is T typedParent)
-            return typedParent;
-
+        if (parent == null) return null;
+        if (parent is T typedParent) return typedParent;
         return FindParent<T>(parent);
     }
 
     private void Tree_KeyDown(object sender, KeyRoutedEventArgs e)
     {
+        var ctrl = Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Control);
+        bool isCtrlDown = ctrl.HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down);
+
+        if (isCtrlDown)
+        {
+            if (e.Key == VirtualKey.C) { ExecuteCopyCut(false); e.Handled = true; return; }
+            if (e.Key == VirtualKey.X) { ExecuteCopyCut(true); e.Handled = true; return; }
+            if (e.Key == VirtualKey.V) { Paste_Click(sender, new RoutedEventArgs()); e.Handled = true; return; }
+        }
+
         switch (e.Key)
         {
             case VirtualKey.Enter: Ssh_Click(sender, new RoutedEventArgs()); break;
@@ -440,23 +735,37 @@ public sealed partial class MainWindow : Window
 
     private void Ssh_Click(object sender, RoutedEventArgs e)
     {
-        var cfg = SelectedServer();
-        if (cfg == null) { Log("Select a server first."); return; }
-        Log($"Launching SSH: {cfg.Name}");
-        ConnectionLauncher.LaunchSsh(cfg, _settings);
+        var nodes = _selectedNodes.ToList();
+        if (nodes.Count == 0) { Log("Select a server first."); return; }
+
+        foreach (var node in nodes)
+        {
+            if (_nodeTags.TryGetValue(node, out var tag) && tag is ServerConfig cfg)
+            {
+                Log($"Launching SSH: {cfg.Name}");
+                ConnectionLauncher.LaunchSsh(cfg, _settings);
+            }
+        }
     }
 
     private void SftpCli_Click(object sender, RoutedEventArgs e)
     {
-        var cfg = SelectedServer();
-        if (cfg == null) { Log("Select a server first."); return; }
-        Log($"Launching SFTP CLI: {cfg.Name}");
-        ConnectionLauncher.LaunchSftpCli(cfg, _settings);
+        var nodes = _selectedNodes.ToList();
+        if (nodes.Count == 0) { Log("Select a server first."); return; }
+
+        foreach (var node in nodes)
+        {
+            if (_nodeTags.TryGetValue(node, out var tag) && tag is ServerConfig cfg)
+            {
+                Log($"Launching SFTP CLI: {cfg.Name}");
+                ConnectionLauncher.LaunchSftpCli(cfg, _settings);
+            }
+        }
     }
 
     private void SftpGui_Click(object sender, RoutedEventArgs e) { Log("SFTP GUI window needs porting."); }
 
-    private IEnumerable<string> AllFolders() =>
+    public IEnumerable<string> AllFolders() =>
     _servers.Select(s => s.Folder ?? "")
         .Concat(_settings.Folders)
         .Append(AppPaths.RootFolder)
@@ -471,7 +780,13 @@ public sealed partial class MainWindow : Window
 
     private async void AddServer_Click(object sender, RoutedEventArgs e)
     {
-        var dlg = new Dialogs.ServerDialog(null, AllFolders(), this.Content.XamlRoot, SelectedFolder() ?? SelectedServer()?.Folder);
+        string? target = null;
+        if (_selectedNodes.Count == 1 && _nodeTags.TryGetValue(_selectedNodes[0], out var tag))
+        {
+            target = tag is string path ? path : ((tag as ServerConfig)?.Folder ?? "");
+        }
+
+        var dlg = new Dialogs.ServerDialog(null, AllFolders(), this.Content.XamlRoot, target);
         if (!await dlg.ShowModalAsync()) return;
 
         _servers.Add(dlg.Config);
@@ -482,26 +797,32 @@ public sealed partial class MainWindow : Window
 
     private async void EditServer_Click(object sender, RoutedEventArgs e)
     {
-        var cfg = SelectedServer();
-        if (cfg == null) { Log("Select a server first."); return; }
+        if (_selectedNodes.Count != 1) { Log("Select exactly ONE server to edit."); return; }
 
-        var dlg = new Dialogs.ServerDialog(cfg, AllFolders(), this.Content.XamlRoot);
-        if (!await dlg.ShowModalAsync()) return;
+        if (_nodeTags.TryGetValue(_selectedNodes[0], out var tag) && tag is ServerConfig cfg)
+        {
+            var dlg = new Dialogs.ServerDialog(cfg, AllFolders(), this.Content.XamlRoot);
+            if (!await dlg.ShowModalAsync()) return;
 
-        _servers[_servers.IndexOf(cfg)] = dlg.Config;
-        Persist();
-        RebuildTree();
-        Log($"Updated {dlg.Config.Name}");
+            _servers[_servers.IndexOf(cfg)] = dlg.Config;
+            Persist();
+            RebuildTree();
+            Log($"Updated {dlg.Config.Name}");
+        }
     }
-
-    private void Duplicate_Click(object sender, RoutedEventArgs e) { Log("Duplicate requires active servers."); }
 
     // --- Inline Rename Logic ---
     private void Rename_Click(object sender, RoutedEventArgs e)
     {
-        if (Tree.SelectedNodes.Count == 0) return;
+        Tree.ContextFlyout?.Hide();
 
-        var node = Tree.SelectedNodes[0];
+        if (_selectedNodes.Count != 1)
+        {
+            Log("Select exactly one item to rename.");
+            return;
+        }
+
+        var node = _selectedNodes[0];
         if (node.Content is TreeItemData data)
         {
             if (data.Name == AppPaths.RootFolder)
@@ -517,19 +838,16 @@ public sealed partial class MainWindow : Window
     {
         if (sender is TextBox tb)
         {
-            // Trigger immediately if it happens to load in a visible state
             if (tb.Visibility == Visibility.Visible)
             {
                 tb.Focus(FocusState.Programmatic);
                 tb.SelectAll();
             }
 
-            // Listen for future visibility changes (when IsEditing becomes true)
             tb.RegisterPropertyChangedCallback(UIElement.VisibilityProperty, (s, dp) =>
             {
                 if (s is TextBox t && t.Visibility == Visibility.Visible)
                 {
-                    // Use DispatcherQueue to ensure the UI has finished rendering the TextBox before focusing
                     t.DispatcherQueue.TryEnqueue(() =>
                     {
                         t.Focus(FocusState.Programmatic);
@@ -566,7 +884,6 @@ public sealed partial class MainWindow : Window
 
     private void CommitRename(TextBox textBox)
     {
-        // Cast DataContext to TreeViewNode, then check its Content
         if (!(textBox.DataContext is TreeViewNode treeNode) || !(treeNode.Content is TreeItemData data) || !data.IsEditing) return;
 
         data.IsEditing = false;
@@ -574,19 +891,19 @@ public sealed partial class MainWindow : Window
         string newName = textBox.Text.Trim().Replace("/", "").Replace("\\", "");
         if (string.IsNullOrWhiteSpace(newName) || newName == data.Name) return;
 
-        // We already have the treeNode, so we can look it up in _nodeTags directly
         if (!_nodeTags.TryGetValue(treeNode, out var tag)) return;
 
         if (tag is ServerConfig server)
         {
-            server.Name = newName;
+            server.Name = GetUniqueServerName(newName, server.Folder, server, isCopy: false);
             Persist();
-            Log($"Renamed server to '{newName}'");
+            Log($"Renamed server to '{server.Name}'");
         }
         else if (tag is string oldFolder)
         {
             string parentPath = oldFolder.Contains('/') ? oldFolder.Substring(0, oldFolder.LastIndexOf('/')) : "";
             string newFolder = string.IsNullOrEmpty(parentPath) ? newName : $"{parentPath}/{newName}";
+            newFolder = GetUniqueFolderPath(newFolder, isCopy: false);
 
             for (int i = 0; i < _settings.Folders.Count; i++)
             {
@@ -603,43 +920,37 @@ public sealed partial class MainWindow : Window
                     srv.Folder = newFolder + srv.Folder.Substring(oldFolder.Length);
             }
             Persist();
-            Log($"Renamed folder to '{newName}'");
+            Log($"Renamed folder to '{newFolder}'");
         }
         RebuildTree();
     }
 
     private async void DeleteSelected_Click(object sender, RoutedEventArgs e)
     {
-        if (Tree.SelectedNodes.Count == 0)
+        Tree.ContextFlyout?.Hide();
+
+        var nodesToDelete = _selectedNodes.ToList();
+        if (nodesToDelete.Count == 0)
         {
             Log("Select an item to delete first.");
             return;
         }
 
-        var selectedNode = Tree.SelectedNodes[0];
-        if (!_nodeTags.TryGetValue(selectedNode, out var tag)) return;
-
-        string itemName = "";
-        string message = "";
-        bool isFolder = false;
-
-        if (tag is ServerConfig server)
+        var itemsToDelete = new List<object>();
+        foreach (var node in nodesToDelete)
         {
-            itemName = server.Name;
-            message = $"Are you sure you want to delete the server '{itemName}'?";
-        }
-        else if (tag is string folderPath)
-        {
-            if (folderPath == AppPaths.RootFolder)
+            if (_nodeTags.TryGetValue(node, out var tag))
             {
-                Log("Cannot delete the root folder.");
-                return;
+                if (tag is string path && path == AppPaths.RootFolder) continue;
+                itemsToDelete.Add(tag);
             }
-            isFolder = true;
-            itemName = folderPath.Contains('/') ? folderPath.Substring(folderPath.LastIndexOf('/') + 1) : folderPath;
-            message = $"Are you sure you want to delete the folder '{itemName}' and ALL servers inside it?";
         }
-        else return;
+
+        if (itemsToDelete.Count == 0) return;
+
+        string message = itemsToDelete.Count == 1
+            ? $"Are you sure you want to delete this {(itemsToDelete[0] is ServerConfig ? "server" : "folder and ALL servers inside it")}?"
+            : $"Are you sure you want to delete {itemsToDelete.Count} items (and their contents)?";
 
         var dialog = new ContentDialog
         {
@@ -653,23 +964,22 @@ public sealed partial class MainWindow : Window
 
         if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
 
-        if (isFolder)
+        foreach (var tag in itemsToDelete)
         {
-            string folderPath = (string)tag;
-            _settings.Folders.RemoveAll(f => f == folderPath || f.StartsWith(folderPath + "/"));
-            SettingsService.Save(_settings);
+            if (tag is string folderPath)
+            {
+                _settings.Folders.RemoveAll(f => f == folderPath || f.StartsWith(folderPath + "/"));
+                _servers.RemoveAll(s => s.Folder == folderPath || (s.Folder != null && s.Folder.StartsWith(folderPath + "/")));
+            }
+            else if (tag is ServerConfig srv)
+            {
+                _servers.Remove(srv);
+            }
+        }
 
-            _servers.RemoveAll(s => s.Folder == folderPath || (s.Folder != null && s.Folder.StartsWith(folderPath + "/")));
-            Persist();
-            Log($"Deleted folder '{itemName}' and its contents.");
-        }
-        else
-        {
-            var srv = (ServerConfig)tag;
-            _servers.Remove(srv);
-            Persist();
-            Log($"Deleted server '{itemName}'.");
-        }
+        SettingsService.Save(_settings);
+        Persist();
+        Log($"Deleted {itemsToDelete.Count} item(s).");
         RebuildTree();
     }
 
@@ -691,18 +1001,20 @@ public sealed partial class MainWindow : Window
             string newName = inputBox.Text.Trim().Replace("/", "").Replace("\\", "");
             if (string.IsNullOrWhiteSpace(newName)) { Log("Folder creation cancelled."); return; }
 
-            string? parentFolder = SelectedFolder();
-            if (parentFolder == AppPaths.RootFolder) parentFolder = null;
-            string fullPath = string.IsNullOrEmpty(parentFolder) ? newName : $"{parentFolder}/{newName}";
-
-            if (!_settings.Folders.Contains(fullPath))
+            string targetFolder = "";
+            if (_selectedNodes.Count == 1 && _nodeTags.TryGetValue(_selectedNodes[0], out var tag))
             {
-                _settings.Folders.Add(fullPath);
-                SettingsService.Save(_settings);
-                RebuildTree();
-                Log($"Created folder '{fullPath}'.");
+                targetFolder = tag is string path ? path : ((tag as ServerConfig)?.Folder ?? "");
             }
-            else { Log($"Folder '{fullPath}' already exists."); }
+            if (targetFolder == AppPaths.RootFolder) targetFolder = "";
+
+            string fullPath = string.IsNullOrEmpty(targetFolder) ? newName : $"{targetFolder}/{newName}";
+            fullPath = GetUniqueFolderPath(fullPath, isCopy: false);
+
+            _settings.Folders.Add(fullPath);
+            SettingsService.Save(_settings);
+            RebuildTree();
+            Log($"Created folder '{fullPath}'.");
         }
     }
 
@@ -714,20 +1026,26 @@ public sealed partial class MainWindow : Window
     {
         if (args.InvokedItem is TreeViewNode node)
         {
+            var ctrl = Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Control);
+            var shift = Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Shift);
+            bool isCtrlDown = ctrl.HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down);
+            bool isShiftDown = shift.HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down);
+
+            HandleSelection(node, isCtrlDown, isShiftDown);
+
             var now = DateTime.Now;
-            if (_lastClickedNode == node)
+            if (_lastClickedNode == node && !isCtrlDown && !isShiftDown)
             {
                 var elapsed = (now - _lastClickTime).TotalMilliseconds;
 
                 if (elapsed > 500 && elapsed < 3000)
                 {
-                    // Delay the rename slightly to see if this is actually the start of a fast double-click
                     _renameTimer?.Stop();
                     _renameTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
-                    _renameTimer.Tick += (s, e) =>
+                    _renameTimer.Tick += (s, ev) =>
                     {
                         _renameTimer.Stop();
-                        if (node.Content is TreeItemData data && data.Name != AppPaths.RootFolder)
+                        if (_selectedNodes.Count == 1 && node.Content is TreeItemData data && data.Name != AppPaths.RootFolder)
                         {
                             data.IsEditing = true;
                         }

@@ -15,8 +15,6 @@ public sealed partial class ServerDialog : ContentDialog
     public ServerDialog(ServerConfig? existingConfig, IEnumerable<string> folders, XamlRoot root, string? defaultFolder = null)
     {
         this.InitializeComponent();
-
-        // Native WinUI 3 way to attach a dialog to the main window
         this.XamlRoot = root;
 
         foreach (var f in folders) FolderBox.Items.Add(f);
@@ -27,7 +25,13 @@ public sealed partial class ServerDialog : ContentDialog
             NameBox.Text = Config.Name ?? "";
             HostBox.Text = Config.Host ?? "";
             PortBox.Text = Config.Port.ToString();
-            FolderBox.Text = Config.Folder ?? "";
+
+            // Safely select the folder from the dropdown for an existing server
+            if (!string.IsNullOrEmpty(Config.Folder) && FolderBox.Items.Contains(Config.Folder))
+                FolderBox.SelectedItem = Config.Folder;
+            else
+                FolderBox.Text = Config.Folder ?? "";
+
             UserBox.Text = Config.User ?? "";
             PassBox.Password = Config.Password ?? "";
 
@@ -40,7 +44,13 @@ public sealed partial class ServerDialog : ContentDialog
         else
         {
             Config = new ServerConfig();
-            FolderBox.Text = defaultFolder ?? "";
+
+            // Safely pre-select the targeted folder for a NEW server
+            if (!string.IsNullOrEmpty(defaultFolder) && FolderBox.Items.Contains(defaultFolder))
+                FolderBox.SelectedItem = defaultFolder;
+            else
+                FolderBox.Text = defaultFolder ?? "";
+
             AuthMethodBox.SelectedIndex = 0;
         }
 
@@ -76,7 +86,10 @@ public sealed partial class ServerDialog : ContentDialog
         Config.Name = NameBox.Text;
         Config.Host = HostBox.Text;
         if (int.TryParse(PortBox.Text, out int p)) Config.Port = p;
-        Config.Folder = FolderBox.Text;
+
+        // Ensure we capture either the selected item or manually typed text
+        Config.Folder = FolderBox.SelectedItem?.ToString() ?? FolderBox.Text;
+
         Config.User = UserBox.Text;
         Config.Password = PassBox.Password;
 

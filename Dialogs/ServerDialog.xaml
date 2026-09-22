@@ -55,7 +55,8 @@
                     <Grid>
                         <StackPanel x:Name="GeneralPage" Spacing="16">
                             <TextBox x:Name="NameBox" Header="Display name" />
-                            <ComboBox x:Name="FolderBox" Header="Folder" IsEditable="True" HorizontalAlignment="Stretch" />
+
+                            <!-- Host and Port moved here -->
                             <Grid ColumnSpacing="16">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
@@ -64,13 +65,31 @@
                                 <TextBox x:Name="HostBox" Header="Host / IP" Grid.Column="0" />
                                 <TextBox x:Name="PortBox" Header="Port" Text="22" Grid.Column="1" />
                             </Grid>
+
+                            <!-- Folder moved below Host and Port -->
+                            <ComboBox x:Name="FolderBox" Header="Folder" IsEditable="True" HorizontalAlignment="Stretch" />
+
                             <TextBox x:Name="UserBox" Header="Username" />
                             <ComboBox x:Name="AuthMethodBox" Header="Authentication" HorizontalAlignment="Stretch">
                                 <ComboBoxItem Content="password" />
                                 <ComboBoxItem Content="ask" />
                                 <ComboBoxItem Content="key" />
                             </ComboBox>
-                            <PasswordBox x:Name="PassBox" Header="Password (stored encrypted in the vault)" />
+                            <PasswordBox x:Name="PassBox" Header="Password" />
+                            <CheckBox x:Name="ShowPasswordCheck" Content="Show password" Checked="ShowPasswordCheck_Changed" Unchecked="ShowPasswordCheck_Changed" Margin="0,-8,0,0" />
+                        </StackPanel>
+                        
+                        <StackPanel x:Name="TerminalPage" Spacing="16" Visibility="Collapsed">
+                            <ToggleSwitch x:Name="EnableLoggingSwitch" Header="Enable session logging" />
+
+                            <TextBox x:Name="LogFolderPathBox" Header="Log file folder path" PlaceholderText="C:\Logs\" />
+
+                            <ComboBox x:Name="LogBehaviorBox" Header="Log behavior" SelectedIndex="0" HorizontalAlignment="Stretch">
+                                <ComboBoxItem Content="Append to existing file" />
+                                <ComboBoxItem Content="Overwrite existing file" />
+                            </ComboBox>
+
+                            <CheckBox x:Name="IncludeTimestampsCheck" Content="Include timestamps in log output" />
                         </StackPanel>
 
                         <StackPanel x:Name="RdpPage" Spacing="16" Visibility="Collapsed">

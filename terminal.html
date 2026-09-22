@@ -1,0 +1,65 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>Scarpa Terminal</title>
+    <!-- Load xterm.js and xterm-addon-fit from CDN -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css" />
+    <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
+    <style>
+        /* This CSS is required to prevent a white screen */
+        body, html { margin: 0; padding: 0; height: 100%; background-color: #1e1e1e; overflow: hidden; }
+        #terminal-container { height: 100%; width: 100%; padding: 5px; box-sizing: border-box; }
+        
+        /* Ensure the xterm viewport stretches */
+        .xterm, .xterm-viewport, .xterm-screen { height: 100% !important; width: 100% !important; }
+    </style>
+</head>
+<body>
+    <div id="terminal-container"></div>
+    <script>
+        const term = new Terminal({
+            cursorBlink: true,
+            theme: { background: '#1e1e1e' },
+            fontFamily: 'Consolas, "Courier New", monospace'
+        });
+
+        // 1. Initialize and load the Fit Addon
+        const fitAddon = new FitAddon.FitAddon();
+        term.loadAddon(fitAddon);
+        
+        term.open(document.getElementById('terminal-container'));
+
+        term.focus(); 
+        
+        // 2. Fit the terminal to the container right after opening
+        fitAddon.fit();
+        
+        // 3. Listen for window resizes and recalculate rows/columns automatically
+        window.addEventListener('resize', () => {
+            fitAddon.fit();
+        });
+
+        term.write('[\x1b[32mScarpa Connection Manager\x1b[0m] Initializing session...\r\n');
+
+        // Receives Base64 encoded strings from C# to completely eliminate string-escaping crashes
+        window.writeToTerminal = function(base64Text) {
+            try {
+                // Decode base64 back into raw ANSI text safely
+                const text = decodeURIComponent(escape(atob(base64Text)));
+                term.write(text);
+            } catch (e) {
+                console.error("Failed to decode stream: ", e);
+            }
+        };
+
+        // Capture keystrokes and send them back to C#
+        term.onData(data => {
+            if (window.chrome && window.chrome.webview) {
+                window.chrome.webview.postMessage(data);
+            }
+        });
+    </script>
+</body>
+</html>

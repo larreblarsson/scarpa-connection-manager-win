@@ -23,6 +23,9 @@
     <Content Include="Assets\Square44x44Logo.targetsize-24_altform-unplated.png" />
     <Content Include="Assets\StoreLogo.png" />
     <Content Include="Assets\Wide310x150Logo.scale-200.png" />
+    <Content Include="terminal.html">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
   <ItemGroup>
@@ -38,6 +41,7 @@
     <ProjectCapability Include="Msix" />
   </ItemGroup>
   <ItemGroup>
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.3719.77" />
     <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.2705" />
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.4.0" />
     <PackageReference Include="SSH.NET" Version="2026.0.0" />
@@ -66,7 +70,9 @@
   <ItemGroup>
     <None Remove="Dialogs\PassphraseDialog.xaml" />
     <None Remove="Dialogs\ServerDialog.xaml" />
+    <None Remove="Dialogs\TerminalDialog.xaml" />
     <None Remove="ServerDialog.xaml" />
+    <None Remove="terminal.html" />
     <None Remove="Views\SftpWindow.xaml" />
   </ItemGroup>
   <ItemGroup>
@@ -75,6 +81,11 @@
   <ItemGroup>
     <Folder Include="Properties\PublishProfiles\" />
     <Folder Include="Views\" />
+  </ItemGroup>
+  <ItemGroup>
+    <Page Update="Dialogs\TerminalDialog.xaml">
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
   </ItemGroup>
   <ItemGroup>
     <Page Update="Dialogs\ServerDialog.xaml">

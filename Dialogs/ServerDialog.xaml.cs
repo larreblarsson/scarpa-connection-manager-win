@@ -17,6 +17,10 @@ public sealed partial class ServerDialog : ContentDialog
         this.InitializeComponent();
         this.XamlRoot = root;
 
+        // FIX: Trigger the navigation selection immediately so the GeneralPage becomes visible.
+        // This ensures the PasswordBox is fully loaded and won't clear itself when we assign the password.
+        NavView.SelectedItem = NavView.MenuItems[0];
+
         foreach (var f in folders) FolderBox.Items.Add(f);
 
         if (existingConfig != null)
@@ -26,13 +30,14 @@ public sealed partial class ServerDialog : ContentDialog
             HostBox.Text = Config.Host ?? "";
             PortBox.Text = Config.Port.ToString();
 
-            // Safely select the folder from the dropdown for an existing server
             if (!string.IsNullOrEmpty(Config.Folder) && FolderBox.Items.Contains(Config.Folder))
                 FolderBox.SelectedItem = Config.Folder;
             else
                 FolderBox.Text = Config.Folder ?? "";
 
             UserBox.Text = Config.User ?? "";
+
+            // Because the page is already visible, the PasswordBox will now retain this value.
             PassBox.Password = Config.Password ?? "";
 
             foreach (ComboBoxItem item in AuthMethodBox.Items)
@@ -40,21 +45,22 @@ public sealed partial class ServerDialog : ContentDialog
                 if (item != null && item.Content?.ToString() == Config.AuthMethod)
                     AuthMethodBox.SelectedItem = item;
             }
+            EnableLoggingSwitch.IsOn = Config.LoggingEnabled;
+            LogFolderPathBox.Text = Config.LogPath ?? "";
+            LogBehaviorBox.SelectedIndex = Config.LogMode == "append" ? 0 : 1;
         }
         else
         {
             Config = new ServerConfig();
 
-            // Safely pre-select the targeted folder for a NEW server
             if (!string.IsNullOrEmpty(defaultFolder) && FolderBox.Items.Contains(defaultFolder))
                 FolderBox.SelectedItem = defaultFolder;
             else
                 FolderBox.Text = defaultFolder ?? "";
 
             AuthMethodBox.SelectedIndex = 0;
+            LogBehaviorBox.SelectedIndex = 1;
         }
-
-        NavView.SelectedItem = NavView.MenuItems[0];
     }
 
     public async Task<bool> ShowModalAsync()
@@ -69,8 +75,9 @@ public sealed partial class ServerDialog : ContentDialog
         {
             var tag = item.Tag?.ToString();
             GeneralPage.Visibility = tag == "General" ? Visibility.Visible : Visibility.Collapsed;
+            TerminalPage.Visibility = tag == "Terminal" ? Visibility.Visible : Visibility.Collapsed;
             RdpPage.Visibility = tag == "RDP" ? Visibility.Visible : Visibility.Collapsed;
-            PlaceholderPage.Visibility = (tag != "General" && tag != "RDP") ? Visibility.Visible : Visibility.Collapsed;
+            PlaceholderPage.Visibility = (tag != "General" && tag != "RDP" && tag != "Terminal") ? Visibility.Visible : Visibility.Collapsed;
         }
     }
 
@@ -96,6 +103,20 @@ public sealed partial class ServerDialog : ContentDialog
         if (AuthMethodBox.SelectedItem is ComboBoxItem item)
             Config.AuthMethod = item.Content?.ToString() ?? "password";
 
+        Config.LoggingEnabled = EnableLoggingSwitch.IsOn;
+        Config.LogPath = LogFolderPathBox.Text;
+        Config.LogMode = LogBehaviorBox.SelectedIndex == 0 ? "append" : "overwrite";
+
         Saved = true;
     }
+    private void ShowPasswordCheck_Changed(object sender, RoutedEventArgs e)
+    {
+        if (PassBox != null)
+        {
+            PassBox.PasswordRevealMode = ShowPasswordCheck.IsChecked == true
+                ? PasswordRevealMode.Visible
+                : PasswordRevealMode.Hidden;
+        }
+    }
+
 }

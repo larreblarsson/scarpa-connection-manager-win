@@ -85,14 +85,15 @@ public sealed partial class MainWindow : Window
     public MainWindow()
     {
         this.InitializeComponent();
+        this.Activated += (s, e) => Log($"[DEBUG] MainWindow Focus State: {e.WindowActivationState}");
         this.Title = "Scarpa Connection Manager";
 
         var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
         var windowId = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hwnd);
         var appWindow = Microsoft.UI.Windowing.AppWindow.GetFromWindowId(windowId);
 
-        var windowWidth = 800;
-        var windowHeight = 700;
+        var windowWidth = 650;
+        var windowHeight = 800;
 
         var displayArea = Microsoft.UI.Windowing.DisplayArea.GetFromWindowId(windowId, Microsoft.UI.Windowing.DisplayAreaFallback.Primary);
         if (displayArea != null)
@@ -603,11 +604,16 @@ public sealed partial class MainWindow : Window
 
     private void Tree_DoubleClick(object sender, DoubleTappedRoutedEventArgs e)
     {
+        e.Handled = true;
         _renameTimer?.Stop();
 
         if (_selectedNodes.Count > 0)
         {
             var node = _selectedNodes[0];
+
+            // NEW: Block double-click actions (launching or expanding) if renaming
+            if (node.Content is TreeItemData data && data.IsEditing)
+                return;
 
             if (_nodeTags.TryGetValue(node, out var tag))
             {
@@ -621,6 +627,7 @@ public sealed partial class MainWindow : Window
                 }
             }
         }
+        _lastClickedNode = null;
     }
 
     private void Tree_Tapped(object sender, TappedRoutedEventArgs e)
@@ -733,22 +740,29 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private void Ssh_Click(object sender, RoutedEventArgs e)
+    private async void Ssh_Click(object sender, RoutedEventArgs e)
     {
         var nodes = _selectedNodes.ToList();
         if (nodes.Count == 0) { Log("Select a server first."); return; }
 
         foreach (var node in nodes)
         {
+            if (node.Content is TreeItemData data && data.IsEditing) return;
+
             if (_nodeTags.TryGetValue(node, out var tag) && tag is ServerConfig cfg)
             {
                 Log($"Launching SSH: {cfg.Name}");
+
+                // Wait for the physical mouse button release (PointerReleased) 
+                // BEFORE creating the window, so MainWindow doesn't steal focus back.
+                await Task.Delay(250);
+
                 ConnectionLauncher.LaunchSsh(cfg, _settings);
             }
         }
     }
 
-    private void SftpCli_Click(object sender, RoutedEventArgs e)
+    private async void SftpCli_Click(object sender, RoutedEventArgs e)
     {
         var nodes = _selectedNodes.ToList();
         if (nodes.Count == 0) { Log("Select a server first."); return; }
@@ -758,6 +772,10 @@ public sealed partial class MainWindow : Window
             if (_nodeTags.TryGetValue(node, out var tag) && tag is ServerConfig cfg)
             {
                 Log($"Launching SFTP CLI: {cfg.Name}");
+
+                // Wait for the physical mouse button release (PointerReleased)
+                await Task.Delay(250);
+
                 ConnectionLauncher.LaunchSftpCli(cfg, _settings);
             }
         }
@@ -1026,6 +1044,10 @@ public sealed partial class MainWindow : Window
     {
         if (args.InvokedItem is TreeViewNode node)
         {
+            // NEW: Block further actions if this node is currently being renamed
+            if (node.Content is TreeItemData nodeData && nodeData.IsEditing)
+                return;
+
             var ctrl = Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Control);
             var shift = Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Shift);
             bool isCtrlDown = ctrl.HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down);
@@ -1041,7 +1063,7 @@ public sealed partial class MainWindow : Window
                 if (elapsed > 500 && elapsed < 3000)
                 {
                     _renameTimer?.Stop();
-                    _renameTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(300) };
+                    _renameTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(600) };
                     _renameTimer.Tick += (s, ev) =>
                     {
                         _renameTimer.Stop();

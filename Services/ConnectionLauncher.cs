@@ -1,33 +1,19 @@
+using ScarpaConnectionManager.Models;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
-using System.Diagnostics;
-using System.Net.Sockets;
 using System.Text;
-using ScarpaConnectionManager.Models;
 
 namespace ScarpaConnectionManager.Services;
 
 /// <summary>
-/// Replaces the Linux VTE terminal + pexpect launcher. On Windows we shell out to the
-/// built-in OpenSSH client inside Windows Terminal (or conhost as a fallback).
+/// Handles launching native WinUI 3 terminal dialogs for SSH/SFTP sessions,
+/// as well as background processes and RDP sessions.
 /// </summary>
 public static class ConnectionLauncher
 {
-    public static bool CheckHost(string host, int port, int timeoutSeconds = 3)
-    {
-        try
-        {
-            using var client = new TcpClient();
-            var task = client.ConnectAsync(host, port);
-            return task.Wait(TimeSpan.FromSeconds(timeoutSeconds)) && client.Connected;
-        }
-        catch { return false; }
-    }
-
     private static string Quote(string s) => s.Contains(' ') ? $"\"{s}\"" : s;
 
     public static string BuildSshArguments(ServerConfig cfg)
@@ -83,98 +69,72 @@ public static class ConnectionLauncher
     }
 
     public static void LaunchSsh(ServerConfig cfg, AppSettings settings)
-        => LaunchInTerminal("ssh", BuildSshArguments(cfg), cfg, settings);
-
-    public static void LaunchSftpCli(ServerConfig cfg, AppSettings settings)
-        => LaunchInTerminal("sftp", BuildSftpArguments(cfg), cfg, settings);
-
-    private static bool WindowsTerminalAvailable()
     {
-        var paths = Environment.GetEnvironmentVariable("PATH")?.Split(';') ?? Array.Empty<string>();
-        return paths.Any(p =>
-        {
-            try { return !string.IsNullOrWhiteSpace(p) && File.Exists(Path.Combine(p, "wt.exe")); }
-            catch { return false; }
-        });
+        string? logPath = cfg.LoggingEnabled ? ResolveLogPath(cfg) : null;
+        var terminalWindow = new scarpa_connection_manager_win.Dialogs.TerminalDialog(cfg, logPath);
+        terminalWindow.Title = cfg.Name ?? "SSH Session";
+        terminalWindow.Activate();
     }
 
-    private static void LaunchInTerminal(string exe, string args, ServerConfig cfg, AppSettings settings)
+    public static void LaunchSftpCli(ServerConfig cfg, AppSettings settings)
+    {
+        string? logPath = cfg.LoggingEnabled ? ResolveLogPath(cfg) : null;
+        var terminalWindow = new scarpa_connection_manager_win.Dialogs.TerminalDialog(cfg, logPath, isSftp: true);
+        terminalWindow.Title = cfg.Name != null ? $"{cfg.Name} (SFTP)" : "SFTP Session";
+        terminalWindow.Activate();
+    }
+
+    public static Process LaunchSshBackground(ServerConfig cfg)
     {
         AppPaths.EnsureDirectories();
-
-        int port = cfg.Port > 0 ? cfg.Port : 22;
-        bool isHostOnline = CheckHost(cfg.Host, port, 2);
-        bool usePassword = cfg.AuthMethod == "password" && !string.IsNullOrEmpty(cfg.Password);
-
-        // 1. Password Injection via VBScript
-        if (isHostOnline && usePassword)
-        {
-            // Safely convert the password into a VBScript array of individually escaped keys
-            var escapedChars = (cfg.Password ?? "").Select(c =>
-            {
-                string s = c.ToString();
-                if ("{}+^%~()".Contains(s)) return $"\"{{{s}}}\"";
-                if (s == "\"") return "\"\"\"\""; // VBScript double-quote escape
-                return $"\"{s}\"";
-            });
-
-            string vbsArray = string.Join(", ", escapedChars);
-
-            string vbsFile = Path.Combine(Path.GetTempPath(), $"scarpa_auth_{Guid.NewGuid():N}.vbs");
-            string vbsCode = $@"
-WScript.Sleep 3500
-Set ws = CreateObject(""WScript.Shell"")
-ws.AppActivate ""{cfg.Name}"" 
-WScript.Sleep 500
-
-' Type the password one character at a time to prevent OpenSSH buffer drops
-Dim keys
-keys = Array({vbsArray})
-For Each k In keys
-ws.SendKeys k
-WScript.Sleep 20
-Next
-ws.SendKeys ""{{ENTER}}""
-
-CreateObject(""Scripting.FileSystemObject"").DeleteFile WScript.ScriptFullName
-";
-            File.WriteAllText(vbsFile, vbsCode);
-            Process.Start(new ProcessStartInfo
-            {
-                FileName = "wscript.exe",
-                Arguments = $"//E:vbs \"{vbsFile}\"",
-                UseShellExecute = false,
-                CreateNoWindow = true
-            });
-        }
-
-        // 2. Build a pure cmd.exe command chain
-        string cmdCommand = "";
-        if (!isHostOnline) cmdCommand += $"echo WARNING: {cfg.Host} is offline or unreachable. & ";
-        else if (usePassword) cmdCommand += "echo Auto-authenticating with saved password... & ";
+        TerminalLogger? sessionLogger = null;
 
         if (cfg.LoggingEnabled)
         {
-            var logPath = ResolveLogPath(cfg);
-            Directory.CreateDirectory(Path.GetDirectoryName(logPath)!);
-            var redirect = cfg.LogMode == "append" ? ">>" : ">";
-            // Pure CMD redirection
-            cmdCommand += $"{exe} {args} {redirect} \"{logPath}\" 2>&1";
+            bool append = cfg.LogMode == "append";
+            string folderPath = Path.GetDirectoryName(ResolveLogPath(cfg)) ?? AppPaths.LogDir;
+
+            sessionLogger = new TerminalLogger(
+                folderPath,
+                Sanitize(cfg.Name ?? "Session"),
+                append,
+                includeTimestamps: true
+            );
         }
-        else
+
+        var psi = new ProcessStartInfo
         {
-            cmdCommand += $"{exe} {args}";
-        }
+            FileName = "ssh",
+            Arguments = BuildSshArguments(cfg),
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true
+        };
 
-        var useWt = settings.TerminalHost == "wt" || (settings.TerminalHost == "auto" && WindowsTerminalAvailable());
+        var sshProcess = new Process { StartInfo = psi };
 
-        // 3. Launch using cmd.exe /k to keep the window open after exit
-        var psi = useWt
-            ? new ProcessStartInfo("wt.exe", $"new-tab --title \"{cfg.Name}\" cmd.exe /k \"{cmdCommand}\"")
-            : new ProcessStartInfo("cmd.exe", $"/k \"{cmdCommand}\"");
+        sshProcess.OutputDataReceived += (sender, e) =>
+        {
+            if (!string.IsNullOrEmpty(e.Data))
+            {
+                sessionLogger?.LogOutput(e.Data + Environment.NewLine);
+            }
+        };
 
-        psi.UseShellExecute = true;
-        Process.Start(psi);
+        sshProcess.ErrorDataReceived += (sender, e) =>
+        {
+            if (!string.IsNullOrEmpty(e.Data))
+            {
+                sessionLogger?.LogOutput("ERROR: " + e.Data + Environment.NewLine);
+            }
+        };
+
+        sshProcess.Start();
+        sshProcess.BeginOutputReadLine();
+        sshProcess.BeginErrorReadLine();
+
+        return sshProcess;
     }
 
     public static string ResolveLogPath(ServerConfig cfg)
@@ -183,8 +143,6 @@ CreateObject(""Scripting.FileSystemObject"").DeleteFile WScript.ScriptFullName
             ? Path.Combine(AppPaths.LogDir, "%N_%Y-%M-%D_%h%m%s.log")
             : cfg.LogPath!;
 
-        // Detect if the user provided a static path without time variables
-        // If so, automatically append the date and time variables before the extension
         if (!template.Contains("%h") && !template.Contains("%s"))
         {
             var dir = Path.GetDirectoryName(template);
@@ -199,7 +157,7 @@ CreateObject(""Scripting.FileSystemObject"").DeleteFile WScript.ScriptFullName
 
         var now = DateTime.Now;
         return template
-            .Replace("%N", Sanitize(cfg.Name))
+            .Replace("%N", Sanitize(cfg.Name ?? "Session"))
             .Replace("%H", Sanitize(cfg.Host))
             .Replace("%U", Sanitize(cfg.User))
             .Replace("%Y", now.ToString("yyyy"))
@@ -212,12 +170,12 @@ CreateObject(""Scripting.FileSystemObject"").DeleteFile WScript.ScriptFullName
 
     private static string Sanitize(string s)
     {
+        if (string.IsNullOrEmpty(s)) return "";
         var sb = new StringBuilder();
         foreach (var c in s) sb.Append(Path.GetInvalidFileNameChars().Contains(c) ? '_' : c);
         return sb.ToString();
     }
 
-    /// <summary>Writes a temporary .rdp file and hands it to mstsc.exe.</summary>
     public static void LaunchRdp(ServerConfig cfg)
     {
         var sb = new StringBuilder();

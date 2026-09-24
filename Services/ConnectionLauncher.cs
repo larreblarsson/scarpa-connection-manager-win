@@ -78,10 +78,76 @@ public static class ConnectionLauncher
 
     public static void LaunchSftpCli(ServerConfig cfg, AppSettings settings)
     {
-        string? logPath = cfg.LoggingEnabled ? ResolveLogPath(cfg) : null;
-        var terminalWindow = new scarpa_connection_manager_win.Dialogs.TerminalDialog(cfg, logPath, isSftp: true);
-        terminalWindow.Title = cfg.Name != null ? $"{cfg.Name} (SFTP)" : "SFTP Session";
-        terminalWindow.Activate();
+        string args = BuildSftpArguments(cfg);
+        string windowTitle = cfg.Name != null ? $"{cfg.Name} (SFTP)" : "SFTP Session";
+        bool usePassword = cfg.AuthMethod == "password" && !string.IsNullOrEmpty(cfg.Password);
+
+        // 1. Password Injection via temporary VBScript
+        if (usePassword)
+        {
+            // Escape special characters for SendKeys (e.g., +, ^, %, ~, (, ))
+            var escapedChars = (cfg.Password ?? "").Select(c =>
+            {
+                string s = c.ToString();
+                if ("{}+^%~()".Contains(s)) return $"\"{{{s}}}\"";
+                if (s == "\"") return "\"\"\"\"";
+                return $"\"{s}\"";
+            });
+
+            string vbsArray = string.Join(", ", escapedChars);
+            string vbsFile = Path.Combine(Path.GetTempPath(), $"scarpa_sftp_auth_{Guid.NewGuid():N}.vbs");
+
+            string vbsCode = $@"
+WScript.Sleep 800 ' Wait for PowerShell window to spawn
+Set ws = CreateObject(""WScript.Shell"")
+
+' Poll for the specific window title for up to 5 seconds
+Dim attempts
+For attempts = 1 To 20
+    If ws.AppActivate(""{windowTitle}"") Then Exit For
+    WScript.Sleep 250
+Next
+
+' Wait for the SFTP network handshake to finish and prompt for password
+WScript.Sleep 1500
+
+' Guarantee focus one last time right before typing
+ws.AppActivate ""{windowTitle}""
+WScript.Sleep 100
+
+Dim keys
+keys = Array({vbsArray})
+For Each k In keys
+    ws.SendKeys k
+    WScript.Sleep 10 ' Slight delay between keystrokes for reliability
+Next
+ws.SendKeys ""{{ENTER}}""
+
+' Self-destruct the script for security
+CreateObject(""Scripting.FileSystemObject"").DeleteFile WScript.ScriptFullName
+";
+            File.WriteAllText(vbsFile, vbsCode);
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = "wscript.exe",
+                Arguments = $"//E:vbs \"{vbsFile}\"",
+                UseShellExecute = false,
+                CreateNoWindow = true
+            });
+        }
+
+        // 2. Launch the native terminal with a specific Window Title so the script can find it
+        string psCommand = $"$host.ui.RawUI.WindowTitle = '{windowTitle}'; sftp {args}";
+        string encodedCommand = Convert.ToBase64String(Encoding.Unicode.GetBytes(psCommand));
+
+        var psi = new ProcessStartInfo
+        {
+            FileName = "powershell.exe",
+            Arguments = $"-NoExit -EncodedCommand {encodedCommand}",
+            UseShellExecute = true
+        };
+
+        Process.Start(psi);
     }
 
     public static Process LaunchSshBackground(ServerConfig cfg)

@@ -1,0 +1,51 @@
+<Window
+    x:Class="scarpa_connection_manager_win.Dialogs.SftpWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <Grid Padding="10">
+        <Grid.ColumnDefinitions>
+            <!-- Even 50/50 split -->
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <!-- Left Pane: Local Files -->
+        <Grid Grid.Column="0">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+            <TextBlock Text="Local Machine" FontWeight="SemiBold" Margin="0,0,0,10" />
+            <ListView x:Name="LocalFileList" Grid.Row="1" BorderBrush="Gray" BorderThickness="1" />
+        </Grid>
+
+        <!-- Static Divider (Replaces GridSplitter) -->
+        <Border Grid.Column="1" Width="2" Background="DarkGray" Margin="10,0,10,0" />
+
+        <!-- Right Pane: Remote Files via SSH.NET -->
+        <Grid Grid.Column="2">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+
+            <StackPanel Orientation="Horizontal" Grid.Row="0" Margin="0,0,0,10">
+                <TextBlock Text="Remote Server: " FontWeight="SemiBold" />
+                <TextBlock x:Name="RemotePathText" Text="/" Foreground="Gray" />
+            </StackPanel>
+
+            <ListView x:Name="RemoteFileList" Grid.Row="1" BorderBrush="Gray" BorderThickness="1">
+                <ListView.ItemTemplate>
+                    <DataTemplate>
+                        <StackPanel Orientation="Horizontal" Padding="5">
+                            <FontIcon Glyph="{Binding Icon}" Margin="0,0,10,0" Foreground="{Binding IconColor}"/>
+                            <TextBlock Text="{Binding Name}" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </DataTemplate>
+                </ListView.ItemTemplate>
+            </ListView>
+        </Grid>
+    </Grid>
+</Window>

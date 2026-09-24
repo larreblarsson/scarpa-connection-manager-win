@@ -70,6 +70,7 @@
   <ItemGroup>
     <None Remove="Dialogs\PassphraseDialog.xaml" />
     <None Remove="Dialogs\ServerDialog.xaml" />
+    <None Remove="Dialogs\SftpWindow.xaml" />
     <None Remove="Dialogs\TerminalDialog.xaml" />
     <None Remove="ServerDialog.xaml" />
     <None Remove="terminal.html" />
@@ -81,6 +82,11 @@
   <ItemGroup>
     <Folder Include="Properties\PublishProfiles\" />
     <Folder Include="Views\" />
+  </ItemGroup>
+  <ItemGroup>
+    <Page Update="Dialogs\SftpWindow.xaml">
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
   </ItemGroup>
   <ItemGroup>
     <Page Update="Dialogs\TerminalDialog.xaml">

@@ -57,6 +57,13 @@ public sealed class ServerConfig
     [JsonPropertyName("logging_enabled")] public bool LoggingEnabled { get; set; }
     [JsonPropertyName("log_path")] public string? LogPath { get; set; }
     [JsonPropertyName("log_mode")] public string LogMode { get; set; } = "overwrite"; // overwrite | append
+    [JsonPropertyName("log_timestamps")] public bool LogTimestamps { get; set; }
+
+    // NEW: Append Data to Log settings (Mapped to snake_case to maintain Linux/GTK JSON compatibility)
+    [JsonPropertyName("append_data_to_log")] public bool AppendDataToLog { get; set; }
+    [JsonPropertyName("log_connect_string")] public string? LogConnectString { get; set; }
+    [JsonPropertyName("log_disconnect_string")] public string? LogDisconnectString { get; set; }
+    [JsonPropertyName("log_each_line_string")] public string? LogEachLineString { get; set; }
 
     // Keep-alive
     [JsonPropertyName("anti_idle_enabled")] public bool AntiIdleEnabled { get; set; }
@@ -75,6 +82,7 @@ public sealed class ServerConfig
 
     public ServerConfig Clone()
     {
+        // Because Clone() relies on JSON serialization, the new properties will be copied automatically!
         var json = System.Text.Json.JsonSerializer.Serialize(this);
         return System.Text.Json.JsonSerializer.Deserialize<ServerConfig>(json)!;
     }

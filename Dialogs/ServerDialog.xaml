@@ -56,7 +56,6 @@
                         <StackPanel x:Name="GeneralPage" Spacing="16">
                             <TextBox x:Name="NameBox" Header="Display name" />
 
-                            <!-- Host and Port moved here -->
                             <Grid ColumnSpacing="16">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
@@ -66,7 +65,6 @@
                                 <TextBox x:Name="PortBox" Header="Port" Text="22" Grid.Column="1" />
                             </Grid>
 
-                            <!-- Folder moved below Host and Port -->
                             <ComboBox x:Name="FolderBox" Header="Folder" IsEditable="True" HorizontalAlignment="Stretch" />
 
                             <TextBox x:Name="UserBox" Header="Username" />
@@ -78,18 +76,56 @@
                             <PasswordBox x:Name="PassBox" Header="Password" />
                             <CheckBox x:Name="ShowPasswordCheck" Content="Show password" Checked="ShowPasswordCheck_Changed" Unchecked="ShowPasswordCheck_Changed" Margin="0,-8,0,0" />
                         </StackPanel>
-                        
+
+                        <!-- Updated Terminal Page Layout -->
                         <StackPanel x:Name="TerminalPage" Spacing="16" Visibility="Collapsed">
                             <ToggleSwitch x:Name="EnableLoggingSwitch" Header="Enable session logging" />
 
-                            <TextBox x:Name="LogFolderPathBox" Header="Log file folder path" PlaceholderText="C:\Logs\" />
+                            <TextBlock Text="Log file folder path" Margin="0,0,0,-12" />
+                            <Grid ColumnSpacing="8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBox x:Name="LogPathTextBox" PlaceholderText="C:\Logs\session.txt" Grid.Column="0" VerticalAlignment="Center" />
+                                <Button Content="Browse" Click="BrowseLogPath_Click" Grid.Column="1" VerticalAlignment="Center" />
+                            </Grid>
 
-                            <ComboBox x:Name="LogBehaviorBox" Header="Log behavior" SelectedIndex="0" HorizontalAlignment="Stretch">
-                                <ComboBoxItem Content="Append to existing file" />
-                                <ComboBoxItem Content="Overwrite existing file" />
-                            </ComboBox>
+                            <StackPanel Orientation="Horizontal" Spacing="15">
+                                <TextBlock Text="Mode:" VerticalAlignment="Center" />
+                                <RadioButton x:Name="AppendRadio" Content="Append to file" GroupName="LogMode" />
+                                <RadioButton x:Name="OverwriteRadio" Content="Overwrite file" GroupName="LogMode" />
+                            </StackPanel>
 
-                            <CheckBox x:Name="IncludeTimestampsCheck" Content="Include timestamps in log output" />
+                            <!-- NEW: Append Data to Log Section -->
+                            <StackPanel Spacing="8" Margin="0,8,0,0">
+                                <CheckBox x:Name="AppendDataCheck" Content="Append Data to Log" />
+
+                                <Grid ColumnSpacing="12" RowSpacing="12" Margin="24,0,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="100" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+
+                                    <TextBlock Text="At connect:" Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" />
+                                    <TextBox x:Name="LogConnectBox" Grid.Row="0" Grid.Column="1" />
+
+                                    <TextBlock Text="At disconnect:" Grid.Row="1" Grid.Column="0" VerticalAlignment="Center" />
+                                    <TextBox x:Name="LogDisconnectBox" Grid.Row="1" Grid.Column="1" />
+
+                                    <TextBlock Text="On each line:" Grid.Row="2" Grid.Column="0" VerticalAlignment="Center" />
+                                    <TextBox x:Name="LogEachLineBox" Grid.Row="2" Grid.Column="1" />
+                                </Grid>
+
+                                <!-- &#x0a; renders a native line break in XAML text -->
+                                <TextBlock Text="Substitutions: %H=Hostname, %S=Session Name, %Y=Year, %M=Month, %D=Day, %h=Hour, %m=Min, %s=Sec.&#x0a;Use \n for newline." 
+                   Foreground="Gray" FontSize="12" TextWrapping="Wrap" Margin="24,4,0,0" />
+                            </StackPanel>
                         </StackPanel>
 
                         <StackPanel x:Name="RdpPage" Spacing="16" Visibility="Collapsed">

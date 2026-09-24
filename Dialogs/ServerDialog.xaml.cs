@@ -4,11 +4,16 @@ using ScarpaConnectionManager.Models;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using System.Runtime.InteropServices; // Required for GetActiveWindow
 
 namespace scarpa_connection_manager_win.Dialogs;
 
 public sealed partial class ServerDialog : ContentDialog
 {
+    // API call to get the main window handle (required for FilePicker in a ContentDialog)
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetActiveWindow();
+
     public ServerConfig Config { get; private set; }
     public bool Saved { get; private set; } = false;
 
@@ -17,8 +22,6 @@ public sealed partial class ServerDialog : ContentDialog
         this.InitializeComponent();
         this.XamlRoot = root;
 
-        // FIX: Trigger the navigation selection immediately so the GeneralPage becomes visible.
-        // This ensures the PasswordBox is fully loaded and won't clear itself when we assign the password.
         NavView.SelectedItem = NavView.MenuItems[0];
 
         foreach (var f in folders) FolderBox.Items.Add(f);
@@ -36,8 +39,6 @@ public sealed partial class ServerDialog : ContentDialog
                 FolderBox.Text = Config.Folder ?? "";
 
             UserBox.Text = Config.User ?? "";
-
-            // Because the page is already visible, the PasswordBox will now retain this value.
             PassBox.Password = Config.Password ?? "";
 
             foreach (ComboBoxItem item in AuthMethodBox.Items)
@@ -45,9 +46,19 @@ public sealed partial class ServerDialog : ContentDialog
                 if (item != null && item.Content?.ToString() == Config.AuthMethod)
                     AuthMethodBox.SelectedItem = item;
             }
+
+            // Map Logging Settings
             EnableLoggingSwitch.IsOn = Config.LoggingEnabled;
-            LogFolderPathBox.Text = Config.LogPath ?? "";
-            LogBehaviorBox.SelectedIndex = Config.LogMode == "append" ? 0 : 1;
+            LogPathTextBox.Text = Config.LogPath ?? "";
+
+            if (Config.LogMode == "overwrite") OverwriteRadio.IsChecked = true;
+            else AppendRadio.IsChecked = true;
+
+            // Load Append Data settings
+            AppendDataCheck.IsChecked = Config.AppendDataToLog;
+            LogConnectBox.Text = Config.LogConnectString ?? "";
+            LogDisconnectBox.Text = Config.LogDisconnectString ?? "";
+            LogEachLineBox.Text = Config.LogEachLineString ?? "";
         }
         else
         {
@@ -59,7 +70,7 @@ public sealed partial class ServerDialog : ContentDialog
                 FolderBox.Text = defaultFolder ?? "";
 
             AuthMethodBox.SelectedIndex = 0;
-            LogBehaviorBox.SelectedIndex = 1;
+            AppendRadio.IsChecked = true; // Default to append
         }
     }
 
@@ -81,12 +92,30 @@ public sealed partial class ServerDialog : ContentDialog
         }
     }
 
+    private async void BrowseLogPath_Click(object sender, RoutedEventArgs e)
+    {
+        var picker = new Windows.Storage.Pickers.FileSavePicker();
+
+        // Bind the file picker to the active window
+        IntPtr hwnd = GetActiveWindow();
+        WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
+
+        picker.SuggestedStartLocation = Windows.Storage.Pickers.PickerLocationId.DocumentsLibrary;
+        picker.FileTypeChoices.Add("Text File", new List<string>() { ".txt", ".log" });
+        picker.SuggestedFileName = "scarpa_session_log.txt";
+
+        var file = await picker.PickSaveFileAsync();
+        if (file != null)
+        {
+            LogPathTextBox.Text = file.Path;
+        }
+    }
+
     private void ContentDialog_PrimaryButtonClick(ContentDialog sender, ContentDialogButtonClickEventArgs args)
     {
-        // Input validation
         if (string.IsNullOrWhiteSpace(NameBox.Text) || string.IsNullOrWhiteSpace(HostBox.Text))
         {
-            args.Cancel = true; // Prevents the dialog from closing!
+            args.Cancel = true;
             return;
         }
 
@@ -94,21 +123,27 @@ public sealed partial class ServerDialog : ContentDialog
         Config.Host = HostBox.Text;
         if (int.TryParse(PortBox.Text, out int p)) Config.Port = p;
 
-        // Ensure we capture either the selected item or manually typed text
         Config.Folder = FolderBox.SelectedItem?.ToString() ?? FolderBox.Text;
-
         Config.User = UserBox.Text;
         Config.Password = PassBox.Password;
 
         if (AuthMethodBox.SelectedItem is ComboBoxItem item)
             Config.AuthMethod = item.Content?.ToString() ?? "password";
 
+        // Save Logging Settings
         Config.LoggingEnabled = EnableLoggingSwitch.IsOn;
-        Config.LogPath = LogFolderPathBox.Text;
-        Config.LogMode = LogBehaviorBox.SelectedIndex == 0 ? "append" : "overwrite";
+        Config.LogPath = LogPathTextBox.Text;
+        Config.LogMode = AppendRadio.IsChecked == true ? "append" : "overwrite";
+
+        // Save Append Data settings
+        Config.AppendDataToLog = AppendDataCheck.IsChecked == true;
+        Config.LogConnectString = LogConnectBox.Text;
+        Config.LogDisconnectString = LogDisconnectBox.Text;
+        Config.LogEachLineString = LogEachLineBox.Text;
 
         Saved = true;
     }
+
     private void ShowPasswordCheck_Changed(object sender, RoutedEventArgs e)
     {
         if (PassBox != null)
@@ -118,5 +153,4 @@ public sealed partial class ServerDialog : ContentDialog
                 : PasswordRevealMode.Hidden;
         }
     }
-
 }

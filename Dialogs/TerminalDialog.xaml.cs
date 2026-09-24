@@ -1,11 +1,14 @@
 using Microsoft.UI.Xaml;
-using System;
-using System.IO;
-using System.Text;
-using System.Threading.Tasks;
-using System.Runtime.InteropServices;
 using Renci.SshNet;
 using ScarpaConnectionManager.Models;
+using ScarpaConnectionManager.Services;
+using System;
+using System.Diagnostics;
+using System.IO;
+using System.Runtime.InteropServices;
+using System.Text;
+using System.Text.RegularExpressions;
+using System.Threading.Tasks;
 
 namespace scarpa_connection_manager_win.Dialogs;
 
@@ -28,13 +31,40 @@ public sealed partial class TerminalDialog : Window
     private SshClient? _sshClient;
     private ShellStream? _shellStream;
 
+    private bool _isSftp;
+    private Process? _sftpProcess;
+    private StreamWriter? _sftpInputWriter;
+
+    private StreamWriter? _logWriter;
+    private bool _logTimestamps;
+    private bool _isNewLine = true;
+
     public TerminalDialog(ServerConfig cfg, string? logPath, bool isSftp = false)
     {
         this.InitializeComponent();
 
+        if (cfg.LoggingEnabled && !string.IsNullOrWhiteSpace(logPath))
+        {
+            try
+            {
+                string? dir = Path.GetDirectoryName(logPath);
+                if (!string.IsNullOrWhiteSpace(dir)) Directory.CreateDirectory(dir);
+
+                // Default to append unless overwrite is explicitly set
+                bool append = cfg.LogMode != "overwrite";
+                _logWriter = new StreamWriter(logPath, append, Encoding.UTF8) { AutoFlush = true };
+                _logTimestamps = cfg.LogTimestamps;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Failed to initialize logger: {ex.Message}");
+            }
+        }
+
         var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
         var windowId = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hwnd);
         var appWindow = Microsoft.UI.Windowing.AppWindow.GetFromWindowId(windowId);
+        _isSftp = isSftp;
 
         appWindow.Resize(new Windows.Graphics.SizeInt32(800, 600));
 
@@ -57,6 +87,46 @@ public sealed partial class TerminalDialog : Window
         _ = InitializeTerminalAsync(cfg, logPath);
     }
 
+    private void WriteToLog(string rawText)
+    {
+        if (_logWriter == null) return;
+
+        try
+        {
+            // 1. Strip ANSI escape codes (colors, cursor movements)
+            string cleanText = Regex.Replace(rawText, @"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])", "");
+
+            // 2. Strip non-printable control characters (like Bell, Backspace, Delete) 
+            // We explicitly KEEP Tab (\x09), Line Feed (\x0A), and Carriage Return (\x0D)
+            cleanText = Regex.Replace(cleanText, @"[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]", "");
+
+            if (!_logTimestamps)
+            {
+                _logWriter.Write(cleanText);
+                return;
+            }
+
+            // Inject timestamps at the beginning of each new line
+            var sb = new StringBuilder();
+            foreach (char c in cleanText)
+            {
+                if (_isNewLine && c != '\r' && c != '\n')
+                {
+                    sb.Append($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] ");
+                    _isNewLine = false;
+                }
+                sb.Append(c);
+
+                if (c == '\n') _isNewLine = true;
+            }
+            _logWriter.Write(sb.ToString());
+        }
+        catch
+        {
+            // Ignore logging errors to prevent crashing the active terminal session
+        }
+    }
+
     private async Task InitializeTerminalAsync(ServerConfig cfg, string? logPath)
     {
         await TerminalView.EnsureCoreWebView2Async();
@@ -66,20 +136,34 @@ public sealed partial class TerminalDialog : Window
             AppContext.BaseDirectory,
             Microsoft.Web.WebView2.Core.CoreWebView2HostResourceAccessKind.Allow);
 
+        // Branch keystroke routing based on the session type
         TerminalView.WebMessageReceived += (s, e) =>
         {
-            if (_shellStream != null && _shellStream.CanWrite)
+            string input = e.TryGetWebMessageAsString();
+            if (_isSftp)
             {
-                string input = e.TryGetWebMessageAsString();
-                var bytes = Encoding.UTF8.GetBytes(input);
-                _shellStream.Write(bytes, 0, bytes.Length);
-                _shellStream.Flush();
+                if (_sftpInputWriter != null)
+                {
+                    _sftpInputWriter.Write(input);
+                    _sftpInputWriter.Flush();
+                }
+            }
+            else
+            {
+                if (_shellStream != null && _shellStream.CanWrite)
+                {
+                    var bytes = Encoding.UTF8.GetBytes(input);
+                    _shellStream.Write(bytes, 0, bytes.Length);
+                    _shellStream.Flush();
+                }
             }
         };
 
+        // Branch session startup based on the session type
         TerminalView.CoreWebView2.NavigationCompleted += (s, e) =>
         {
-            StartSshSession(cfg);
+            if (_isSftp) StartSftpSession(cfg);
+            else StartSshSession(cfg);
         };
 
         TerminalView.CoreWebView2.Navigate("https://terminal.local/terminal.html");
@@ -116,6 +200,59 @@ public sealed partial class TerminalDialog : Window
         });
     }
 
+    private void StartSftpSession(ServerConfig cfg)
+    {
+        Task.Run(() =>
+        {
+            try
+            {
+                string args = ConnectionLauncher.BuildSftpArguments(cfg);
+
+                var psi = new ProcessStartInfo
+                {
+                    FileName = "sftp",
+                    Arguments = args,
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    RedirectStandardInput = true,
+                    CreateNoWindow = true
+                };
+
+                _sftpProcess = Process.Start(psi);
+                if (_sftpProcess != null)
+                {
+                    _sftpInputWriter = _sftpProcess.StandardInput;
+
+                    _ = ReadProcessStreamAsync(_sftpProcess.StandardOutput);
+                    _ = ReadProcessStreamAsync(_sftpProcess.StandardError);
+                }
+            }
+            catch (Exception ex)
+            {
+                SendToTerminal($"\r\n\x1b[31mSFTP Launch failed: {ex.Message}\x1b[0m\r\n");
+            }
+        });
+    }
+
+    private async Task ReadProcessStreamAsync(StreamReader reader)
+    {
+        char[] buffer = new char[1024];
+        try
+        {
+            while (true)
+            {
+                int charsRead = await reader.ReadAsync(buffer, 0, buffer.Length);
+                if (charsRead == 0) break;
+
+                string text = new string(buffer, 0, charsRead);
+                SendToTerminal(text);
+            }
+            SendToTerminal("\r\n\x1b[33mSession disconnected.\x1b[0m\r\n");
+        }
+        catch { }
+    }
+
     private async Task ReadStreamAsync()
     {
         var buffer = new byte[1024];
@@ -127,6 +264,7 @@ public sealed partial class TerminalDialog : Window
                 if (bytesRead == 0) break;
 
                 string text = Encoding.UTF8.GetString(buffer, 0, bytesRead);
+                WriteToLog(text);
                 SendToTerminal(text);
             }
             SendToTerminal("\r\n\x1b[33mSession disconnected.\x1b[0m\r\n");
@@ -147,12 +285,20 @@ public sealed partial class TerminalDialog : Window
     {
         try
         {
+            _logWriter?.Dispose();
             _shellStream?.Dispose();
             if (_sshClient != null && _sshClient.IsConnected)
             {
                 _sshClient.Disconnect();
             }
             _sshClient?.Dispose();
+
+            // SFTP Cleanup
+            _sftpInputWriter?.Close();
+            if (_sftpProcess != null && !_sftpProcess.HasExited)
+            {
+                _sftpProcess.Kill();
+            }
         }
         catch { }
     }

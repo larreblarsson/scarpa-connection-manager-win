@@ -781,7 +781,25 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private void SftpGui_Click(object sender, RoutedEventArgs e) { Log("SFTP GUI window needs porting."); }
+    private async void SftpGui_Click(object sender, RoutedEventArgs e)
+    {
+        var nodes = _selectedNodes.ToList();
+        if (nodes.Count == 0) { Log("Select a server first."); return; }
+
+        foreach (var node in nodes)
+        {
+            if (_nodeTags.TryGetValue(node, out var tag) && tag is ServerConfig cfg)
+            {
+                Log($"Opening SFTP GUI: {cfg.Name}");
+
+                await Task.Delay(250); // Avoid focus-stealing
+
+                // Launch the new graphical SFTP Window
+                var sftpWindow = new Dialogs.SftpWindow(cfg);
+                sftpWindow.Activate();
+            }
+        }
+    }
 
     public IEnumerable<string> AllFolders() =>
     _servers.Select(s => s.Folder ?? "")

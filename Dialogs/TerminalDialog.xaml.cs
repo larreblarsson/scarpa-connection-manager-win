@@ -8,6 +8,7 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace scarpa_connection_manager_win.Dialogs;
@@ -16,10 +17,8 @@ public sealed partial class TerminalDialog : Window
 {
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
-
     [DllImport("user32.dll")]
     private static extern bool SetForegroundWindow(IntPtr hWnd);
-
     [DllImport("user32.dll")]
     private static extern bool BringWindowToTop(IntPtr hWnd);
 
@@ -39,9 +38,14 @@ public sealed partial class TerminalDialog : Window
     private bool _logTimestamps;
     private bool _isNewLine = true;
 
+    private ServerConfig _config;
+    private CancellationTokenSource _antiIdleCts = new();
+
     public TerminalDialog(ServerConfig cfg, string? logPath, bool isSftp = false)
     {
         this.InitializeComponent();
+        _config = cfg;
+        _isSftp = isSftp;
 
         if (cfg.LoggingEnabled && !string.IsNullOrWhiteSpace(logPath))
         {
@@ -50,10 +54,15 @@ public sealed partial class TerminalDialog : Window
                 string? dir = Path.GetDirectoryName(logPath);
                 if (!string.IsNullOrWhiteSpace(dir)) Directory.CreateDirectory(dir);
 
-                // Default to append unless overwrite is explicitly set
                 bool append = cfg.LogMode != "overwrite";
                 _logWriter = new StreamWriter(logPath, append, Encoding.UTF8) { AutoFlush = true };
                 _logTimestamps = cfg.LogTimestamps;
+
+                // Log: At Connect
+                if (cfg.AppendDataToLog && !string.IsNullOrWhiteSpace(cfg.LogConnectString))
+                {
+                    _logWriter.Write(ApplyLogSubstitutions(cfg.LogConnectString) + Environment.NewLine);
+                }
             }
             catch (Exception ex)
             {
@@ -64,17 +73,15 @@ public sealed partial class TerminalDialog : Window
         var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
         var windowId = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hwnd);
         var appWindow = Microsoft.UI.Windowing.AppWindow.GetFromWindowId(windowId);
-        _isSftp = isSftp;
 
         appWindow.Resize(new Windows.Graphics.SizeInt32(800, 600));
 
-        // Wait for the Main Window's double-click event to completely finish, then steal focus
         Task.Run(async () =>
         {
-            await Task.Delay(300); // Increased delay slightly to be safe
+            await Task.Delay(300);
             DispatcherQueue.TryEnqueue(() =>
             {
-                this.Activate(); // <-- Moved this here!
+                this.Activate();
                 BringWindowToTop(hwnd);
                 SetForegroundWindow(hwnd);
                 SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
@@ -83,8 +90,25 @@ public sealed partial class TerminalDialog : Window
         });
 
         this.Closed += TerminalDialog_Closed;
-
         _ = InitializeTerminalAsync(cfg, logPath);
+    }
+
+    private string ApplyLogSubstitutions(string input)
+    {
+        if (string.IsNullOrEmpty(input)) return "";
+        var now = DateTime.Now;
+        return input
+            .Replace("%H", _config.Host ?? "")
+            .Replace("%S", _config.Name ?? "")
+            .Replace("%Y", now.ToString("yyyy"))
+            .Replace("%M", now.ToString("MM"))
+            .Replace("%D", now.ToString("dd"))
+            .Replace("%h", now.ToString("HH"))
+            .Replace("%m", now.ToString("mm"))
+            .Replace("%s", now.ToString("ss"))
+            .Replace("\\n", Environment.NewLine)
+            .Replace("\\r", "\r")
+            .Replace("\\t", "\t");
     }
 
     private void WriteToLog(string rawText)
@@ -93,26 +117,28 @@ public sealed partial class TerminalDialog : Window
 
         try
         {
-            // 1. Strip ANSI escape codes (colors, cursor movements)
             string cleanText = Regex.Replace(rawText, @"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])", "");
-
-            // 2. Strip non-printable control characters (like Bell, Backspace, Delete) 
-            // We explicitly KEEP Tab (\x09), Line Feed (\x0A), and Carriage Return (\x0D)
             cleanText = Regex.Replace(cleanText, @"[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]", "");
 
-            if (!_logTimestamps)
+            string customPrefix = (_config.AppendDataToLog && !string.IsNullOrEmpty(_config.LogEachLineString))
+                ? ApplyLogSubstitutions(_config.LogEachLineString)
+                : "";
+
+            // If no line-by-line modifications are needed, take the fast path
+            if (!_logTimestamps && string.IsNullOrEmpty(customPrefix))
             {
                 _logWriter.Write(cleanText);
                 return;
             }
 
-            // Inject timestamps at the beginning of each new line
+            // Inject timestamps and/or custom prefix at the beginning of each new line
             var sb = new StringBuilder();
             foreach (char c in cleanText)
             {
                 if (_isNewLine && c != '\r' && c != '\n')
                 {
-                    sb.Append($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] ");
+                    if (_logTimestamps) sb.Append($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] ");
+                    if (!string.IsNullOrEmpty(customPrefix)) sb.Append(customPrefix);
                     _isNewLine = false;
                 }
                 sb.Append(c);
@@ -121,22 +147,14 @@ public sealed partial class TerminalDialog : Window
             }
             _logWriter.Write(sb.ToString());
         }
-        catch
-        {
-            // Ignore logging errors to prevent crashing the active terminal session
-        }
+        catch { }
     }
 
     private async Task InitializeTerminalAsync(ServerConfig cfg, string? logPath)
     {
         await TerminalView.EnsureCoreWebView2Async();
+        TerminalView.CoreWebView2.SetVirtualHostNameToFolderMapping("terminal.local", AppContext.BaseDirectory, Microsoft.Web.WebView2.Core.CoreWebView2HostResourceAccessKind.Allow);
 
-        TerminalView.CoreWebView2.SetVirtualHostNameToFolderMapping(
-            "terminal.local",
-            AppContext.BaseDirectory,
-            Microsoft.Web.WebView2.Core.CoreWebView2HostResourceAccessKind.Allow);
-
-        // Branch keystroke routing based on the session type
         TerminalView.WebMessageReceived += (s, e) =>
         {
             string input = e.TryGetWebMessageAsString();
@@ -159,7 +177,6 @@ public sealed partial class TerminalDialog : Window
             }
         };
 
-        // Branch session startup based on the session type
         TerminalView.CoreWebView2.NavigationCompleted += (s, e) =>
         {
             if (_isSftp) StartSftpSession(cfg);
@@ -171,7 +188,6 @@ public sealed partial class TerminalDialog : Window
 
     private void TerminalView_NavigationCompleted(Microsoft.UI.Xaml.Controls.WebView2 sender, Microsoft.Web.WebView2.Core.CoreWebView2NavigationCompletedEventArgs args)
     {
-        // Force the WebView2 control to take keyboard focus once the HTML is fully loaded
         TerminalView.Focus(Microsoft.UI.Xaml.FocusState.Programmatic);
     }
 
@@ -181,22 +197,46 @@ public sealed partial class TerminalDialog : Window
         {
             try
             {
-                // Fallback to empty string if password is null
                 var authMethod = new PasswordAuthenticationMethod(cfg.User, cfg.Password ?? "");
                 var connectionInfo = new ConnectionInfo(cfg.Host, cfg.Port > 0 ? cfg.Port : 22, cfg.User, authMethod);
 
                 _sshClient = new SshClient(connectionInfo);
                 _sshClient.Connect();
 
-                // Request a true PTY (Pseudo-Terminal) from the server (xterm, 80 cols, 24 rows)
                 _shellStream = _sshClient.CreateShellStream("xterm", 80, 24, 800, 600, 1024);
 
+                StartAntiIdle(cfg);
                 _ = ReadStreamAsync();
             }
             catch (Exception ex)
             {
                 SendToTerminal($"\r\n\x1b[31mConnection failed: {ex.Message}\x1b[0m\r\n");
             }
+        });
+    }
+
+    private void StartAntiIdle(ServerConfig cfg)
+    {
+        if (!cfg.AntiIdleEnabled || cfg.AntiIdleInterval <= 0) return;
+
+        string payload = (cfg.AntiIdleString ?? "").Replace("\\r", "\r").Replace("\\n", "\n");
+        var bytes = Encoding.UTF8.GetBytes(payload);
+
+        Task.Run(async () =>
+        {
+            try
+            {
+                while (_sshClient != null && _sshClient.IsConnected && !_antiIdleCts.Token.IsCancellationRequested)
+                {
+                    await Task.Delay(cfg.AntiIdleInterval * 1000, _antiIdleCts.Token);
+                    if (_shellStream != null && _shellStream.CanWrite)
+                    {
+                        _shellStream.Write(bytes, 0, bytes.Length);
+                        _shellStream.Flush();
+                    }
+                }
+            }
+            catch (TaskCanceledException) { }
         });
     }
 
@@ -207,7 +247,6 @@ public sealed partial class TerminalDialog : Window
             try
             {
                 string args = ConnectionLauncher.BuildSftpArguments(cfg);
-
                 var psi = new ProcessStartInfo
                 {
                     FileName = "sftp",
@@ -223,7 +262,6 @@ public sealed partial class TerminalDialog : Window
                 if (_sftpProcess != null)
                 {
                     _sftpInputWriter = _sftpProcess.StandardInput;
-
                     _ = ReadProcessStreamAsync(_sftpProcess.StandardOutput);
                     _ = ReadProcessStreamAsync(_sftpProcess.StandardError);
                 }
@@ -269,7 +307,7 @@ public sealed partial class TerminalDialog : Window
             }
             SendToTerminal("\r\n\x1b[33mSession disconnected.\x1b[0m\r\n");
         }
-        catch { /* Stream closed cleanly */ }
+        catch { }
     }
 
     private void SendToTerminal(string text)
@@ -285,6 +323,15 @@ public sealed partial class TerminalDialog : Window
     {
         try
         {
+            _antiIdleCts.Cancel();
+
+            // Log: At Disconnect
+            if (_logWriter != null && _config.AppendDataToLog && !string.IsNullOrWhiteSpace(_config.LogDisconnectString))
+            {
+                if (!_isNewLine) _logWriter.Write(Environment.NewLine);
+                _logWriter.Write(ApplyLogSubstitutions(_config.LogDisconnectString) + Environment.NewLine);
+            }
+
             _logWriter?.Dispose();
             _shellStream?.Dispose();
             if (_sshClient != null && _sshClient.IsConnected)
@@ -293,7 +340,6 @@ public sealed partial class TerminalDialog : Window
             }
             _sshClient?.Dispose();
 
-            // SFTP Cleanup
             _sftpInputWriter?.Close();
             if (_sftpProcess != null && !_sftpProcess.HasExited)
             {

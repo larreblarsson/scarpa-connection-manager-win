@@ -53,6 +53,7 @@
             <Border Background="Transparent" BorderBrush="{ThemeResource SurfaceStrokeColorDefaultBrush}" BorderThickness="1,0,0,0" Padding="24">
                 <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,0,12,0">
                     <Grid>
+                        <!-- GENERAL PAGE -->
                         <StackPanel x:Name="GeneralPage" Spacing="16">
                             <TextBox x:Name="NameBox" Header="Display name" />
 
@@ -77,7 +78,7 @@
                             <CheckBox x:Name="ShowPasswordCheck" Content="Show password" Checked="ShowPasswordCheck_Changed" Unchecked="ShowPasswordCheck_Changed" Margin="0,-8,0,0" />
                         </StackPanel>
 
-                        <!-- Updated Terminal Page Layout -->
+                        <!-- TERMINAL PAGE -->
                         <StackPanel x:Name="TerminalPage" Spacing="16" Visibility="Collapsed">
                             <ToggleSwitch x:Name="EnableLoggingSwitch" Header="Enable session logging" />
 
@@ -97,7 +98,7 @@
                                 <RadioButton x:Name="OverwriteRadio" Content="Overwrite file" GroupName="LogMode" />
                             </StackPanel>
 
-                            <!-- NEW: Append Data to Log Section -->
+                            <!-- Append Data to Log Section -->
                             <StackPanel Spacing="8" Margin="0,8,0,0">
                                 <CheckBox x:Name="AppendDataCheck" Content="Append Data to Log" />
 
@@ -124,14 +125,29 @@
 
                                 <!-- &#x0a; renders a native line break in XAML text -->
                                 <TextBlock Text="Substitutions: %H=Hostname, %S=Session Name, %Y=Year, %M=Month, %D=Day, %h=Hour, %m=Min, %s=Sec.&#x0a;Use \n for newline." 
-                   Foreground="Gray" FontSize="12" TextWrapping="Wrap" Margin="24,4,0,0" />
+                                           Foreground="Gray" FontSize="12" TextWrapping="Wrap" Margin="24,4,0,0" />
                             </StackPanel>
+
+                            <!-- Anti-idle Section -->
+                            <StackPanel Spacing="8" Margin="0,16,0,0">
+                                <TextBlock Text="Anti-idle" FontWeight="SemiBold" />
+                                <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                                    <CheckBox x:Name="AntiIdleCheck" Content="Send string:" VerticalAlignment="Center" Margin="0,0,0,0" />
+                                    <TextBox x:Name="AntiIdleStringBox" Width="60" VerticalAlignment="Center" />
+                                    <TextBlock Text="every" VerticalAlignment="Center" />
+                                    <NumberBox x:Name="AntiIdleIntervalBox" SpinButtonPlacementMode="Inline" SmallChange="1" LargeChange="10" Width="100" VerticalAlignment="Center" />
+                                    <TextBlock Text="seconds" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </StackPanel>
+
                         </StackPanel>
 
+                        <!-- RDP PAGE -->
                         <StackPanel x:Name="RdpPage" Spacing="16" Visibility="Collapsed">
                             <CheckBox x:Name="RdpEnabledCheck" Content="Enable Remote Desktop (RDP) for this server" />
                         </StackPanel>
 
+                        <!-- PLACEHOLDER PAGE -->
                         <TextBlock x:Name="PlaceholderPage" Text="Options coming soon." Foreground="Gray" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed" />
                     </Grid>
                 </ScrollViewer>

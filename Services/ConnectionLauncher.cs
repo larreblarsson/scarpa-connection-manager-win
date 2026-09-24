@@ -206,7 +206,7 @@ CreateObject(""Scripting.FileSystemObject"").DeleteFile WScript.ScriptFullName
     public static string ResolveLogPath(ServerConfig cfg)
     {
         var template = string.IsNullOrWhiteSpace(cfg.LogPath)
-            ? Path.Combine(AppPaths.LogDir, "%N_%Y-%M-%D_%h%m%s.log")
+            ? Path.Combine(AppPaths.LogDir, "%N.log")
             : cfg.LogPath!;
 
         if (!template.Contains("%h") && !template.Contains("%s"))

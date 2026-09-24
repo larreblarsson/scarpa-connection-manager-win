@@ -59,6 +59,11 @@ public sealed partial class ServerDialog : ContentDialog
             LogConnectBox.Text = Config.LogConnectString ?? "";
             LogDisconnectBox.Text = Config.LogDisconnectString ?? "";
             LogEachLineBox.Text = Config.LogEachLineString ?? "";
+
+            // Load Anti-idle settings
+            AntiIdleCheck.IsChecked = Config.AntiIdleEnabled;
+            AntiIdleStringBox.Text = Config.AntiIdleString ?? "";
+            AntiIdleIntervalBox.Value = Config.AntiIdleInterval;
         }
         else
         {
@@ -71,6 +76,11 @@ public sealed partial class ServerDialog : ContentDialog
 
             AuthMethodBox.SelectedIndex = 0;
             AppendRadio.IsChecked = true; // Default to append
+
+            // Default Anti-idle settings for new servers
+            AntiIdleCheck.IsChecked = false;
+            AntiIdleStringBox.Text = "\\n";
+            AntiIdleIntervalBox.Value = 60;
         }
     }
 
@@ -140,6 +150,13 @@ public sealed partial class ServerDialog : ContentDialog
         Config.LogConnectString = LogConnectBox.Text;
         Config.LogDisconnectString = LogDisconnectBox.Text;
         Config.LogEachLineString = LogEachLineBox.Text;
+
+        // Save Anti-idle settings
+        Config.AntiIdleEnabled = AntiIdleCheck.IsChecked == true;
+        Config.AntiIdleString = AntiIdleStringBox.Text;
+
+        // NumberBox uses doubles, so we cast it safely back to an integer for the model
+        Config.AntiIdleInterval = double.IsNaN(AntiIdleIntervalBox.Value) ? 60 : (int)AntiIdleIntervalBox.Value;
 
         Saved = true;
     }

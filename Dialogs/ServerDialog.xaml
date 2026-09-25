@@ -209,7 +209,7 @@
                                                 </Grid.ColumnDefinitions>
                                                 <TextBlock Text="Expect" FontWeight="SemiBold" Grid.Column="0" />
                                                 <TextBlock Text="Send" FontWeight="SemiBold" Grid.Column="1" />
-                                                <TextBlock Text="Timeout" FontWeight="SemiBold" Grid.Column="2" />
+                                                <TextBlock Text="Timeouts)" FontWeight="SemiBold" Grid.Column="2" />
                                             </Grid>
                                         </DataTemplate>
                                     </ListView.HeaderTemplate>
@@ -223,11 +223,7 @@
                                                 </Grid.ColumnDefinitions>
                                                 <TextBlock Text="{Binding Expect}" Grid.Column="0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="0,0,8,0"/>
                                                 <TextBlock Text="{Binding Send}" Grid.Column="1" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="0,0,8,0"/>
-                                                <TextBlock Grid.Column="2" VerticalAlignment="Center">
-                                                    <Run Text="Timeout: " />
-                                                    <Run Text="{Binding Timeout}" />
-                                                    <Run Text=" seconds" />
-                                                </TextBlock>
+                                                <TextBlock Text="{Binding Timeout}" Grid.Column="2" VerticalAlignment="Center" />
                                             </Grid>
                                         </DataTemplate>
                                     </ListView.ItemTemplate>

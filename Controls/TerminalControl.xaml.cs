@@ -6,6 +6,7 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Diagnostics;
+using System.Collections.Generic;
 using Renci.SshNet;
 using ScarpaConnectionManager.Models;
 using ScarpaConnectionManager.Services;
@@ -28,8 +29,9 @@ public sealed partial class TerminalControl : UserControl
     private ServerConfig _config;
     private CancellationTokenSource _antiIdleCts = new();
 
-    // Login Action tracking
-    private int _currentLoginStep = 0;
+    // Automation tracking
+    private string? _currentExpect;
+    private TaskCompletionSource<bool>? _expectTcs;
     private StringBuilder _loginBuffer = new();
 
     public TerminalControl(ServerConfig cfg, string? logPath, bool isSftp = false)
@@ -163,11 +165,11 @@ public sealed partial class TerminalControl : UserControl
 
     private void StartSshSession(ServerConfig cfg)
     {
-        Task.Run(async () =>
+        Task.Run(() =>
         {
             try
             {
-                var authMethods = new System.Collections.Generic.List<AuthenticationMethod>();
+                var authMethods = new List<AuthenticationMethod>();
 
                 // 1. Key File Auth
                 if (cfg.AuthMethod == "key_file" && !string.IsNullOrWhiteSpace(cfg.KeyFile))
@@ -182,7 +184,7 @@ public sealed partial class TerminalControl : UserControl
                 }
                 else
                 {
-                    // 2. Password & Keyboard Interactive Auth (Always include both to prevent crashes)
+                    // 2. Password & Keyboard Interactive Auth
                     string pass = cfg.Password ?? "";
 
                     authMethods.Add(new PasswordAuthenticationMethod(cfg.User, pass));
@@ -192,7 +194,6 @@ public sealed partial class TerminalControl : UserControl
                     {
                         foreach (var prompt in e.Prompts)
                         {
-                            // If password is empty, show the prompt to the user in the terminal
                             if (string.IsNullOrEmpty(pass))
                                 SendToTerminal($"\r\n\x1b[36m[Server Prompt]: {prompt.Request}\x1b[0m\r\n");
 
@@ -208,42 +209,110 @@ public sealed partial class TerminalControl : UserControl
 
                 _shellStream = _sshClient.CreateShellStream("xterm", 80, 24, 800, 600, 1024);
 
-                _currentLoginStep = 0;
-                _loginBuffer.Clear();
-
                 StartAntiIdle(cfg);
+
+                // Launch the reader and automation concurrently
                 _ = ReadStreamAsync();
-
-                // Send Startup Command File
-                if (cfg.StartupCmdEnabled && !string.IsNullOrWhiteSpace(cfg.StartupCmdPath))
-                {
-                    try
-                    {
-                        if (File.Exists(cfg.StartupCmdPath))
-                        {
-                            await Task.Delay(1000);
-                            string script = await File.ReadAllTextAsync(cfg.StartupCmdPath);
-                            script = script.Replace("\r\n", "\n").Replace("\r", "\n");
-
-                            if (_shellStream.CanWrite)
-                            {
-                                var bytes = Encoding.UTF8.GetBytes(script);
-                                _shellStream.Write(bytes, 0, bytes.Length);
-                                _shellStream.Flush();
-                            }
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        SendToTerminal($"\r\n\x1b[31m[Error] Failed to execute startup file: {ex.Message}\x1b[0m\r\n");
-                    }
-                }
+                _ = RunPostLoginAutomationAsync(cfg);
             }
             catch (Exception ex)
             {
                 SendToTerminal($"\r\n\x1b[31mConnection failed: {ex.Message}\x1b[0m\r\n");
             }
         });
+    }
+
+    private async Task RunPostLoginAutomationAsync(ServerConfig cfg)
+    {
+        // 1. Execute Login Actions (Expect/Send) First
+        if (cfg.LoginActions != null && cfg.LoginActions.Count > 0)
+        {
+            foreach (var step in cfg.LoginActions)
+            {
+                if (string.IsNullOrEmpty(step.Expect)) continue;
+
+                _expectTcs = new TaskCompletionSource<bool>();
+                _currentExpect = step.Expect;
+
+                // Check if the prompt already arrived BEFORE we even started waiting
+                if (_loginBuffer.ToString().Contains(_currentExpect))
+                {
+                    _currentExpect = null;
+                    _loginBuffer.Clear(); // <-- FIX: Wipe immediately
+                    _expectTcs.TrySetResult(true);
+                }
+
+                // Wait for the string to appear OR the timeout to expire
+                var timeoutTask = Task.Delay(step.Timeout > 0 ? step.Timeout * 1000 : 5000);
+                var completedTask = await Task.WhenAny(_expectTcs.Task, timeoutTask);
+
+                if (completedTask == timeoutTask)
+                {
+                    SendToTerminal($"\r\n\x1b[33m[Login Action] Timeout ({step.Timeout}s) waiting for '{step.Expect}'. Skipping step.\x1b[0m\r\n");
+
+                    _currentExpect = null;
+                    _loginBuffer.Clear(); // <-- FIX: Clear stale data on timeout
+
+                    // Send a simulated "Enter" keypress (\r) to the server to force a fresh prompt line
+                    if (_shellStream != null && _shellStream.CanWrite)
+                    {
+                        _shellStream.Write(new byte[] { 13 }, 0, 1);
+                        _shellStream.Flush();
+                    }
+                    continue;
+                }
+
+                // Match found! Inject the Send command.
+                string toSend = (step.Send ?? "").Replace("\\n", "\n").Replace("\\r", "\r");
+                if (!toSend.EndsWith("\n") && !toSend.EndsWith("\r")) toSend += "\r"; // Auto-append enter
+
+                if (_shellStream != null && _shellStream.CanWrite)
+                {
+                    var sendBytes = Encoding.UTF8.GetBytes(toSend);
+                    _shellStream.Write(sendBytes, 0, sendBytes.Length);
+                    _shellStream.Flush();
+                }
+
+                // Wait slightly before looking for the NEXT string so the server has time to receive the command
+                await Task.Delay(250);
+
+                // DELETED the old _loginBuffer.Clear() that was causing the race condition!
+            }
+
+            _currentExpect = null;
+            _loginBuffer.Clear();
+        }
+
+        // 2. Execute Startup Command File AFTER the login sequence finishes
+        if (cfg.StartupCmdEnabled && !string.IsNullOrWhiteSpace(cfg.StartupCmdPath))
+        {
+            try
+            {
+                if (File.Exists(cfg.StartupCmdPath))
+                {
+                    // Give the shell a moment to initialize only if we skipped the login actions
+                    if (cfg.LoginActions == null || cfg.LoginActions.Count == 0) await Task.Delay(1000);
+
+                    string script = await File.ReadAllTextAsync(cfg.StartupCmdPath);
+                    script = script.Replace("\r\n", "\n").Replace("\r", "\n");
+
+                    if (_shellStream != null && _shellStream.CanWrite)
+                    {
+                        var bytes = Encoding.UTF8.GetBytes(script);
+                        _shellStream.Write(bytes, 0, bytes.Length);
+                        _shellStream.Flush();
+                    }
+                }
+                else
+                {
+                    SendToTerminal($"\r\n\x1b[33m[Warning] Startup command file not found: {cfg.StartupCmdPath}\x1b[0m\r\n");
+                }
+            }
+            catch (Exception ex)
+            {
+                SendToTerminal($"\r\n\x1b[31m[Error] Failed to execute startup file: {ex.Message}\x1b[0m\r\n");
+            }
+        }
     }
 
     private void StartAntiIdle(ServerConfig cfg)
@@ -330,31 +399,19 @@ public sealed partial class TerminalControl : UserControl
                 WriteToLog(text);
                 SendToTerminal(text);
 
-                // --- EXPECT/SEND LOGIN ACTION LOGIC ---
-                if (_config.LoginActions != null && _currentLoginStep < _config.LoginActions.Count)
+                // ALWAYS strip invisible characters and accumulate into the rolling buffer
+                string cleanText = Regex.Replace(text, @"\x1B\[[0-?]*[ -/]*[@-~]|\x1B\][^\x07\x1B]*(?:\x07|\x1B\\)", "");
+                cleanText = Regex.Replace(cleanText, @"[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]", "");
+
+                _loginBuffer.Append(cleanText);
+                if (_loginBuffer.Length > 10000) _loginBuffer.Remove(0, 5000);
+
+                // Check if we matched the active expect string
+                if (_currentExpect != null && _loginBuffer.ToString().Contains(_currentExpect))
                 {
-                    _loginBuffer.Append(text);
-                    var step = _config.LoginActions[_currentLoginStep];
-
-                    if (_loginBuffer.ToString().Contains(step.Expect))
-                    {
-                        // Match found! Format the send string.
-                        string toSend = (step.Send ?? "").Replace("\\n", "\n").Replace("\\r", "\r");
-
-                        // Automatically append a carriage return if the user didn't explicitly provide one
-                        if (!toSend.EndsWith("\n") && !toSend.EndsWith("\r")) toSend += "\r";
-
-                        var sendBytes = Encoding.UTF8.GetBytes(toSend);
-                        _shellStream.Write(sendBytes, 0, sendBytes.Length);
-                        _shellStream.Flush();
-
-                        // Move to the next step
-                        _loginBuffer.Clear();
-                        _currentLoginStep++;
-                    }
-
-                    // Prevent infinite memory growth if the string is never found
-                    if (_loginBuffer.Length > 10000) _loginBuffer.Remove(0, 5000);
+                    _currentExpect = null;
+                    _loginBuffer.Clear(); // <-- FIX: Wipe the matched text immediately so we don't double-match
+                    _expectTcs?.TrySetResult(true);
                 }
             }
             SendToTerminal("\r\n\x1b[33mSession disconnected.\x1b[0m\r\n");

@@ -68,14 +68,6 @@ public static class ConnectionLauncher
         return string.Join(" ", parts);
     }
 
-    public static void LaunchSsh(ServerConfig cfg, AppSettings settings)
-    {
-        string? logPath = cfg.LoggingEnabled ? ResolveLogPath(cfg) : null;
-        var terminalWindow = new scarpa_connection_manager_win.Dialogs.TerminalDialog(cfg, logPath);
-        terminalWindow.Title = cfg.Name ?? "SSH Session";
-        terminalWindow.Activate();
-    }
-
     public static void LaunchSftpCli(ServerConfig cfg, AppSettings settings)
     {
         string args = BuildSftpArguments(cfg);

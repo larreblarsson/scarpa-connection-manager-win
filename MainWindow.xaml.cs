@@ -85,15 +85,14 @@ public sealed partial class MainWindow : Window
     public MainWindow()
     {
         this.InitializeComponent();
-        this.Activated += (s, e) => Log($"[DEBUG] MainWindow Focus State: {e.WindowActivationState}");
         this.Title = "Scarpa Connection Manager";
 
         var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
         var windowId = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hwnd);
         var appWindow = Microsoft.UI.Windowing.AppWindow.GetFromWindowId(windowId);
 
-        var windowWidth = 650;
-        var windowHeight = 800;
+        var windowWidth = 950;
+        var windowHeight = 850;
 
         var displayArea = Microsoft.UI.Windowing.DisplayArea.GetFromWindowId(windowId, Microsoft.UI.Windowing.DisplayAreaFallback.Primary);
         if (displayArea != null)
@@ -740,7 +739,7 @@ public sealed partial class MainWindow : Window
         }
     }
 
-    private async void Ssh_Click(object sender, RoutedEventArgs e)
+    private void Ssh_Click(object sender, RoutedEventArgs e)
     {
         var nodes = _selectedNodes.ToList();
         if (nodes.Count == 0) { Log("Select a server first."); return; }
@@ -751,16 +750,38 @@ public sealed partial class MainWindow : Window
 
             if (_nodeTags.TryGetValue(node, out var tag) && tag is ServerConfig cfg)
             {
-                Log($"Launching SSH: {cfg.Name}");
+                Log($"Opening SSH Tab: {cfg.Name}");
 
-                // Wait for the physical mouse button release (PointerReleased) 
-                // BEFORE creating the window, so MainWindow doesn't steal focus back.
-                await Task.Delay(250);
+                string? logPath = cfg.LoggingEnabled ? ConnectionLauncher.ResolveLogPath(cfg) : null;
 
-                ConnectionLauncher.LaunchSsh(cfg, _settings);
+                // Create the embedded terminal control
+                var termControl = new Controls.TerminalControl(cfg, logPath);
+
+                // Wrap it in a WinUI 3 Tab using the correct FontIcon
+                var newTab = new Microsoft.UI.Xaml.Controls.TabViewItem
+                {
+                    Header = cfg.Name,
+                    IconSource = new Microsoft.UI.Xaml.Controls.FontIconSource { Glyph = "\uE756" },
+                    Content = termControl
+                };
+
+                SessionTabs.TabItems.Add(newTab);
+                SessionTabs.SelectedItem = newTab; // Auto-focus the new tab
             }
         }
     }
+
+    // This ensures the SSH connections are terminated safely when you click the 'X' on a tab
+    private void SessionTabs_TabCloseRequested(TabView sender, TabViewTabCloseRequestedEventArgs args)
+    {
+        if (args.Tab.Content is Controls.TerminalControl term)
+        {
+            term.CloseSession();
+        }
+        sender.TabItems.Remove(args.Tab);
+    }
+
+
 
     private async void SftpCli_Click(object sender, RoutedEventArgs e)
     {

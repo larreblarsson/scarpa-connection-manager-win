@@ -205,22 +205,12 @@ CreateObject(""Scripting.FileSystemObject"").DeleteFile WScript.ScriptFullName
 
     public static string ResolveLogPath(ServerConfig cfg)
     {
+        // 1. Use the exact path the user typed, or fallback to "SessionName.log"
         var template = string.IsNullOrWhiteSpace(cfg.LogPath)
             ? Path.Combine(AppPaths.LogDir, "%N.log")
             : cfg.LogPath!;
 
-        if (!template.Contains("%h") && !template.Contains("%s"))
-        {
-            var dir = Path.GetDirectoryName(template);
-            if (string.IsNullOrWhiteSpace(dir)) dir = AppPaths.LogDir;
-
-            var name = Path.GetFileNameWithoutExtension(template);
-            var ext = Path.GetExtension(template);
-            if (string.IsNullOrEmpty(ext)) ext = ".log";
-
-            template = Path.Combine(dir, $"{name}_%Y%M%D_%h%m%s{ext}");
-        }
-
+        // 2. Apply substitutions ONLY if the user explicitly typed the % variables
         var now = DateTime.Now;
         return template
             .Replace("%N", Sanitize(cfg.Name ?? "Session"))

@@ -70,6 +70,13 @@ public sealed class ServerConfig
     [JsonPropertyName("anti_idle_int")] public int AntiIdleInterval { get; set; } = 60;
     [JsonPropertyName("anti_idle_str")] public string AntiIdleString { get; set; } = "\\n";
 
+    // Startup Command File
+    [JsonPropertyName("startup_cmd_enabled")] public bool StartupCmdEnabled { get; set; }
+    [JsonPropertyName("startup_cmd_path")] public string? StartupCmdPath { get; set; }
+
+    [System.Text.Json.Serialization.JsonPropertyName("login_actions")]
+    public System.Collections.Generic.List<LoginActionStep> LoginActions { get; set; } = new();
+
     // RDP
     [JsonPropertyName("rdp_enabled")] public bool RdpEnabled { get; set; }
     [JsonPropertyName("rdp_port")] public int RdpPort { get; set; } = 3389;
@@ -92,4 +99,16 @@ public class ScarpaExportRoot
 {
     public System.Collections.Generic.List<ServerConfig> Servers { get; set; } = new();
     public System.Collections.Generic.List<string> Folders { get; set; } = new();
+}
+
+public class LoginActionStep
+{
+    [System.Text.Json.Serialization.JsonPropertyName("expect")]
+    public string Expect { get; set; } = "";
+
+    [System.Text.Json.Serialization.JsonPropertyName("send")]
+    public string Send { get; set; } = "";
+
+    [System.Text.Json.Serialization.JsonPropertyName("timeout")]
+    public int Timeout { get; set; } = 5;
 }

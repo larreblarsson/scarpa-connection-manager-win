@@ -9,6 +9,10 @@
     PrimaryButtonClick="ContentDialog_PrimaryButtonClick"
     FullSizeDesired="True">
 
+    <ContentDialog.Resources>
+        <x:Double x:Key="ContentDialogMaxWidth">900</x:Double>
+    </ContentDialog.Resources>
+
     <Grid Background="Transparent">
         <Grid.Resources>
             <SolidColorBrush x:Key="NavigationViewExpandedPaneBackground" Color="Transparent" />
@@ -52,8 +56,11 @@
 
             <Border Background="Transparent" BorderBrush="{ThemeResource SurfaceStrokeColorDefaultBrush}" BorderThickness="1,0,0,0" Padding="24">
                 <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,0,12,0">
-                    <Grid>
-                        <!-- GENERAL PAGE -->
+
+                    <!-- MinWidth="580" forces all tabs to perfectly match the Terminal page width -->
+                    <Grid MinWidth="580">
+
+                        <!-- 1. GENERAL PAGE -->
                         <StackPanel x:Name="GeneralPage" Spacing="16">
                             <TextBox x:Name="NameBox" Header="Display name" />
 
@@ -69,16 +76,36 @@
                             <ComboBox x:Name="FolderBox" Header="Folder" IsEditable="True" HorizontalAlignment="Stretch" />
 
                             <TextBox x:Name="UserBox" Header="Username" />
-                            <ComboBox x:Name="AuthMethodBox" Header="Authentication" HorizontalAlignment="Stretch">
-                                <ComboBoxItem Content="password" />
-                                <ComboBoxItem Content="ask" />
-                                <ComboBoxItem Content="key" />
-                            </ComboBox>
-                            <PasswordBox x:Name="PassBox" Header="Password" />
-                            <CheckBox x:Name="ShowPasswordCheck" Content="Show password" Checked="ShowPasswordCheck_Changed" Unchecked="ShowPasswordCheck_Changed" Margin="0,-8,0,0" />
+
+                            <Grid ColumnSpacing="16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="150" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <ComboBox x:Name="AuthMethodBox" Header="Authentication" HorizontalAlignment="Stretch" Grid.Column="0" SelectionChanged="AuthMethodBox_SelectionChanged">
+                                    <ComboBoxItem Content="password" />
+                                    <ComboBoxItem Content="ask" />
+                                    <ComboBoxItem Content="key_file" />
+                                </ComboBox>
+                                <PasswordBox x:Name="PassBox" Header="Password" Grid.Column="1" />
+                            </Grid>
+
+                            <CheckBox x:Name="ShowPasswordCheck" Content="Show password" Checked="ShowPasswordCheck_Changed" Unchecked="ShowPasswordCheck_Changed" Margin="166,-8,0,0" MinWidth="0" />
+
+                            <StackPanel x:Name="KeyFilePanel" Visibility="Collapsed" Spacing="4">
+                                <TextBlock Text="Private Key File" />
+                                <Grid ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox x:Name="KeyFileBox" Grid.Column="0" />
+                                    <Button Content="Browse" Click="BrowseKeyFile_Click" Grid.Column="1" />
+                                </Grid>
+                            </StackPanel>
                         </StackPanel>
 
-                        <!-- TERMINAL PAGE -->
+                        <!-- 2. TERMINAL PAGE -->
                         <StackPanel x:Name="TerminalPage" Spacing="16" Visibility="Collapsed">
                             <ToggleSwitch x:Name="EnableLoggingSwitch" Header="Enable session logging" />
 
@@ -98,9 +125,8 @@
                                 <RadioButton x:Name="OverwriteRadio" Content="Overwrite file" GroupName="LogMode" />
                             </StackPanel>
 
-                            <!-- Append Data to Log Section -->
                             <StackPanel Spacing="8" Margin="0,8,0,0">
-                                <CheckBox x:Name="AppendDataCheck" Content="Append Data to Log" />
+                                <CheckBox x:Name="AppendDataCheck" Content="Append Data to Log" MinWidth="0" />
 
                                 <Grid ColumnSpacing="12" RowSpacing="12" Margin="24,0,0,0">
                                     <Grid.ColumnDefinitions>
@@ -112,18 +138,14 @@
                                         <RowDefinition Height="Auto" />
                                         <RowDefinition Height="Auto" />
                                     </Grid.RowDefinitions>
-
                                     <TextBlock Text="At connect:" Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" />
                                     <TextBox x:Name="LogConnectBox" Grid.Row="0" Grid.Column="1" />
-
                                     <TextBlock Text="At disconnect:" Grid.Row="1" Grid.Column="0" VerticalAlignment="Center" />
                                     <TextBox x:Name="LogDisconnectBox" Grid.Row="1" Grid.Column="1" />
-
                                     <TextBlock Text="On each line:" Grid.Row="2" Grid.Column="0" VerticalAlignment="Center" />
                                     <TextBox x:Name="LogEachLineBox" Grid.Row="2" Grid.Column="1" />
                                 </Grid>
 
-                                <!-- &#x0a; renders a native line break in XAML text -->
                                 <TextBlock Text="Substitutions: %H=Hostname, %S=Session Name, %Y=Year, %M=Month, %D=Day, %h=Hour, %m=Min, %s=Sec.&#x0a;Use \n for newline." 
                                            Foreground="Gray" FontSize="12" TextWrapping="Wrap" Margin="24,4,0,0" />
                             </StackPanel>
@@ -131,24 +153,180 @@
                             <!-- Anti-idle Section -->
                             <StackPanel Spacing="8" Margin="0,16,0,0">
                                 <TextBlock Text="Anti-idle" FontWeight="SemiBold" />
-                                <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
-                                    <CheckBox x:Name="AntiIdleCheck" Content="Send string:" VerticalAlignment="Center" Margin="0,0,0,0" />
+                                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                    <CheckBox x:Name="AntiIdleCheck" Content="Send string:" VerticalAlignment="Center" MinWidth="0" Margin="0,0,4,0"/>
                                     <TextBox x:Name="AntiIdleStringBox" Width="60" VerticalAlignment="Center" />
-                                    <TextBlock Text="every" VerticalAlignment="Center" />
-                                    <NumberBox x:Name="AntiIdleIntervalBox" SpinButtonPlacementMode="Inline" SmallChange="1" LargeChange="10" Width="100" VerticalAlignment="Center" />
-                                    <TextBlock Text="seconds" VerticalAlignment="Center" />
+                                    <TextBlock Text="every" VerticalAlignment="Center" Margin="4,0,4,0" />
+
+                                    <!-- Widened to 180 to prevent squishing when focused -->
+                                    <NumberBox x:Name="AntiIdleIntervalBox" SpinButtonPlacementMode="Inline" SmallChange="1" LargeChange="10" Width="180" VerticalAlignment="Center" />
+
+                                    <TextBlock Text="seconds" VerticalAlignment="Center" Margin="4,0,0,0" />
                                 </StackPanel>
                             </StackPanel>
 
+                            <!-- Scrollback Buffer Section -->
+                            <StackPanel Spacing="8" Margin="0,16,0,0">
+                                <TextBlock Text="Scrollback Buffer" FontWeight="SemiBold" />
+                                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                    <TextBlock Text="Lines:" VerticalAlignment="Center" Margin="0,0,4,0" />
+
+                                    <!-- Widened to 180 to prevent squishing when focused -->
+                                    <NumberBox x:Name="TermScrollbackBox" SpinButtonPlacementMode="Inline" SmallChange="1000" LargeChange="5000" Width="180" VerticalAlignment="Center" />
+
+                                </StackPanel>
+                            </StackPanel>
+
+                            <!-- NEW: Startup Command File -->
+                            <StackPanel Spacing="8" Margin="0,16,0,0">
+                                <TextBlock Text="Startup Command File" FontWeight="SemiBold" />
+                                <CheckBox x:Name="StartupCmdCheck" Content="Send file content at login" MinWidth="0" />
+                                <Grid ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox x:Name="StartupCmdPathBox" Grid.Column="0" VerticalAlignment="Center" IsEnabled="{Binding IsChecked, ElementName=StartupCmdCheck}" />
+                                    <Button Content="Browse" Click="BrowseStartupCmd_Click" Grid.Column="1" VerticalAlignment="Center" IsEnabled="{Binding IsChecked, ElementName=StartupCmdCheck}" />
+                                </Grid>
+                            </StackPanel>
                         </StackPanel>
 
-                        <!-- RDP PAGE -->
+                        <!-- 3. LOGIN ACTION PAGE -->
+                        <StackPanel x:Name="LoginActionPage" Spacing="16" Visibility="Collapsed">
+                            <TextBlock Text="Automated Login Sequence" FontWeight="SemiBold" />
+                            <TextBlock Text="Define expect/send sequences to execute automatically after connection." Foreground="Gray" TextWrapping="Wrap" />
+
+                            <Border BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="4" Height="200" HorizontalAlignment="Stretch">
+                                <ListView x:Name="LoginActionList" SelectionMode="Single">
+                                    <ListView.HeaderTemplate>
+                                        <DataTemplate>
+                                            <Grid Padding="12,8" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,0,0,1">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="2*" />
+                                                    <ColumnDefinition Width="2*" />
+                                                    <ColumnDefinition Width="1*" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="Expect" FontWeight="SemiBold" Grid.Column="0" />
+                                                <TextBlock Text="Send" FontWeight="SemiBold" Grid.Column="1" />
+                                                <TextBlock Text="Timeout" FontWeight="SemiBold" Grid.Column="2" />
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ListView.HeaderTemplate>
+                                    <ListView.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid Padding="0,8">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="2*" />
+                                                    <ColumnDefinition Width="2*" />
+                                                    <ColumnDefinition Width="1*" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="{Binding Expect}" Grid.Column="0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="0,0,8,0"/>
+                                                <TextBlock Text="{Binding Send}" Grid.Column="1" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="0,0,8,0"/>
+                                                <TextBlock Grid.Column="2" VerticalAlignment="Center">
+                                                    <Run Text="Timeout: " />
+                                                    <Run Text="{Binding Timeout}" />
+                                                    <Run Text=" seconds" />
+                                                </TextBlock>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ListView.ItemTemplate>
+                                </ListView>
+                            </Border>
+
+                            <!-- Control Buttons -->
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Button Content="Add" Click="LoginAction_Add_Click" />
+                                <Button Content="Edit" Click="LoginAction_Edit_Click" />
+                                <Button Content="Delete" Click="LoginAction_Delete_Click" />
+                                <Button Click="LoginAction_Up_Click" ToolTipService.ToolTip="Move Up">
+                                    <FontIcon Glyph="&#xE70E;" FontSize="12" />
+                                </Button>
+                                <Button Click="LoginAction_Down_Click" ToolTipService.ToolTip="Move Down">
+                                    <FontIcon Glyph="&#xE70D;" FontSize="12" />
+                                </Button>
+                            </StackPanel>
+
+                            <!-- Inline Edit Panel (Hidden by default) -->
+                            <StackPanel x:Name="LoginActionEditPanel" Visibility="Collapsed" Spacing="8" Margin="0,8,0,0" Padding="12" Background="{ThemeResource LayerOnMicaBaseAltFillColorDefaultBrush}" CornerRadius="4">
+                                <TextBlock x:Name="LoginActionEditTitle" Text="Add Action" FontWeight="SemiBold" />
+                                <Grid ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="120" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox x:Name="LoginActionExpectBox" Header="Expect" Grid.Column="0" />
+                                    <TextBox x:Name="LoginActionSendBox" Header="Send" Grid.Column="1" />
+                                    <NumberBox x:Name="LoginActionTimeoutBox" Header="Timeout (s)" Value="5" Minimum="1" Maximum="300" SpinButtonPlacementMode="Inline" Grid.Column="2" />
+                                </Grid>
+                                <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" Margin="0,8,0,0">
+                                    <Button Content="Save" Style="{ThemeResource AccentButtonStyle}" Click="LoginAction_SaveEdit_Click" />
+                                    <Button Content="Cancel" Click="LoginAction_CancelEdit_Click" />
+                                </StackPanel>
+                            </StackPanel>
+                        </StackPanel>
+                                                
+                        <!-- 4. PORT FORWARDING PAGE -->
+                        <StackPanel x:Name="PortForwardingPage" Spacing="16" Visibility="Collapsed">
+                            <TextBlock Text="SSH Port Forwarding Rules" FontWeight="SemiBold" />
+                            <Button Content="+ Add Rule" />
+
+                            <Border BorderBrush="Gray" BorderThickness="1" CornerRadius="4" Height="150" HorizontalAlignment="Stretch">
+                                <TextBlock Text="Port forwarding rules will appear here" Foreground="Gray" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            </Border>
+                        </StackPanel>
+
+                        <!-- 5. APPEARANCE PAGE -->
+                        <StackPanel x:Name="AppearancePage" Spacing="16" Visibility="Collapsed">
+                            <TextBox x:Name="TermFontBox" Header="Terminal font (e.g. Cascadia Mono 11)" />
+
+                            <Grid ColumnSpacing="16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBox x:Name="TermFgBox" Header="Foreground color (Hex)" Grid.Column="0" />
+                                <TextBox x:Name="TermBgBox" Header="Background color (Hex)" Grid.Column="1" />
+                            </Grid>
+                        </StackPanel>
+
+                        <!-- 6. RDP PAGE -->
                         <StackPanel x:Name="RdpPage" Spacing="16" Visibility="Collapsed">
-                            <CheckBox x:Name="RdpEnabledCheck" Content="Enable Remote Desktop (RDP) for this server" />
+                            <ToggleSwitch x:Name="RdpEnabledSwitch" Header="Enable Remote Desktop (RDP)" />
+
+                            <Grid ColumnSpacing="16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="100" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBox x:Name="RdpPortBox" Header="Port" Text="3389" Grid.Column="0" />
+                                <ComboBox x:Name="RdpResBox" Header="Resolution" HorizontalAlignment="Stretch" Grid.Column="1">
+                                    <ComboBoxItem Content="Full Screen" />
+                                    <ComboBoxItem Content="1920x1080" />
+                                    <ComboBoxItem Content="1280x720" />
+                                </ComboBox>
+                            </Grid>
+
+                            <StackPanel Spacing="8">
+                                <CheckBox x:Name="RdpAudioCheck" Content="Play audio on local computer" MinWidth="0" />
+                                <CheckBox x:Name="RdpClipboardCheck" Content="Redirect clipboard" MinWidth="0" />
+                                <CheckBox x:Name="RdpCertCheck" Content="Ignore certificate warnings" MinWidth="0" />
+                            </StackPanel>
+
+                            <StackPanel Spacing="8" Margin="0,12,0,0">
+                                <CheckBox x:Name="RdpDriveCheck" Content="Redirect local drive to remote session" MinWidth="0" />
+                                <Grid ColumnSpacing="8" Margin="24,0,0,0">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox x:Name="RdpDrivePathBox" PlaceholderText="C:\" Grid.Column="0" IsEnabled="{Binding IsChecked, ElementName=RdpDriveCheck}" />
+                                    <Button Content="Browse" Grid.Column="1" IsEnabled="{Binding IsChecked, ElementName=RdpDriveCheck}" />
+                                </Grid>
+                            </StackPanel>
                         </StackPanel>
 
-                        <!-- PLACEHOLDER PAGE -->
-                        <TextBlock x:Name="PlaceholderPage" Text="Options coming soon." Foreground="Gray" HorizontalAlignment="Center" VerticalAlignment="Center" Visibility="Collapsed" />
                     </Grid>
                 </ScrollViewer>
             </Border>

@@ -4,15 +4,18 @@ using ScarpaConnectionManager.Models;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using System.Runtime.InteropServices; // Required for GetActiveWindow
+using System.Runtime.InteropServices;
+using System.Collections.ObjectModel;
 
 namespace scarpa_connection_manager_win.Dialogs;
 
 public sealed partial class ServerDialog : ContentDialog
 {
-    // API call to get the main window handle (required for FilePicker in a ContentDialog)
     [DllImport("user32.dll")]
     private static extern IntPtr GetActiveWindow();
+
+    public ObservableCollection<LoginActionStep> LoginActions { get; set; } = new();
+    private LoginActionStep? _editingAction = null;
 
     public ServerConfig Config { get; private set; }
     public bool Saved { get; private set; } = false;
@@ -23,12 +26,13 @@ public sealed partial class ServerDialog : ContentDialog
         this.XamlRoot = root;
 
         NavView.SelectedItem = NavView.MenuItems[0];
-
         foreach (var f in folders) FolderBox.Items.Add(f);
 
         if (existingConfig != null)
         {
             Config = existingConfig.Clone();
+
+            // General
             NameBox.Text = Config.Name ?? "";
             HostBox.Text = Config.Host ?? "";
             PortBox.Text = Config.Port.ToString();
@@ -40,6 +44,7 @@ public sealed partial class ServerDialog : ContentDialog
 
             UserBox.Text = Config.User ?? "";
             PassBox.Password = Config.Password ?? "";
+            KeyFileBox.Text = Config.KeyFile ?? "";
 
             foreach (ComboBoxItem item in AuthMethodBox.Items)
             {
@@ -47,23 +52,57 @@ public sealed partial class ServerDialog : ContentDialog
                     AuthMethodBox.SelectedItem = item;
             }
 
-            // Map Logging Settings
+            // Login Actions
+            LoginActions.Clear();
+            if (Config.LoginActions != null)
+            {
+                foreach (var action in Config.LoginActions)
+                    LoginActions.Add(new LoginActionStep { Expect = action.Expect, Send = action.Send, Timeout = action.Timeout });
+            }
+            LoginActionList.ItemsSource = LoginActions;
+
+            // Terminal - Logging
             EnableLoggingSwitch.IsOn = Config.LoggingEnabled;
             LogPathTextBox.Text = Config.LogPath ?? "";
-
             if (Config.LogMode == "overwrite") OverwriteRadio.IsChecked = true;
             else AppendRadio.IsChecked = true;
 
-            // Load Append Data settings
             AppendDataCheck.IsChecked = Config.AppendDataToLog;
             LogConnectBox.Text = Config.LogConnectString ?? "";
             LogDisconnectBox.Text = Config.LogDisconnectString ?? "";
             LogEachLineBox.Text = Config.LogEachLineString ?? "";
 
-            // Load Anti-idle settings
+            // Terminal - Anti-idle
             AntiIdleCheck.IsChecked = Config.AntiIdleEnabled;
             AntiIdleStringBox.Text = Config.AntiIdleString ?? "";
             AntiIdleIntervalBox.Value = Config.AntiIdleInterval;
+
+            // Terminal - Startup Command
+            StartupCmdCheck.IsChecked = Config.StartupCmdEnabled;
+            StartupCmdPathBox.Text = Config.StartupCmdPath ?? "";
+
+            // Appearance
+            TermFontBox.Text = Config.TermFont ?? "";
+            TermFgBox.Text = Config.TermForeground ?? "";
+            TermBgBox.Text = Config.TermBackground ?? "";
+            TermScrollbackBox.Value = Config.TermScrollback;
+
+            // RDP
+            RdpEnabledSwitch.IsOn = Config.RdpEnabled;
+            RdpPortBox.Text = Config.RdpPort.ToString();
+
+            foreach (ComboBoxItem item in RdpResBox.Items)
+            {
+                if (item != null && item.Content?.ToString() == Config.RdpResolution)
+                    RdpResBox.SelectedItem = item;
+            }
+            if (RdpResBox.SelectedItem == null) RdpResBox.SelectedIndex = 0;
+
+            RdpAudioCheck.IsChecked = Config.RdpAudio;
+            RdpClipboardCheck.IsChecked = Config.RdpClipboard;
+            RdpCertCheck.IsChecked = Config.RdpIgnoreCert;
+            RdpDriveCheck.IsChecked = Config.RdpRedirectDrive;
+            RdpDrivePathBox.Text = Config.RdpDrivePath ?? "";
         }
         else
         {
@@ -75,12 +114,24 @@ public sealed partial class ServerDialog : ContentDialog
                 FolderBox.Text = defaultFolder ?? "";
 
             AuthMethodBox.SelectedIndex = 0;
-            AppendRadio.IsChecked = true; // Default to append
-
-            // Default Anti-idle settings for new servers
+            AppendRadio.IsChecked = true;
             AntiIdleCheck.IsChecked = false;
             AntiIdleStringBox.Text = "\\n";
             AntiIdleIntervalBox.Value = 60;
+
+            StartupCmdCheck.IsChecked = false;
+            
+            LoginActionList.ItemsSource = LoginActions;
+            
+            TermFontBox.Text = "Cascadia Mono 11";
+            TermFgBox.Text = "#D0D0D0";
+            TermBgBox.Text = "#101010";
+            TermScrollbackBox.Value = 10000;
+
+            RdpResBox.SelectedIndex = 0;
+            RdpAudioCheck.IsChecked = true;
+            RdpClipboardCheck.IsChecked = true;
+            RdpCertCheck.IsChecked = true;
         }
     }
 
@@ -97,28 +148,58 @@ public sealed partial class ServerDialog : ContentDialog
             var tag = item.Tag?.ToString();
             GeneralPage.Visibility = tag == "General" ? Visibility.Visible : Visibility.Collapsed;
             TerminalPage.Visibility = tag == "Terminal" ? Visibility.Visible : Visibility.Collapsed;
+            LoginActionPage.Visibility = tag == "LoginAction" ? Visibility.Visible : Visibility.Collapsed;
+            PortForwardingPage.Visibility = tag == "PortForwarding" ? Visibility.Visible : Visibility.Collapsed;
+            AppearancePage.Visibility = tag == "Appearance" ? Visibility.Visible : Visibility.Collapsed;
             RdpPage.Visibility = tag == "RDP" ? Visibility.Visible : Visibility.Collapsed;
-            PlaceholderPage.Visibility = (tag != "General" && tag != "RDP" && tag != "Terminal") ? Visibility.Visible : Visibility.Collapsed;
         }
+    }
+
+    private void AuthMethodBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (KeyFilePanel != null)
+        {
+            bool isKeyFile = (AuthMethodBox.SelectedItem as ComboBoxItem)?.Content?.ToString() == "key_file";
+            KeyFilePanel.Visibility = isKeyFile ? Visibility.Visible : Visibility.Collapsed;
+        }
+    }
+
+    private async void BrowseKeyFile_Click(object sender, RoutedEventArgs e)
+    {
+        var picker = new Windows.Storage.Pickers.FileOpenPicker();
+        IntPtr hwnd = GetActiveWindow();
+        WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
+        picker.FileTypeFilter.Add("*");
+
+        var file = await picker.PickSingleFileAsync();
+        if (file != null) KeyFileBox.Text = file.Path;
     }
 
     private async void BrowseLogPath_Click(object sender, RoutedEventArgs e)
     {
         var picker = new Windows.Storage.Pickers.FileSavePicker();
+        IntPtr hwnd = GetActiveWindow();
+        WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
+        picker.SuggestedStartLocation = Windows.Storage.Pickers.PickerLocationId.DocumentsLibrary;
+        picker.FileTypeChoices.Add("Text File", new List<string>() { ".txt", ".log" });
+        picker.SuggestedFileName = "scarpa_session.log";
 
-        // Bind the file picker to the active window
+        var file = await picker.PickSaveFileAsync();
+        if (file != null) LogPathTextBox.Text = file.Path;
+    }
+
+    private async void BrowseStartupCmd_Click(object sender, RoutedEventArgs e)
+    {
+        var picker = new Windows.Storage.Pickers.FileOpenPicker();
         IntPtr hwnd = GetActiveWindow();
         WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
 
-        picker.SuggestedStartLocation = Windows.Storage.Pickers.PickerLocationId.DocumentsLibrary;
-        picker.FileTypeChoices.Add("Text File", new List<string>() { ".txt", ".log" });
-        picker.SuggestedFileName = "scarpa_session_log.txt";
+        picker.FileTypeFilter.Add(".txt");
+        picker.FileTypeFilter.Add(".sh");
+        picker.FileTypeFilter.Add("*");
 
-        var file = await picker.PickSaveFileAsync();
-        if (file != null)
-        {
-            LogPathTextBox.Text = file.Path;
-        }
+        var file = await picker.PickSingleFileAsync();
+        if (file != null) StartupCmdPathBox.Text = file.Path;
     }
 
     private void ContentDialog_PrimaryButtonClick(ContentDialog sender, ContentDialogButtonClickEventArgs args)
@@ -136,29 +217,130 @@ public sealed partial class ServerDialog : ContentDialog
         Config.Folder = FolderBox.SelectedItem?.ToString() ?? FolderBox.Text;
         Config.User = UserBox.Text;
         Config.Password = PassBox.Password;
+        Config.KeyFile = KeyFileBox.Text;
 
         if (AuthMethodBox.SelectedItem is ComboBoxItem item)
             Config.AuthMethod = item.Content?.ToString() ?? "password";
 
-        // Save Logging Settings
+        // Terminal Logging
         Config.LoggingEnabled = EnableLoggingSwitch.IsOn;
         Config.LogPath = LogPathTextBox.Text;
         Config.LogMode = AppendRadio.IsChecked == true ? "append" : "overwrite";
-
-        // Save Append Data settings
         Config.AppendDataToLog = AppendDataCheck.IsChecked == true;
         Config.LogConnectString = LogConnectBox.Text;
         Config.LogDisconnectString = LogDisconnectBox.Text;
         Config.LogEachLineString = LogEachLineBox.Text;
 
-        // Save Anti-idle settings
+        // Terminal Anti-idle
         Config.AntiIdleEnabled = AntiIdleCheck.IsChecked == true;
         Config.AntiIdleString = AntiIdleStringBox.Text;
-
-        // NumberBox uses doubles, so we cast it safely back to an integer for the model
         Config.AntiIdleInterval = double.IsNaN(AntiIdleIntervalBox.Value) ? 60 : (int)AntiIdleIntervalBox.Value;
 
+        // Terminal Startup Command
+        Config.StartupCmdEnabled = StartupCmdCheck.IsChecked == true;
+        Config.StartupCmdPath = StartupCmdPathBox.Text;
+
+        //Login Actions
+        Config.LoginActions = new List<LoginActionStep>(LoginActions);
+
+        // Appearance
+        Config.TermFont = TermFontBox.Text;
+        Config.TermForeground = TermFgBox.Text;
+        Config.TermBackground = TermBgBox.Text;
+        Config.TermScrollback = double.IsNaN(TermScrollbackBox.Value) ? 10000 : (int)TermScrollbackBox.Value;
+
+        // RDP
+        Config.RdpEnabled = RdpEnabledSwitch.IsOn;
+        if (int.TryParse(RdpPortBox.Text, out int rdpPort)) Config.RdpPort = rdpPort;
+        Config.RdpResolution = (RdpResBox.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "Full Screen";
+        Config.RdpAudio = RdpAudioCheck.IsChecked == true;
+        Config.RdpClipboard = RdpClipboardCheck.IsChecked == true;
+        Config.RdpIgnoreCert = RdpCertCheck.IsChecked == true;
+        Config.RdpRedirectDrive = RdpDriveCheck.IsChecked == true;
+        Config.RdpDrivePath = RdpDrivePathBox.Text;
+
         Saved = true;
+    }
+
+    private void LoginAction_Add_Click(object sender, RoutedEventArgs e)
+    {
+        _editingAction = null;
+        LoginActionEditTitle.Text = "Add Sequence Step";
+        LoginActionExpectBox.Text = "";
+        LoginActionSendBox.Text = "";
+        LoginActionTimeoutBox.Value = 5;
+        LoginActionEditPanel.Visibility = Visibility.Visible;
+    }
+
+    private void LoginAction_Edit_Click(object sender, RoutedEventArgs e)
+    {
+        if (LoginActionList.SelectedItem is LoginActionStep step)
+        {
+            _editingAction = step;
+            LoginActionEditTitle.Text = "Edit Sequence Step";
+            LoginActionExpectBox.Text = step.Expect;
+            LoginActionSendBox.Text = step.Send;
+            LoginActionTimeoutBox.Value = step.Timeout;
+            LoginActionEditPanel.Visibility = Visibility.Visible;
+        }
+    }
+
+    private void LoginAction_Delete_Click(object sender, RoutedEventArgs e)
+    {
+        if (LoginActionList.SelectedItem is LoginActionStep step) LoginActions.Remove(step);
+    }
+
+    private void LoginAction_Up_Click(object sender, RoutedEventArgs e)
+    {
+        int idx = LoginActionList.SelectedIndex;
+        if (idx > 0)
+        {
+            var item = LoginActions[idx];
+            LoginActions.RemoveAt(idx);
+            LoginActions.Insert(idx - 1, item);
+            LoginActionList.SelectedIndex = idx - 1;
+        }
+    }
+
+    private void LoginAction_Down_Click(object sender, RoutedEventArgs e)
+    {
+        int idx = LoginActionList.SelectedIndex;
+        if (idx >= 0 && idx < LoginActions.Count - 1)
+        {
+            var item = LoginActions[idx];
+            LoginActions.RemoveAt(idx);
+            LoginActions.Insert(idx + 1, item);
+            LoginActionList.SelectedIndex = idx + 1;
+        }
+    }
+
+    private void LoginAction_SaveEdit_Click(object sender, RoutedEventArgs e)
+    {
+        if (_editingAction != null)
+        {
+            _editingAction.Expect = LoginActionExpectBox.Text;
+            _editingAction.Send = LoginActionSendBox.Text;
+            _editingAction.Timeout = double.IsNaN(LoginActionTimeoutBox.Value) ? 5 : (int)LoginActionTimeoutBox.Value;
+
+            // Replace item to trigger UI refresh
+            int idx = LoginActions.IndexOf(_editingAction);
+            if (idx >= 0) LoginActions[idx] = _editingAction;
+        }
+        else
+        {
+            LoginActions.Add(new LoginActionStep
+            {
+                Expect = LoginActionExpectBox.Text,
+                Send = LoginActionSendBox.Text,
+                Timeout = double.IsNaN(LoginActionTimeoutBox.Value) ? 5 : (int)LoginActionTimeoutBox.Value
+            });
+        }
+        LoginActionEditPanel.Visibility = Visibility.Collapsed;
+    }
+
+    private void LoginAction_CancelEdit_Click(object sender, RoutedEventArgs e)
+    {
+        LoginActionEditPanel.Visibility = Visibility.Collapsed;
     }
 
     private void ShowPasswordCheck_Changed(object sender, RoutedEventArgs e)

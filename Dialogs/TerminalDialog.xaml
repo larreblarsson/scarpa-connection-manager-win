@@ -1,8 +1,0 @@
-<Window x:Class="scarpa_connection_manager_win.Dialogs.TerminalDialog"
-        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="SSH Terminal">
-    <Grid>
-        <WebView2 x:Name="TerminalView" NavigationCompleted="TerminalView_NavigationCompleted" />
-    </Grid>
-</Window>

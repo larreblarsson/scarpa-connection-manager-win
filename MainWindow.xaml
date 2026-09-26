@@ -25,6 +25,9 @@
                 <MenuFlyoutSeparator />
                 <MenuFlyoutItem Text="Change master passphrase…" Click="ChangePassphrase_Click" />
                 <MenuFlyoutItem Text="Forget saved passphrase" Click="ForgetPassphrase_Click" />
+                <MenuFlyoutItem Text="Global Defaults..." Click="GlobalDefaults_Click" />
+                <MenuFlyoutSeparator />
+                <MenuFlyoutItem Text="Exit" Click="Exit_Click" />
                 <MenuFlyoutSeparator />
                 <MenuFlyoutItem Text="Exit" Click="Exit_Click" />
             </MenuBarItem>

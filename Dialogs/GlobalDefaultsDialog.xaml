@@ -1,0 +1,105 @@
+<ContentDialog
+    x:Class="scarpa_connection_manager_win.Dialogs.GlobalDefaultsDialog"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="Default Settings"
+    PrimaryButtonText="OK"
+    CloseButtonText="Cancel"
+    DefaultButton="Primary"
+    PrimaryButtonClick="ContentDialog_PrimaryButtonClick">
+
+    <Grid RowSpacing="16" ColumnSpacing="12" Width="450">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="140" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- Default Palette -->
+        <TextBlock Text="Default Palette:" Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" />
+        <ComboBox x:Name="PaletteBox" Grid.Row="0" Grid.Column="1" HorizontalAlignment="Stretch">
+            <ComboBoxItem Content="None" />
+            <ComboBoxItem Content="Tango" />
+            <ComboBoxItem Content="Linux" />
+            <ComboBoxItem Content="XTerm" />
+            <ComboBoxItem Content="Rxvt" />
+        </ComboBox>
+
+        <!-- Default Scheme -->
+        <TextBlock Text="Default Scheme:" Grid.Row="1" Grid.Column="0" VerticalAlignment="Center" />
+        <ComboBox x:Name="ColorSchemeBox" Grid.Row="1" Grid.Column="1" HorizontalAlignment="Stretch" SelectionChanged="ColorSchemeBox_SelectionChanged">
+            <ComboBoxItem Content="Black on light yellow" />
+            <ComboBoxItem Content="Black on white" />
+            <ComboBoxItem Content="Gray on black" />
+            <ComboBoxItem Content="Green on black" />
+            <ComboBoxItem Content="White on black" />
+            <ComboBoxItem Content="Custom" />
+        </ComboBox>
+
+        <!-- Text color -->
+        <TextBlock Text="Text color:" Grid.Row="2" Grid.Column="0" VerticalAlignment="Center" FontWeight="SemiBold" />
+        <Button Grid.Row="2" Grid.Column="1" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Padding="0" ToolTipService.ToolTip="Pick color">
+            <Button.Content>
+                <Rectangle x:Name="TermFgPreview" Height="32" Fill="Black" Stroke="{ThemeResource DividerStrokeColorDefaultBrush}" StrokeThickness="1" />
+            </Button.Content>
+            <Button.Flyout>
+                <Flyout>
+                    <ColorPicker x:Name="TermFgPicker" ColorChanged="TermFgPicker_ColorChanged" IsColorChannelTextInputVisible="True" IsHexInputVisible="True" />
+                </Flyout>
+            </Button.Flyout>
+        </Button>
+        <!-- The TextBox is kept invisible so we don't break our background logic! -->
+        <TextBox x:Name="TermFgBox" Visibility="Collapsed" TextChanged="ColorBox_TextChanged" />
+
+        <!-- Background color -->
+        <TextBlock Text="Background:" Grid.Row="3" Grid.Column="0" VerticalAlignment="Center" FontWeight="SemiBold" />
+        <Button Grid.Row="3" Grid.Column="1" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Padding="0" ToolTipService.ToolTip="Pick color">
+            <Button.Content>
+                <Rectangle x:Name="TermBgPreview" Height="32" Fill="#FFFFDD" Stroke="{ThemeResource DividerStrokeColorDefaultBrush}" StrokeThickness="1" />
+            </Button.Content>
+            <Button.Flyout>
+                <Flyout>
+                    <ColorPicker x:Name="TermBgPicker" ColorChanged="TermBgPicker_ColorChanged" IsColorChannelTextInputVisible="True" IsHexInputVisible="True" />
+                </Flyout>
+            </Button.Flyout>
+        </Button>
+        <TextBox x:Name="TermBgBox" Visibility="Collapsed" TextChanged="ColorBox_TextChanged" />
+        
+        <!-- Default Font -->
+        <TextBlock Text="Default Font:" Grid.Row="4" Grid.Column="0" VerticalAlignment="Center" />
+        <Grid Grid.Row="4" Grid.Column="1" ColumnSpacing="8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBox x:Name="TermFontBox" Grid.Column="0" />
+            <Button Content="Select" Grid.Column="1" Width="80" />
+        </Grid>
+
+        <!-- Default Buffer Lines -->
+        <TextBlock Text="Default Buffer Lines:" Grid.Row="5" Grid.Column="0" VerticalAlignment="Center" />
+        <NumberBox x:Name="TermScrollbackBox" Grid.Row="5" Grid.Column="1" SpinButtonPlacementMode="Inline" />
+
+        <!-- Default Log Folder -->
+        <TextBlock Text="Default Log Folder:" Grid.Row="6" Grid.Column="0" VerticalAlignment="Center" />
+        <Grid Grid.Row="6" Grid.Column="1" ColumnSpacing="8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBox x:Name="LogPathBox" Grid.Column="0" />
+            <Button Click="BrowseLogPath_Click" Grid.Column="1">
+                <FontIcon Glyph="&#xED25;" FontSize="16" />
+                <!-- Folder Icon -->
+            </Button>
+        </Grid>
+    </Grid>
+</ContentDialog>

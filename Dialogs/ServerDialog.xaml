@@ -275,15 +275,84 @@
 
                         <!-- 5. APPEARANCE PAGE -->
                         <StackPanel x:Name="AppearancePage" Spacing="16" Visibility="Collapsed">
-                            <TextBox x:Name="TermFontBox" Header="Terminal font (e.g. Cascadia Mono 11)" />
-
-                            <Grid ColumnSpacing="16">
+                            <Grid RowSpacing="16" ColumnSpacing="12">
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="120" />
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
-                                <TextBox x:Name="TermFgBox" Header="Foreground color (Hex)" Grid.Column="0" />
-                                <TextBox x:Name="TermBgBox" Header="Background color (Hex)" Grid.Column="1" />
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+
+                                <!-- Palette -->
+                                <TextBlock Text="Palette:" Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" FontWeight="SemiBold" />
+                                <ComboBox x:Name="PaletteBox" Grid.Row="0" Grid.Column="1" HorizontalAlignment="Stretch">
+                                    <ComboBoxItem Content="None" IsSelected="True" />
+                                    <ComboBoxItem Content="Tango" />
+                                    <ComboBoxItem Content="Linux" />
+                                    <ComboBoxItem Content="XTerm" />
+                                    <ComboBoxItem Content="Rxvt" />
+                                </ComboBox>
+
+                                <!-- Color scheme -->
+                                <TextBlock Text="Color scheme:" Grid.Row="1" Grid.Column="0" VerticalAlignment="Center" FontWeight="SemiBold" />
+                                <ComboBox x:Name="ColorSchemeBox" Grid.Row="1" Grid.Column="1" HorizontalAlignment="Stretch" SelectionChanged="ColorSchemeBox_SelectionChanged">
+                                    <ComboBoxItem Content="Black on light yellow" />
+                                    <ComboBoxItem Content="Black on white" />
+                                    <ComboBoxItem Content="Gray on black" />
+                                    <ComboBoxItem Content="Green on black" />
+                                    <ComboBoxItem Content="White on black" />
+                                    <ComboBoxItem Content="Custom" />
+                                </ComboBox>
+
+                                <!-- Text color -->
+                                <TextBlock Text="Text color:" Grid.Row="2" Grid.Column="0" VerticalAlignment="Center" FontWeight="SemiBold" />
+                                <Button Grid.Row="2" Grid.Column="1" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Padding="0" ToolTipService.ToolTip="Pick color">
+                                    <Button.Content>
+                                        <Rectangle x:Name="TermFgPreview" Height="32" Fill="Black" Stroke="{ThemeResource DividerStrokeColorDefaultBrush}" StrokeThickness="1" />
+                                    </Button.Content>
+                                    <Button.Flyout>
+                                        <Flyout>
+                                            <ColorPicker x:Name="TermFgPicker" ColorChanged="TermFgPicker_ColorChanged" IsColorChannelTextInputVisible="True" IsHexInputVisible="True" />
+                                        </Flyout>
+                                    </Button.Flyout>
+                                </Button>
+                                <!-- The TextBox is kept invisible so we don't break our background logic! -->
+                                <TextBox x:Name="TermFgBox" Visibility="Collapsed" TextChanged="ColorBox_TextChanged" />
+
+                                <!-- Background color -->
+                                <TextBlock Text="Background:" Grid.Row="3" Grid.Column="0" VerticalAlignment="Center" FontWeight="SemiBold" />
+                                <Button Grid.Row="3" Grid.Column="1" HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" Padding="0" ToolTipService.ToolTip="Pick color">
+                                    <Button.Content>
+                                        <Rectangle x:Name="TermBgPreview" Height="32" Fill="#FFFFDD" Stroke="{ThemeResource DividerStrokeColorDefaultBrush}" StrokeThickness="1" />
+                                    </Button.Content>
+                                    <Button.Flyout>
+                                        <Flyout>
+                                            <ColorPicker x:Name="TermBgPicker" ColorChanged="TermBgPicker_ColorChanged" IsColorChannelTextInputVisible="True" IsHexInputVisible="True" />
+                                        </Flyout>
+                                    </Button.Flyout>
+                                </Button>
+                                <TextBox x:Name="TermBgBox" Visibility="Collapsed" TextChanged="ColorBox_TextChanged" />
+
+                                <!-- Font -->
+                                <TextBlock Text="Font:" Grid.Row="4" Grid.Column="0" VerticalAlignment="Center" FontWeight="SemiBold" />
+                                <Grid Grid.Row="4" Grid.Column="1" ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBox x:Name="TermFontBox" Grid.Column="0" PlaceholderText="Cascadia Mono 11" />
+                                    <Button Content="Select" Grid.Column="1" Click="SelectFont_Click" Width="80" />
+                                </Grid>
+
+                                <!-- Defaults -->
+                                <TextBlock Text="Defaults:" Grid.Row="5" Grid.Column="0" VerticalAlignment="Center" FontWeight="SemiBold" />
+                                <Button Content="Reset to Defaults" Grid.Row="5" Grid.Column="1" HorizontalAlignment="Stretch" Click="ResetAppearance_Click" />
                             </Grid>
                         </StackPanel>
 

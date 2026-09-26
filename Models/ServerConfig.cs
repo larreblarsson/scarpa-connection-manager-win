@@ -89,9 +89,20 @@ public sealed class ServerConfig
 
     public ServerConfig Clone()
     {
-        // Because Clone() relies on JSON serialization, the new properties will be copied automatically!
-        var json = System.Text.Json.JsonSerializer.Serialize(this);
-        return System.Text.Json.JsonSerializer.Deserialize<ServerConfig>(json)!;
+        // Automatically copies all basic properties (strings, ints, bools)
+        var clone = (ServerConfig)this.MemberwiseClone();
+
+        // Deep copy the lists so editing them doesn't affect the original until we hit Save
+        if (this.LoginActions != null)
+        {
+            clone.LoginActions = new List<LoginActionStep>();
+            foreach (var action in this.LoginActions)
+            {
+                clone.LoginActions.Add(new LoginActionStep { Expect = action.Expect, Send = action.Send, Timeout = action.Timeout });
+            }
+        }
+
+        return clone;
     }
 }
 

@@ -1165,6 +1165,13 @@ public sealed partial class MainWindow : Window
     private void ImportPuttyRegistry_Click(object sender, RoutedEventArgs e) { Log("Importing from registry."); }
     private void Export_Click(object sender, RoutedEventArgs e) { Log("Export File Picker needs porting."); }
 
+    private async void GlobalDefaults_Click(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+    {
+        var dialog = new scarpa_connection_manager_win.Dialogs.GlobalDefaultsDialog();
+        dialog.XamlRoot = this.Content.XamlRoot;
+        await dialog.ShowAsync();
+    }
+
     private void SortTreeNodes(TreeViewNode node)
     {
         if (node.Children.Count == 0) return;

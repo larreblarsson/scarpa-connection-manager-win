@@ -26,25 +26,24 @@ namespace scarpa_connection_manager_win
     /// </summary>
     public partial class App : Application
     {
-        private Window? _window;
+        // 1. Add this public static property so the rest of the app can find the window
+        public static Window MainWindow { get; private set; }
 
-        /// <summary>
-        /// Initializes the singleton application object.  This is the first line of authored code
-        /// executed, and as such is the logical equivalent of main() or WinMain().
-        /// </summary>
+        private Window m_window;
+
         public App()
         {
-            InitializeComponent();
+            this.InitializeComponent();
         }
 
-        /// <summary>
-        /// Invoked when the application is launched.
-        /// </summary>
-        /// <param name="args">Details about the launch request and process.</param>
         protected override void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
         {
-            _window = new MainWindow();
-            _window.Activate();
+            m_window = new MainWindow();
+
+            // 2. Assign the static property right here
+            MainWindow = m_window;
+
+            m_window.Activate();
         }
     }
 }

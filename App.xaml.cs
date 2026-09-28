@@ -27,9 +27,9 @@ namespace scarpa_connection_manager_win
     public partial class App : Application
     {
         // 1. Add this public static property so the rest of the app can find the window
-        public static Window MainWindow { get; private set; }
+        public static Window MainWindow { get; private set; } = null!;
 
-        private Window m_window;
+        private Window m_window = null!;
 
         public App()
         {

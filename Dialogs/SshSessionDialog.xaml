@@ -1,0 +1,9 @@
+<Window
+    x:Class="scarpa_connection_manager_win.Dialogs.SshSessionWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <Grid x:Name="RootGrid" Background="{ThemeResource ApplicationPageBackgroundThemeBrush}" Margin="0" Padding="0">
+        <!-- The TerminalControl will be injected here automatically by the C# code -->
+    </Grid>
+</Window>

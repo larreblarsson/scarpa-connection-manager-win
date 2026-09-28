@@ -5,16 +5,12 @@ using ScarpaConnectionManager.Models;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 
 namespace scarpa_connection_manager_win.Dialogs;
 
-public sealed partial class ServerDialog : ContentDialog
+public sealed partial class ServerDialog : Window
 {
-    [DllImport("user32.dll")]
-    private static extern IntPtr GetActiveWindow();
-
     public ObservableCollection<LoginActionStep> LoginActions { get; set; } = new();
     private LoginActionStep? _editingAction = null;
 
@@ -22,11 +18,34 @@ public sealed partial class ServerDialog : ContentDialog
     public bool Saved { get; private set; } = false;
 
     private bool _isColorUpdating = false;
+    private TaskCompletionSource<bool>? _tcs;
 
-    public ServerDialog(ServerConfig? existingConfig, IEnumerable<string> folders, XamlRoot root, string? defaultFolder = null)
+    // Note: XamlRoot was removed from the parameters since it's a standalone window now
+    public ServerDialog(ServerConfig? existingConfig, IEnumerable<string> folders, string? defaultFolder = null)
     {
         this.InitializeComponent();
-        this.XamlRoot = root;
+        this.Title = existingConfig == null ? "Add Server" : $"Edit {existingConfig.Name}";
+
+        // Center the window on the screen
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        var windowId = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hwnd);
+        var appWindow = Microsoft.UI.Windowing.AppWindow.GetFromWindowId(windowId);
+
+        int windowWidth = 850;
+        int windowHeight = 700;
+
+        var displayArea = Microsoft.UI.Windowing.DisplayArea.GetFromWindowId(windowId, Microsoft.UI.Windowing.DisplayAreaFallback.Primary);
+        if (displayArea != null)
+        {
+            var workArea = displayArea.WorkArea;
+            var x = (workArea.Width - windowWidth) / 2;
+            var y = (workArea.Height - windowHeight) / 2;
+            appWindow.MoveAndResize(new Windows.Graphics.RectInt32(x, y, windowWidth, windowHeight));
+        }
+        else
+        {
+            appWindow.Resize(new Windows.Graphics.SizeInt32(windowWidth, windowHeight));
+        }
 
         NavView.SelectedItem = NavView.MenuItems[0];
         foreach (var f in folders) FolderBox.Items.Add(f);
@@ -85,16 +104,60 @@ public sealed partial class ServerDialog : ContentDialog
             StartupCmdPathBox.Text = Config.StartupCmdPath ?? "";
 
             // Appearance
-            TermFontBox.Text = Config.TermFont ?? "";
+            string fontStr = Config.TermFont ?? "Consolas 11";
+            int lastSpace = fontStr.LastIndexOf(' ');
+            string fontName;
+            double fontSize;
+
+            if (lastSpace > 0 && double.TryParse(fontStr.Substring(lastSpace + 1), out double parsedSize))
+            {
+                fontName = fontStr.Substring(0, lastSpace).Trim();
+                fontSize = parsedSize;
+            }
+            else
+            {
+                fontName = fontStr;
+                fontSize = 11;
+            }
+
+            // FIX: Try to set SelectedItem first. This forces WinUI to show the text!
+            if (TermFontBox.Items.Contains(fontName))
+            {
+                TermFontBox.SelectedItem = fontName;
+            }
+            else
+            {
+                TermFontBox.Text = fontName;
+            }
+
+            // Convert the numeric size to a string and apply the same ComboBox fix
+            string sizeStr = fontSize.ToString(); // Note: change 'fontSize' to 'globalFontSize' or 'parsedSize' depending on the method you are pasting into
+            if (TermFontSizeBox.Items.Contains(sizeStr))
+            {
+                TermFontSizeBox.SelectedItem = sizeStr;
+            }
+            else
+            {
+                TermFontSizeBox.Text = sizeStr;
+            }
+
             TermFgBox.Text = Config.TermForeground ?? "#000000";
             TermBgBox.Text = Config.TermBackground ?? "#FFFFDD";
             TermScrollbackBox.Value = Config.TermScrollback > 0 ? Config.TermScrollback : 10000;
 
             SyncSchemeDropdown(TermFgBox.Text, TermBgBox.Text);
-
-            // CRITICAL FIX: Force the color bars to paint themselves when the window opens!
             UpdateColorPreview(TermFgBox.Text, TermFgPreview);
             UpdateColorPreview(TermBgBox.Text, TermBgPreview);
+
+            string targetPalette = Config.TermPalette ?? "None";
+            foreach (ComboBoxItem item in PaletteBox.Items)
+            {
+                if (item.Content?.ToString() == targetPalette)
+                {
+                    PaletteBox.SelectedItem = item;
+                    break;
+                }
+            }
 
             // RDP
             RdpEnabledSwitch.IsOn = Config.RdpEnabled;
@@ -133,14 +196,33 @@ public sealed partial class ServerDialog : ContentDialog
             LoginActionList.ItemsSource = LoginActions;
 
             // Appearance
-            TermFontBox.Text = "Cascadia Mono 11";
+
+            // 1. Initialize Default Palette
+            string targetPalette = "None";
+            foreach (ComboBoxItem item in PaletteBox.Items)
+            {
+                if (item != null && item.Content?.ToString() == targetPalette)
+                {
+                    PaletteBox.SelectedItem = item;
+                    break;
+                }
+            }
+            if (PaletteBox.SelectedItem == null) PaletteBox.SelectedIndex = 0; // Fallback
+
+            // 2. Initialize Default Font
+            if (TermFontBox.Items.Contains("Cascadia Mono")) TermFontBox.SelectedItem = "Cascadia Mono";
+            else TermFontBox.Text = "Cascadia Mono";
+
+            if (TermFontSizeBox.Items.Contains("11")) TermFontSizeBox.SelectedItem = "11";
+            else TermFontSizeBox.Text = "11";
+
             TermFgBox.Text = "#D0D0D0";
             TermBgBox.Text = "#101010";
             TermScrollbackBox.Value = 10000;
 
             SyncSchemeDropdown(TermFgBox.Text, TermBgBox.Text);
 
-            // CRITICAL FIX: Force the color bars to paint themselves when the window opens!
+            // Force the color bars to paint themselves when the window opens!
             UpdateColorPreview(TermFgBox.Text, TermFgPreview);
             UpdateColorPreview(TermBgBox.Text, TermBgPreview);
 
@@ -151,10 +233,12 @@ public sealed partial class ServerDialog : ContentDialog
         }
     }
 
-    public async Task<bool> ShowModalAsync()
+    public Task<bool> ShowModalAsync()
     {
-        var result = await this.ShowAsync();
-        return result == ContentDialogResult.Primary;
+        _tcs = new TaskCompletionSource<bool>();
+        this.Closed += (s, e) => _tcs.TrySetResult(false); // Fired if the user clicks the native 'X' close button
+        this.Activate(); // Opens the window
+        return _tcs.Task;
     }
 
     private void NavView_SelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
@@ -183,7 +267,7 @@ public sealed partial class ServerDialog : ContentDialog
     private async void BrowseKeyFile_Click(object sender, RoutedEventArgs e)
     {
         var picker = new Windows.Storage.Pickers.FileOpenPicker();
-        IntPtr hwnd = GetActiveWindow();
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this); // Now uses this window's handle
         WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
         picker.FileTypeFilter.Add("*");
 
@@ -194,7 +278,7 @@ public sealed partial class ServerDialog : ContentDialog
     private async void BrowseLogPath_Click(object sender, RoutedEventArgs e)
     {
         var picker = new Windows.Storage.Pickers.FolderPicker();
-        IntPtr hwnd = GetActiveWindow();
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
         WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
         picker.SuggestedStartLocation = Windows.Storage.Pickers.PickerLocationId.DocumentsLibrary;
         picker.FileTypeFilter.Add("*");
@@ -206,7 +290,7 @@ public sealed partial class ServerDialog : ContentDialog
     private async void BrowseStartupCmd_Click(object sender, RoutedEventArgs e)
     {
         var picker = new Windows.Storage.Pickers.FileOpenPicker();
-        IntPtr hwnd = GetActiveWindow();
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
         WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
 
         picker.FileTypeFilter.Add(".txt");
@@ -217,11 +301,10 @@ public sealed partial class ServerDialog : ContentDialog
         if (file != null) StartupCmdPathBox.Text = file.Path;
     }
 
-    private void ContentDialog_PrimaryButtonClick(ContentDialog sender, ContentDialogButtonClickEventArgs args)
+    private void Save_Click(object sender, RoutedEventArgs e)
     {
         if (string.IsNullOrWhiteSpace(NameBox.Text) || string.IsNullOrWhiteSpace(HostBox.Text))
         {
-            args.Cancel = true;
             return;
         }
 
@@ -259,10 +342,11 @@ public sealed partial class ServerDialog : ContentDialog
         Config.LoginActions = new List<LoginActionStep>(LoginActions);
 
         // Appearance
-        Config.TermFont = TermFontBox.Text;
+        Config.TermFont = $"{(TermFontBox.Text ?? "").Trim()} {(TermFontSizeBox.Text ?? "").Trim()}";
         Config.TermForeground = TermFgBox.Text;
         Config.TermBackground = TermBgBox.Text;
         Config.TermScrollback = double.IsNaN(TermScrollbackBox.Value) ? 10000 : (int)TermScrollbackBox.Value;
+        Config.TermPalette = (PaletteBox.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "None";
 
         // RDP
         Config.RdpEnabled = RdpEnabledSwitch.IsOn;
@@ -275,6 +359,14 @@ public sealed partial class ServerDialog : ContentDialog
         Config.RdpDrivePath = RdpDrivePathBox.Text;
 
         Saved = true;
+        _tcs.TrySetResult(true);
+        this.Close();
+    }
+
+    private void Cancel_Click(object sender, RoutedEventArgs e)
+    {
+        _tcs.TrySetResult(false);
+        this.Close();
     }
 
     private void LoginAction_Add_Click(object sender, RoutedEventArgs e)
@@ -457,12 +549,6 @@ public sealed partial class ServerDialog : ContentDialog
         if (!_isColorUpdating) ColorSchemeBox.SelectedIndex = 5;
     }
 
-    private void SelectFont_Click(object sender, RoutedEventArgs e)
-    {
-        // Note: WinUI 3 doesn't have a single-line native FontPicker dialog like GTK does. 
-        // For now, users can manually type the font name (e.g. "Ubuntu Mono 12").
-    }
-
     private void ResetAppearance_Click(object sender, RoutedEventArgs e)
     {
         var localSettings = Windows.Storage.ApplicationData.Current.LocalSettings;
@@ -476,12 +562,48 @@ public sealed partial class ServerDialog : ContentDialog
 
         TermFgBox.Text = localSettings.Values["GlobalDefaultFg"] as string ?? "#000000";
         TermBgBox.Text = localSettings.Values["GlobalDefaultBg"] as string ?? "#FFFFDD";
-        TermFontBox.Text = localSettings.Values["GlobalDefaultFont"] as string ?? "";
+
+        // Parse the Global Font into Name and Size
+        string globalFont = localSettings.Values["GlobalDefaultFont"] as string ?? "Consolas 11";
+        int lastSpaceGlobal = globalFont.LastIndexOf(' ');
+        string globalFontName;
+        double globalFontSize;
+
+        if (lastSpaceGlobal > 0 && double.TryParse(globalFont.Substring(lastSpaceGlobal + 1), out double parsedGlobalSize))
+        {
+            globalFontName = globalFont.Substring(0, lastSpaceGlobal).Trim();
+            globalFontSize = parsedGlobalSize;
+        }
+        else
+        {
+            globalFontName = globalFont;
+            globalFontSize = 11;
+        }
+
+        if (TermFontBox.Items.Contains(globalFontName))
+        {
+            TermFontBox.SelectedItem = globalFontName;
+        }
+        else
+        {
+            TermFontBox.Text = globalFontName;
+        }
+
+        // Convert the numeric size to a string and apply the same ComboBox fix
+        string sizeStr = globalFontSize.ToString();
+        if (TermFontSizeBox.Items.Contains(sizeStr))
+        {
+            TermFontSizeBox.SelectedItem = sizeStr;
+        }
+        else
+        {
+            TermFontSizeBox.Text = sizeStr;
+        }
 
         // 2. Apply Global Terminal Defaults
         TermScrollbackBox.Value = (double)(localSettings.Values["GlobalDefaultScrollback"] ?? 10000.0);
 
-        string globalLog = localSettings.Values["GlobalDefaultLogPath"] as string;
+        string? globalLog = localSettings.Values["GlobalDefaultLogPath"] as string;
         if (!string.IsNullOrWhiteSpace(globalLog))
         {
             LogPathTextBox.Text = globalLog; // Safely set the log path if one exists globally

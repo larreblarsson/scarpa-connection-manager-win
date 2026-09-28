@@ -47,6 +47,8 @@ public sealed class ServerConfig
     [JsonPropertyName("auto_sequence")] public List<SequenceStep> AutoSequence { get; set; } = new();
 
     // Terminal appearance
+    // Terminal appearance
+    [JsonPropertyName("term_palette")] public string TermPalette { get; set; } = "None";
     [JsonPropertyName("term_scheme")] public string TermScheme { get; set; } = "Default";
     [JsonPropertyName("term_font")] public string TermFont { get; set; } = "Cascadia Mono 11";
     [JsonPropertyName("term_fg")] public string TermForeground { get; set; } = "#D0D0D0";

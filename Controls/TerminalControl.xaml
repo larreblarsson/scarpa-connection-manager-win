@@ -1,9 +1,15 @@
 <UserControl
     x:Class="scarpa_connection_manager_win.Controls.TerminalControl"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Margin="0" Padding="0">
 
-    <Grid>
-        <WebView2 x:Name="TerminalView" NavigationCompleted="TerminalView_NavigationCompleted" />
+    <Grid Margin="0" Padding="0">
+        <WebView2 x:Name="TerminalView" 
+                  HorizontalAlignment="Stretch" 
+                  VerticalAlignment="Stretch" 
+                  DefaultBackgroundColor="Transparent"
+                  UseSystemFocusVisuals="False"
+                  NavigationCompleted="TerminalView_NavigationCompleted" />
     </Grid>
 </UserControl>

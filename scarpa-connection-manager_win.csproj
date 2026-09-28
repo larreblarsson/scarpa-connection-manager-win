@@ -73,6 +73,7 @@
     <None Remove="Dialogs\PassphraseDialog.xaml" />
     <None Remove="Dialogs\ServerDialog.xaml" />
     <None Remove="Dialogs\SftpWindow.xaml" />
+    <None Remove="Dialogs\SshSessionDialog.xaml" />
     <None Remove="ServerDialog.xaml" />
     <None Remove="terminal.html" />
     <None Remove="Views\SftpWindow.xaml" />
@@ -83,6 +84,11 @@
   <ItemGroup>
     <Folder Include="Properties\PublishProfiles\" />
     <Folder Include="Views\" />
+  </ItemGroup>
+  <ItemGroup>
+    <Page Update="Dialogs\SshSessionDialog.xaml">
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
   </ItemGroup>
   <ItemGroup>
     <Page Update="Dialogs\GlobalDefaultsDialog.xaml">

@@ -8,12 +8,28 @@
     <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.js"></script>
     <style>
-        /* This CSS is required to prevent a white screen */
-        body, html { margin: 0; padding: 0; height: 100%; background-color: #1e1e1e; overflow: hidden; }
-        #terminal-container { height: 100%; width: 100%; padding: 5px; box-sizing: border-box; }
+        /* Force margins to 0 to completely eliminate the frame */
+        body, html { 
+            margin: 0 !important; 
+            padding: 0 !important; 
+            height: 100%; 
+            background-color: #1e1e1e; 
+            overflow: hidden; 
+        }
+        
+        /* Changed padding from 5px to 0px to make it flush with the window */
+        #terminal-container { 
+            height: 100%; 
+            width: 100%; 
+            padding: 0px; 
+            box-sizing: border-box; 
+        }
         
         /* Ensure the xterm viewport stretches */
-        .xterm, .xterm-viewport, .xterm-screen { height: 100% !important; width: 100% !important; }
+        .xterm, .xterm-viewport, .xterm-screen { 
+            height: 100% !important; 
+            width: 100% !important; 
+        }
     </style>
 </head>
 <body>

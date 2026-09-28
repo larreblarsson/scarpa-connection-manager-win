@@ -2,14 +2,15 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Org.BouncyCastle.Asn1.X509;
 using ScarpaConnectionManager.Models;
 using ScarpaConnectionManager.Services;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Windows.System;
-using System.Text.RegularExpressions;
 
 namespace scarpa_connection_manager_win;
 
@@ -106,6 +107,8 @@ public sealed partial class MainWindow : Window
         {
             appWindow.Resize(new Windows.Graphics.SizeInt32(windowWidth, windowHeight));
         }
+
+        this.Closed += MainWindow_Closed;
     }
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
@@ -687,7 +690,8 @@ public sealed partial class MainWindow : Window
             targetFolder = path == AppPaths.RootFolder ? null : path;
         }
 
-        var dlg = new Dialogs.ServerDialog(null, AllFolders(), this.Content.XamlRoot, targetFolder);
+        // FIXED: Changed 'target' to 'targetFolder'
+        var dlg = new Dialogs.ServerDialog(null, AllFolders(), targetFolder);
         if (!await dlg.ShowModalAsync()) return;
 
         _servers.Add(dlg.Config);
@@ -750,23 +754,13 @@ public sealed partial class MainWindow : Window
 
             if (_nodeTags.TryGetValue(node, out var tag) && tag is ServerConfig cfg)
             {
-                Log($"Opening SSH Tab: {cfg.Name}");
+                Log($"Opening SSH Window: {cfg.Name}");
 
                 string? logPath = cfg.LoggingEnabled ? ConnectionLauncher.ResolveLogPath(cfg) : null;
 
-                // Create the embedded terminal control
-                var termControl = new Controls.TerminalControl(cfg, logPath);
-
-                // Wrap it in a WinUI 3 Tab using the correct FontIcon
-                var newTab = new Microsoft.UI.Xaml.Controls.TabViewItem
-                {
-                    Header = cfg.Name,
-                    IconSource = new Microsoft.UI.Xaml.Controls.FontIconSource { Glyph = "\uE756" },
-                    Content = termControl
-                };
-
-                SessionTabs.TabItems.Add(newTab);
-                SessionTabs.SelectedItem = newTab; // Auto-focus the new tab
+                // Launch the new standalone SSH Window
+                var sshWindow = new Dialogs.SshSessionWindow(cfg, logPath);
+                sshWindow.Activate();
             }
         }
     }
@@ -843,7 +837,7 @@ public sealed partial class MainWindow : Window
             target = tag is string path ? path : ((tag as ServerConfig)?.Folder ?? "");
         }
 
-        var dlg = new Dialogs.ServerDialog(null, AllFolders(), this.Content.XamlRoot, target);
+        var dlg = new Dialogs.ServerDialog(null, AllFolders(), target);
         if (!await dlg.ShowModalAsync()) return;
 
         _servers.Add(dlg.Config);
@@ -858,7 +852,8 @@ public sealed partial class MainWindow : Window
 
         if (_nodeTags.TryGetValue(_selectedNodes[0], out var tag) && tag is ServerConfig cfg)
         {
-            var dlg = new Dialogs.ServerDialog(cfg, AllFolders(), this.Content.XamlRoot);
+            // FIXED: Removed 'this.Content.XamlRoot' from the arguments
+            var dlg = new Dialogs.ServerDialog(cfg, AllFolders());
             if (!await dlg.ShowModalAsync()) return;
 
             _servers[_servers.IndexOf(cfg)] = dlg.Config;
@@ -1165,11 +1160,11 @@ public sealed partial class MainWindow : Window
     private void ImportPuttyRegistry_Click(object sender, RoutedEventArgs e) { Log("Importing from registry."); }
     private void Export_Click(object sender, RoutedEventArgs e) { Log("Export File Picker needs porting."); }
 
-    private async void GlobalDefaults_Click(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+    private void GlobalDefaults_Click(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
     {
         var dialog = new scarpa_connection_manager_win.Dialogs.GlobalDefaultsDialog();
-        dialog.XamlRoot = this.Content.XamlRoot;
-        await dialog.ShowAsync();
+        // FIXED: Window uses Activate() to show itself. ShowAsync() is only for ContentDialog.
+        dialog.Activate();
     }
 
     private void SortTreeNodes(TreeViewNode node)
@@ -1197,5 +1192,11 @@ public sealed partial class MainWindow : Window
             SortTreeNodes(child);
             node.Children.Add(child);
         }
+    }
+
+    private void MainWindow_Closed(object sender, WindowEventArgs args)
+    {
+        // This instantly terminates the app process, instantly closing all SSH/SFTP windows and dialogs.
+        Application.Current.Exit();
     }
 }

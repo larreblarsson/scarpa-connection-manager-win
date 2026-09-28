@@ -7,7 +7,7 @@ using Windows.Storage.Pickers;
 
 namespace scarpa_connection_manager_win.Dialogs;
 
-public sealed partial class GlobalDefaultsDialog : ContentDialog
+public sealed partial class GlobalDefaultsDialog : Window
 {
     private bool _isColorUpdating = false;
     private ApplicationDataContainer _localSettings = ApplicationData.Current.LocalSettings;
@@ -15,6 +15,29 @@ public sealed partial class GlobalDefaultsDialog : ContentDialog
     public GlobalDefaultsDialog()
     {
         this.InitializeComponent();
+        this.Title = "Global Default Settings";
+
+        // Center the window on the screen
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        var windowId = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hwnd);
+        var appWindow = Microsoft.UI.Windowing.AppWindow.GetFromWindowId(windowId);
+
+        int windowWidth = 500;
+        int windowHeight = 650;
+
+        var displayArea = Microsoft.UI.Windowing.DisplayArea.GetFromWindowId(windowId, Microsoft.UI.Windowing.DisplayAreaFallback.Primary);
+        if (displayArea != null)
+        {
+            var workArea = displayArea.WorkArea;
+            var x = (workArea.Width - windowWidth) / 2;
+            var y = (workArea.Height - windowHeight) / 2;
+            appWindow.MoveAndResize(new Windows.Graphics.RectInt32(x, y, windowWidth, windowHeight));
+        }
+        else
+        {
+            appWindow.Resize(new Windows.Graphics.SizeInt32(windowWidth, windowHeight));
+        }
+
         LoadSettings();
     }
 
@@ -29,7 +52,43 @@ public sealed partial class GlobalDefaultsDialog : ContentDialog
 
         TermFgBox.Text = _localSettings.Values["GlobalDefaultFg"] as string ?? "#000000";
         TermBgBox.Text = _localSettings.Values["GlobalDefaultBg"] as string ?? "#FFFFDD";
-        TermFontBox.Text = _localSettings.Values["GlobalDefaultFont"] as string ?? "Cascadia Mono 11";
+
+        // Parse the Global Font into Name and Size
+        string globalFont = _localSettings.Values["GlobalDefaultFont"] as string ?? "Cascadia Mono 11";
+        int lastSpace = globalFont.LastIndexOf(' ');
+        string fontName;
+        double fontSize;
+
+        if (lastSpace > 0 && double.TryParse(globalFont.Substring(lastSpace + 1), out double parsedSize))
+        {
+            fontName = globalFont.Substring(0, lastSpace).Trim();
+            fontSize = parsedSize;
+        }
+        else
+        {
+            fontName = globalFont;
+            fontSize = 11;
+        }
+
+        if (TermFontBox.Items.Contains(fontName))
+        {
+            TermFontBox.SelectedItem = fontName;
+        }
+        else
+        {
+            TermFontBox.Text = fontName;
+        }
+
+        // Convert the numeric size to a string and apply the same ComboBox fix
+        string sizeStr = fontSize.ToString(); // Note: change 'fontSize' to 'globalFontSize' or 'parsedSize' depending on the method you are pasting into
+        if (TermFontSizeBox.Items.Contains(sizeStr))
+        {
+            TermFontSizeBox.SelectedItem = sizeStr;
+        }
+        else
+        {
+            TermFontSizeBox.Text = sizeStr;
+        }
 
         TermScrollbackBox.Value = (double)(_localSettings.Values["GlobalDefaultScrollback"] ?? 10000.0);
         LogPathBox.Text = _localSettings.Values["GlobalDefaultLogPath"] as string ?? "";
@@ -42,16 +101,27 @@ public sealed partial class GlobalDefaultsDialog : ContentDialog
         UpdateColorPreview(TermBgBox.Text, TermBgPreview);
     }
 
-    private void ContentDialog_PrimaryButtonClick(ContentDialog sender, ContentDialogButtonClickEventArgs args)
+    private void Save_Click(object sender, RoutedEventArgs e)
     {
-        // Save settings
+        // Save the new Palette setting as an integer (the dropdown index)
         _localSettings.Values["GlobalDefaultPalette"] = PaletteBox.SelectedIndex;
+
+        // Your existing appearance saves
         _localSettings.Values["GlobalDefaultScheme"] = ColorSchemeBox.SelectedIndex;
         _localSettings.Values["GlobalDefaultFg"] = TermFgBox.Text;
         _localSettings.Values["GlobalDefaultBg"] = TermBgBox.Text;
-        _localSettings.Values["GlobalDefaultFont"] = TermFontBox.Text;
+        _localSettings.Values["GlobalDefaultFont"] = $"{(TermFontBox.Text ?? "").Trim()} {(TermFontSizeBox.Text ?? "").Trim()}";
         _localSettings.Values["GlobalDefaultScrollback"] = TermScrollbackBox.Value;
+
+        // Your existing log path save
         _localSettings.Values["GlobalDefaultLogPath"] = LogPathBox.Text;
+
+        this.Close();
+    }
+
+    private void Cancel_Click(object sender, RoutedEventArgs e)
+    {
+        this.Close();
     }
 
     private void ColorSchemeBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -150,7 +220,7 @@ public sealed partial class GlobalDefaultsDialog : ContentDialog
         folderPicker.FileTypeFilter.Add("*");
 
         // Retrieve the window handle (HWND) of the current WinUI 3 window to attach the picker
-        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(App.MainWindow);
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
         WinRT.Interop.InitializeWithWindow.Initialize(folderPicker, hwnd);
 
         var folder = await folderPicker.PickSingleFolderAsync();

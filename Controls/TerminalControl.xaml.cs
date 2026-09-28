@@ -142,25 +142,57 @@ public sealed partial class TerminalControl : UserControl
         TerminalView.CoreWebView2.Navigate("https://terminal.local/terminal.html");
     }
 
-    private void TerminalView_NavigationCompleted(Microsoft.UI.Xaml.Controls.WebView2 sender, Microsoft.Web.WebView2.Core.CoreWebView2NavigationCompletedEventArgs args)
+    private async void TerminalView_NavigationCompleted(Microsoft.UI.Xaml.Controls.WebView2 sender, Microsoft.Web.WebView2.Core.CoreWebView2NavigationCompletedEventArgs args)
     {
-        TerminalView.Focus(Microsoft.UI.Xaml.FocusState.Programmatic);
+        if (args.IsSuccess)
+        {
+            string fontName = "Consolas";
+            int fontSize = 11;
 
-        int scrollback = _config.TermScrollback > 0 ? _config.TermScrollback : 10000;
-        string bg = string.IsNullOrWhiteSpace(_config.TermBackground) ? "#101010" : _config.TermBackground;
-        string fg = string.IsNullOrWhiteSpace(_config.TermForeground) ? "#D0D0D0" : _config.TermForeground;
+            if (!string.IsNullOrWhiteSpace(_config.TermFont))
+            {
+                int lastSpace = _config.TermFont.LastIndexOf(' ');
+                if (lastSpace > 0 && int.TryParse(_config.TermFont.Substring(lastSpace + 1), out int parsedSize))
+                {
+                    fontName = _config.TermFont.Substring(0, lastSpace).Trim();
+                    fontSize = parsedSize;
+                }
+                else
+                {
+                    fontName = _config.TermFont;
+                }
+            }
 
-        string initScript = $@"
-            try {{
-                let targetTerm = typeof term !== 'undefined' ? term : (typeof window.term !== 'undefined' ? window.term : null);
-                if (targetTerm) {{
-                    targetTerm.options.scrollback = {scrollback};
-                    targetTerm.options.theme = {{ background: '{bg}', foreground: '{fg}' }};
-                }}
-            }} catch(e) {{ }}
+            string fg = _config.TermForeground ?? "#D0D0D0";
+            string bg = _config.TermBackground ?? "#101010";
+            string palette = _config.TermPalette ?? "None";
+            string ansiColors = "";
+
+            // Define the 16 standard ANSI colors based on the chosen palette
+            if (palette == "Tango")
+            {
+                ansiColors = "black: '#2e3436', red: '#cc0000', green: '#4e9a06', yellow: '#c4a000', blue: '#3465a4', magenta: '#75507b', cyan: '#06989a', white: '#d3d7cf', brightBlack: '#555753', brightRed: '#ef2929', brightGreen: '#8ae234', brightYellow: '#fce94f', brightBlue: '#729fcf', brightMagenta: '#ad7fa8', brightCyan: '#34e2e2', brightWhite: '#eeeeec', ";
+            }
+            else if (palette == "XTerm")
+            {
+                ansiColors = "black: '#000000', red: '#cd0000', green: '#00cd00', yellow: '#cdcd00', blue: '#0000ee', magenta: '#cd00cd', cyan: '#00cdcd', white: '#e5e5e5', brightBlack: '#7f7f7f', brightRed: '#ff0000', brightGreen: '#00ff00', brightYellow: '#ffff00', brightBlue: '#5c5cff', brightMagenta: '#ff00ff', brightCyan: '#00ffff', brightWhite: '#ffffff', ";
+            }
+            else if (palette == "Rxvt")
+            {
+                ansiColors = "black: '#000000', red: '#cd0000', green: '#00cd00', yellow: '#cdcd00', blue: '#0000cd', magenta: '#cd00cd', cyan: '#00cdcd', white: '#faebd7', brightBlack: '#404040', brightRed: '#ff0000', brightGreen: '#00ff00', brightYellow: '#ffff00', brightBlue: '#0000ff', brightMagenta: '#ff00ff', brightCyan: '#00ffff', brightWhite: '#ffffff', ";
+            }
+
+            // Inject the ANSI colors directly into the xterm.js theme object
+            string script = $@"
+            term.options.fontFamily = '{fontName}, Consolas, monospace';
+            term.options.fontSize = {fontSize};
+            term.options.theme = {{ {ansiColors} background: '{bg}', foreground: '{fg}' }};
+            document.body.style.backgroundColor = '{bg}';
+            fitAddon.fit();
         ";
 
-        _ = TerminalView.CoreWebView2.ExecuteScriptAsync(initScript);
+            await TerminalView.CoreWebView2.ExecuteScriptAsync(script);
+        }
     }
 
     private void StartSshSession(ServerConfig cfg)

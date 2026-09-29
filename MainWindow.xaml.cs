@@ -92,8 +92,8 @@ public sealed partial class MainWindow : Window
         var windowId = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hwnd);
         var appWindow = Microsoft.UI.Windowing.AppWindow.GetFromWindowId(windowId);
 
-        var windowWidth = 950;
-        var windowHeight = 850;
+        var windowWidth = 650;
+        var windowHeight = 700;
 
         var displayArea = Microsoft.UI.Windowing.DisplayArea.GetFromWindowId(windowId, Microsoft.UI.Windowing.DisplayAreaFallback.Primary);
         if (displayArea != null)

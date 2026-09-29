@@ -79,6 +79,10 @@ public sealed class ServerConfig
     [System.Text.Json.Serialization.JsonPropertyName("login_actions")]
     public System.Collections.Generic.List<LoginActionStep> LoginActions { get; set; } = new();
 
+    // Port Forwarding
+    public List<PortForwardRule> PortForwardRules { get; set; } = new();
+
+
     // RDP
     [JsonPropertyName("rdp_enabled")] public bool RdpEnabled { get; set; }
     [JsonPropertyName("rdp_port")] public int RdpPort { get; set; } = 3389;
@@ -125,3 +129,17 @@ public class LoginActionStep
     [System.Text.Json.Serialization.JsonPropertyName("timeout")]
     public int Timeout { get; set; } = 5;
 }
+
+public class PortForwardRule
+{
+    public string Type { get; set; } = "Local"; // "Local", "Remote", or "Dynamic"
+    public int SourcePort { get; set; }
+    public string DestinationHost { get; set; } = "localhost";
+    public int DestinationPort { get; set; }
+
+    // Helper to render nicely in the ListView
+    public string DisplayText => Type == "Dynamic"
+        ? $"Dynamic (SOCKS) on Port {SourcePort}"
+        : $"{Type}: {SourcePort} -> {DestinationHost}:{DestinationPort}";
+}
+

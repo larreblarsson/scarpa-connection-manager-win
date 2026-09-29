@@ -20,6 +20,9 @@ public sealed partial class ServerDialog : Window
     private bool _isColorUpdating = false;
     private TaskCompletionSource<bool>? _tcs;
 
+    public ObservableCollection<PortForwardRule> PortForwardRules { get; set; } = new();
+    private PortForwardRule? _editingPortRule = null;
+
     // Note: XamlRoot was removed from the parameters since it's a standalone window now
     public ServerDialog(ServerConfig? existingConfig, IEnumerable<string> folders, string? defaultFolder = null)
     {
@@ -82,6 +85,23 @@ public sealed partial class ServerDialog : Window
                     LoginActions.Add(new LoginActionStep { Expect = action.Expect, Send = action.Send, Timeout = action.Timeout });
             }
             LoginActionList.ItemsSource = LoginActions;
+
+            // Port Forwarding
+            PortForwardRules.Clear();
+            if (Config.PortForwardRules != null)
+            {
+                foreach (var rule in Config.PortForwardRules)
+                {
+                    PortForwardRules.Add(new PortForwardRule
+                    {
+                        Type = rule.Type,
+                        SourcePort = rule.SourcePort,
+                        DestinationHost = rule.DestinationHost,
+                        DestinationPort = rule.DestinationPort
+                    });
+                }
+            }
+            PortForwardList.ItemsSource = PortForwardRules;
 
             // Terminal - Logging
             EnableLoggingSwitch.IsOn = Config.LoggingEnabled;
@@ -194,6 +214,7 @@ public sealed partial class ServerDialog : Window
             StartupCmdCheck.IsChecked = false;
 
             LoginActionList.ItemsSource = LoginActions;
+            PortForwardList.ItemsSource = PortForwardRules;
 
             // Appearance
 
@@ -347,6 +368,9 @@ public sealed partial class ServerDialog : Window
         Config.TermBackground = TermBgBox.Text;
         Config.TermScrollback = double.IsNaN(TermScrollbackBox.Value) ? 10000 : (int)TermScrollbackBox.Value;
         Config.TermPalette = (PaletteBox.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "None";
+
+        //Port Forward
+        Config.PortForwardRules = new List<PortForwardRule>(PortForwardRules);
 
         // RDP
         Config.RdpEnabled = RdpEnabledSwitch.IsOn;
@@ -629,5 +653,88 @@ public sealed partial class ServerDialog : Window
         else if (fgUpper == "#FFFFFF" && bgUpper == "#000000") ColorSchemeBox.SelectedIndex = 4;
         else ColorSchemeBox.SelectedIndex = 5; // Custom
         _isColorUpdating = false;
+    }
+
+    private void PortForward_Add_Click(object sender, RoutedEventArgs e)
+    {
+        _editingPortRule = null;
+        PortForwardEditTitle.Text = "Add Port Forwarding Rule";
+        PortForwardTypeBox.SelectedIndex = 0;
+        PortForwardSourceBox.Value = 8080;
+        PortForwardDestHostBox.Text = "localhost";
+        PortForwardDestPortBox.Value = 80;
+        PortForwardEditPanel.Visibility = Visibility.Visible;
+    }
+
+    private void PortForward_Edit_Click(object sender, RoutedEventArgs e)
+    {
+        if (PortForwardList.SelectedItem is PortForwardRule rule)
+        {
+            _editingPortRule = rule;
+            PortForwardEditTitle.Text = "Edit Port Forwarding Rule";
+
+            foreach (ComboBoxItem item in PortForwardTypeBox.Items)
+            {
+                if (item.Content?.ToString() == rule.Type)
+                    PortForwardTypeBox.SelectedItem = item;
+            }
+
+            PortForwardSourceBox.Value = rule.SourcePort;
+            PortForwardDestHostBox.Text = rule.DestinationHost;
+            PortForwardDestPortBox.Value = rule.DestinationPort;
+            PortForwardEditPanel.Visibility = Visibility.Visible;
+        }
+    }
+
+    private void PortForward_Delete_Click(object sender, RoutedEventArgs e)
+    {
+        if (PortForwardList.SelectedItem is PortForwardRule rule)
+            PortForwardRules.Remove(rule);
+    }
+
+    private void PortForward_SaveEdit_Click(object sender, RoutedEventArgs e)
+    {
+        string type = (PortForwardTypeBox.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "Local";
+        int source = double.IsNaN(PortForwardSourceBox.Value) ? 8080 : (int)PortForwardSourceBox.Value;
+        string destHost = PortForwardDestHostBox.Text.Trim();
+        int destPort = double.IsNaN(PortForwardDestPortBox.Value) ? 80 : (int)PortForwardDestPortBox.Value;
+
+        if (_editingPortRule != null)
+        {
+            _editingPortRule.Type = type;
+            _editingPortRule.SourcePort = source;
+            _editingPortRule.DestinationHost = destHost;
+            _editingPortRule.DestinationPort = destPort;
+
+            // Replace item to trigger UI refresh (same trick used in LoginActions)
+            int idx = PortForwardRules.IndexOf(_editingPortRule);
+            if (idx >= 0) PortForwardRules[idx] = _editingPortRule;
+        }
+        else
+        {
+            PortForwardRules.Add(new PortForwardRule
+            {
+                Type = type,
+                SourcePort = source,
+                DestinationHost = destHost,
+                DestinationPort = destPort
+            });
+        }
+        PortForwardEditPanel.Visibility = Visibility.Collapsed;
+    }
+
+    private void PortForward_CancelEdit_Click(object sender, RoutedEventArgs e)
+    {
+        PortForwardEditPanel.Visibility = Visibility.Collapsed;
+    }
+
+    private void PortForwardTypeBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (PortForwardDestHostBox == null) return;
+
+        // Hide Destination fields if this is a Dynamic (SOCKS) proxy rule
+        bool isDynamic = (PortForwardTypeBox.SelectedItem as ComboBoxItem)?.Content?.ToString() == "Dynamic";
+        PortForwardDestHostBox.Visibility = isDynamic ? Visibility.Collapsed : Visibility.Visible;
+        PortForwardDestPortBox.Visibility = isDynamic ? Visibility.Collapsed : Visibility.Visible;
     }
 }

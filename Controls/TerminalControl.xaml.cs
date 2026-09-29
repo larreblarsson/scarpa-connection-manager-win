@@ -168,7 +168,6 @@ public sealed partial class TerminalControl : UserControl
             string palette = _config.TermPalette ?? "None";
             string ansiColors = "";
 
-            // Define the 16 standard ANSI colors based on the chosen palette
             if (palette == "Tango")
             {
                 ansiColors = "black: '#2e3436', red: '#cc0000', green: '#4e9a06', yellow: '#c4a000', blue: '#3465a4', magenta: '#75507b', cyan: '#06989a', white: '#d3d7cf', brightBlack: '#555753', brightRed: '#ef2929', brightGreen: '#8ae234', brightYellow: '#fce94f', brightBlue: '#729fcf', brightMagenta: '#ad7fa8', brightCyan: '#34e2e2', brightWhite: '#eeeeec', ";
@@ -182,16 +181,34 @@ public sealed partial class TerminalControl : UserControl
                 ansiColors = "black: '#000000', red: '#cd0000', green: '#00cd00', yellow: '#cdcd00', blue: '#0000cd', magenta: '#cd00cd', cyan: '#00cdcd', white: '#faebd7', brightBlack: '#404040', brightRed: '#ff0000', brightGreen: '#00ff00', brightYellow: '#ffff00', brightBlue: '#0000ff', brightMagenta: '#ff00ff', brightCyan: '#00ffff', brightWhite: '#ffffff', ";
             }
 
-            // Inject the ANSI colors directly into the xterm.js theme object
             string script = $@"
             term.options.fontFamily = '{fontName}, Consolas, monospace';
             term.options.fontSize = {fontSize};
-            term.options.theme = {{ {ansiColors} background: '{bg}', foreground: '{fg}' }};
+            
+            // Just update the colors! (The cursor shape and blink are already handled by the HTML)
+            term.options.theme = {{ 
+                {ansiColors} 
+                background: '{bg}', 
+                foreground: '{fg}',
+                cursor: '{fg}',
+                cursorAccent: '{bg}'
+            }};
+            
             document.body.style.backgroundColor = '{bg}';
             fitAddon.fit();
+            
+            // Ensure focus events still force the terminal active
+            window.addEventListener('focus', () => term.focus());
+            document.addEventListener('click', () => term.focus());
+            
+            term.focus();
         ";
 
             await TerminalView.CoreWebView2.ExecuteScriptAsync(script);
+
+            // Pass hardware keyboard focus to WebView2
+            TerminalView.Focus(Microsoft.UI.Xaml.FocusState.Programmatic);
+
         }
     }
 

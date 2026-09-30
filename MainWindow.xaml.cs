@@ -1133,10 +1133,154 @@ public sealed partial class MainWindow : Window
         return file?.Path;
     }
 
+    private async void ExportEncrypted_Click(object sender, RoutedEventArgs e)
+    {
+        Tree.ContextFlyout?.Hide();
+
+        var picker = new Windows.Storage.Pickers.FileSavePicker { SuggestedStartLocation = Windows.Storage.Pickers.PickerLocationId.DocumentsLibrary };
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
+
+        // Lock the picker to ONLY encrypted vaults
+        picker.FileTypeChoices.Add("Encrypted Vault", new List<string>() { ".scarpavault" });
+        picker.SuggestedFileName = "ScarpaBackup_Secure";
+
+        var file = await picker.PickSaveFileAsync();
+        if (file == null) return;
+
+        string? password = await PromptForPasswordAsync("Set Export Password", "Enter a password to encrypt this backup:");
+        if (string.IsNullOrWhiteSpace(password)) return;
+
+        CryptoStore.ExportEncrypted(_servers, file.Path, password);
+        await ShowAlertAsync("Export", "Exported and encrypted successfully.");
+        Log("Exported encrypted backup.");
+    }
+
+    private async void ExportCleartext_Click(object sender, RoutedEventArgs e)
+    {
+        Tree.ContextFlyout?.Hide();
+
+        var picker = new Windows.Storage.Pickers.FileSavePicker { SuggestedStartLocation = Windows.Storage.Pickers.PickerLocationId.DocumentsLibrary };
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
+
+        // Lock the picker to ONLY cleartext JSON
+        picker.FileTypeChoices.Add("Clear-Text JSON", new List<string>() { ".json" });
+        picker.SuggestedFileName = "ScarpaBackup_Cleartext";
+
+        var file = await picker.PickSaveFileAsync();
+        if (file == null) return;
+
+        CryptoStore.ExportClearText(_servers, file.Path);
+        await ShowAlertAsync("Export", "Exported in clear-text successfully.");
+        Log("Exported clear-text backup.");
+    }
+
     private async void ImportScarpa_Click(object sender, RoutedEventArgs e)
     {
-        var path = await PickFileAsync(".json");
-        if (path != null) Log($"Import target selected: {path}");
+        Tree.ContextFlyout?.Hide();
+
+        var picker = new Windows.Storage.Pickers.FileOpenPicker { SuggestedStartLocation = Windows.Storage.Pickers.PickerLocationId.DocumentsLibrary };
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
+
+        picker.FileTypeFilter.Add(".scarpavault");
+        picker.FileTypeFilter.Add(".json");
+
+        var file = await picker.PickSingleFileAsync();
+        if (file == null) return;
+
+        try
+        {
+            List<ServerConfig>? imported = null;
+
+            if (file.FileType == ".json")
+            {
+                imported = CryptoStore.ImportClearText(file.Path);
+            }
+            else if (file.FileType == ".scarpavault")
+            {
+                string? password = await PromptForPasswordAsync("Decrypt Backup", "Enter the password for this backup:");
+                if (string.IsNullOrWhiteSpace(password)) return;
+
+                imported = CryptoStore.ImportEncrypted(file.Path, password);
+            }
+
+            if (imported != null)
+            {
+                int addedCount = 0;
+                int skippedCount = 0;
+
+                foreach (var incomingServer in imported)
+                {
+                    // A server is a duplicate if it has the exact same Name and resides in the exact same Folder
+                    bool isDuplicate = _servers.Any(existing =>
+                        string.Equals(existing.Name ?? "", incomingServer.Name ?? "", StringComparison.OrdinalIgnoreCase) &&
+                        string.Equals(existing.Folder ?? "", incomingServer.Folder ?? "", StringComparison.OrdinalIgnoreCase));
+
+                    if (!isDuplicate)
+                    {
+                        _servers.Add(incomingServer);
+
+                        // If this imported server introduces a new folder, track it in settings
+                        string folder = incomingServer.Folder ?? "";
+                        if (!string.IsNullOrEmpty(folder) && !_settings.Folders.Contains(folder))
+                        {
+                            _settings.Folders.Add(folder);
+                        }
+
+                        addedCount++;
+                    }
+                    else
+                    {
+                        skippedCount++;
+                    }
+                }
+
+                if (addedCount > 0)
+                {
+                    SettingsService.Save(_settings); // Save newly discovered folders
+                    Persist(); // Save the new servers
+                    RebuildTree();
+                }
+
+                string resultMsg = $"Imported {addedCount} new server(s).";
+                if (skippedCount > 0) resultMsg += $" Skipped {skippedCount} duplicate(s).";
+
+                await ShowAlertAsync("Import Complete", resultMsg);
+                Log(resultMsg);
+            }
+        }
+        catch (System.Security.Cryptography.CryptographicException)
+        {
+            await ShowAlertAsync("Import Failed", "Incorrect password or corrupted file.");
+        }
+        catch (Exception ex)
+        {
+            await ShowAlertAsync("Import Failed", ex.Message);
+        }
+    }
+
+    // Reusable WinUI 3 Password Dialog for the Export/Import process
+    private async Task<string?> PromptForPasswordAsync(string title, string promptText)
+    {
+        var passBox = new PasswordBox { PlaceholderText = "Password" };
+
+        // Optional UX improvement: Ensure the password box gets focus immediately so the user can just start typing
+        passBox.Loaded += (s, e) => passBox.Focus(FocusState.Programmatic);
+
+        var dialog = new ContentDialog
+        {
+            Title = title,
+            Content = new StackPanel { Spacing = 12, Children = { new TextBlock { Text = promptText }, passBox } },
+            PrimaryButtonText = "OK",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Primary, // This maps the Enter key to the OK button
+            XamlRoot = this.Content.XamlRoot
+        };
+
+        var result = await dialog.ShowAsync();
+        return result == ContentDialogResult.Primary ? passBox.Password : null;
     }
 
     private async void ImportPuttyFile_Click(object sender, RoutedEventArgs e)
@@ -1158,8 +1302,7 @@ public sealed partial class MainWindow : Window
     }
 
     private void ImportPuttyRegistry_Click(object sender, RoutedEventArgs e) { Log("Importing from registry."); }
-    private void Export_Click(object sender, RoutedEventArgs e) { Log("Export File Picker needs porting."); }
-
+    
     private void GlobalDefaults_Click(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
     {
         var dialog = new scarpa_connection_manager_win.Dialogs.GlobalDefaultsDialog();

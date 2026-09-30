@@ -256,6 +256,47 @@ public sealed partial class TerminalControl : UserControl
                 _sshClient = new SshClient(connectionInfo);
                 _sshClient.Connect();
 
+                // === START PORT FORWARDING LOGIC ===
+                if (cfg.PortForwardRules != null)
+                {
+                    foreach (var rule in cfg.PortForwardRules)
+                    {
+                        try
+                        {
+                            if (rule.Type == "Local")
+                            {
+                                // Listens on local machine (127.0.0.1:SourcePort) -> routes through SSH -> to DestinationHost:DestinationPort
+                                var port = new ForwardedPortLocal("127.0.0.1", (uint)rule.SourcePort, rule.DestinationHost, (uint)rule.DestinationPort);
+                                _sshClient.AddForwardedPort(port);
+                                port.Start();
+                            }
+                            else if (rule.Type == "Remote")
+                            {
+                                // Server listens on its SourcePort -> routes back through SSH -> to your local DestinationHost:DestinationPort
+                                var port = new ForwardedPortRemote((uint)rule.SourcePort, rule.DestinationHost, (uint)rule.DestinationPort);
+                                _sshClient.AddForwardedPort(port);
+                                port.Start();
+                            }
+                            else if (rule.Type == "Dynamic")
+                            {
+                                // Listens on local machine (127.0.0.1:SourcePort) and acts as a SOCKS5 proxy
+                                var port = new ForwardedPortDynamic("127.0.0.1", (uint)rule.SourcePort);
+                                _sshClient.AddForwardedPort(port);
+                                port.Start();
+                            }
+
+                            // Optional: Print a success message to your terminal so you know the tunnel is active
+                            SendToTerminal($"\r\n\x1b[32m[Port Forward] {rule.Type} forwarding established on port {rule.SourcePort}\x1b[0m\r\n");
+                        }
+                        catch (Exception ex)
+                        {
+                            // If a port is already in use or the server denies it, catch it here so it doesn't crash the whole SSH session
+                            SendToTerminal($"\r\n\x1b[33m[Warning] Failed to bind {rule.Type} port {rule.SourcePort}: {ex.Message}\x1b[0m\r\n");
+                        }
+                    }
+                }
+                // === END PORT FORWARDING LOGIC ===
+
                 _shellStream = _sshClient.CreateShellStream("xterm", 80, 24, 800, 600, 1024);
 
                 StartAntiIdle(cfg);

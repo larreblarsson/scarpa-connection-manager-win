@@ -13,6 +13,8 @@
 		<RuntimeIdentifier>win-x64</RuntimeIdentifier>
 		<SelfContained>true</SelfContained>
 		<PublishTrimmed>false</PublishTrimmed>
+	    <WindowsPackageType>None</WindowsPackageType>
+        <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
 	</PropertyGroup>
 	
   <ItemGroup>

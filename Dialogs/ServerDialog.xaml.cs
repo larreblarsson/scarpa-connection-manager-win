@@ -21,9 +21,7 @@ public sealed partial class ServerDialog : Window
     private TaskCompletionSource<bool>? _tcs;
 
     public ObservableCollection<PortForwardRule> PortForwardRules { get; set; } = new();
-    private PortForwardRule? _editingPortRule = null;
 
-    // Note: XamlRoot was removed from the parameters since it's a standalone window now
     public ServerDialog(ServerConfig? existingConfig, IEnumerable<string> folders, string? defaultFolder = null)
     {
         this.InitializeComponent();
@@ -124,42 +122,18 @@ public sealed partial class ServerDialog : Window
             StartupCmdPathBox.Text = Config.StartupCmdPath ?? "";
 
             // Appearance
-            string fontStr = Config.TermFont ?? "Consolas 11";
+            string fontStr = Config.TermFont ?? "Consolas 16";
             int lastSpace = fontStr.LastIndexOf(' ');
-            string fontName;
-            double fontSize;
+            string fontName = lastSpace > 0 ? fontStr.Substring(0, lastSpace).Trim() : fontStr;
+            double fontSize = 16;
 
             if (lastSpace > 0 && double.TryParse(fontStr.Substring(lastSpace + 1), out double parsedSize))
             {
-                fontName = fontStr.Substring(0, lastSpace).Trim();
                 fontSize = parsedSize;
             }
-            else
-            {
-                fontName = fontStr;
-                fontSize = 11;
-            }
 
-            // FIX: Try to set SelectedItem first. This forces WinUI to show the text!
-            if (TermFontBox.Items.Contains(fontName))
-            {
-                TermFontBox.SelectedItem = fontName;
-            }
-            else
-            {
-                TermFontBox.Text = fontName;
-            }
-
-            // Convert the numeric size to a string and apply the same ComboBox fix
-            string sizeStr = fontSize.ToString(); // Note: change 'fontSize' to 'globalFontSize' or 'parsedSize' depending on the method you are pasting into
-            if (TermFontSizeBox.Items.Contains(sizeStr))
-            {
-                TermFontSizeBox.SelectedItem = sizeStr;
-            }
-            else
-            {
-                TermFontSizeBox.Text = sizeStr;
-            }
+            SetComboValue(TermFontBox, fontName);
+            SetComboValue(TermFontSizeBox, fontSize.ToString());
 
             TermFgBox.Text = Config.TermForeground ?? "#000000";
             TermBgBox.Text = Config.TermBackground ?? "#FFFFDD";
@@ -231,11 +205,8 @@ public sealed partial class ServerDialog : Window
             if (PaletteBox.SelectedItem == null) PaletteBox.SelectedIndex = 0; // Fallback
 
             // 2. Initialize Default Font
-            if (TermFontBox.Items.Contains("Cascadia Mono")) TermFontBox.SelectedItem = "Cascadia Mono";
-            else TermFontBox.Text = "Cascadia Mono";
-
-            if (TermFontSizeBox.Items.Contains("11")) TermFontSizeBox.SelectedItem = "11";
-            else TermFontSizeBox.Text = "11";
+            SetComboValue(TermFontBox, "Cascadia Mono");
+            SetComboValue(TermFontSizeBox, "16");
 
             TermFgBox.Text = "#D0D0D0";
             TermBgBox.Text = "#101010";
@@ -257,8 +228,8 @@ public sealed partial class ServerDialog : Window
     public Task<bool> ShowModalAsync()
     {
         _tcs = new TaskCompletionSource<bool>();
-        this.Closed += (s, e) => _tcs.TrySetResult(false); // Fired if the user clicks the native 'X' close button
-        this.Activate(); // Opens the window
+        this.Closed += (s, e) => _tcs.TrySetResult(false);
+        this.Activate();
         return _tcs.Task;
     }
 
@@ -288,7 +259,7 @@ public sealed partial class ServerDialog : Window
     private async void BrowseKeyFile_Click(object sender, RoutedEventArgs e)
     {
         var picker = new Windows.Storage.Pickers.FileOpenPicker();
-        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this); // Now uses this window's handle
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
         WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
         picker.FileTypeFilter.Add("*");
 
@@ -359,17 +330,19 @@ public sealed partial class ServerDialog : Window
         Config.StartupCmdEnabled = StartupCmdCheck.IsChecked == true;
         Config.StartupCmdPath = StartupCmdPathBox.Text;
 
-        //Login Actions
+        // Login Actions
         Config.LoginActions = new List<LoginActionStep>(LoginActions);
 
         // Appearance
-        Config.TermFont = $"{(TermFontBox.Text ?? "").Trim()} {(TermFontSizeBox.Text ?? "").Trim()}";
+        string finalFont = GetComboValue(TermFontBox, "Consolas");
+        string finalSize = GetComboValue(TermFontSizeBox, "16");
+        Config.TermFont = $"{finalFont.Trim()} {finalSize.Trim()}";
         Config.TermForeground = TermFgBox.Text;
         Config.TermBackground = TermBgBox.Text;
         Config.TermScrollback = double.IsNaN(TermScrollbackBox.Value) ? 10000 : (int)TermScrollbackBox.Value;
         Config.TermPalette = (PaletteBox.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "None";
 
-        //Port Forward
+        // Port Forward
         Config.PortForwardRules = new List<PortForwardRule>(PortForwardRules);
 
         // RDP
@@ -453,7 +426,6 @@ public sealed partial class ServerDialog : Window
             _editingAction.Send = LoginActionSendBox.Text;
             _editingAction.Timeout = double.IsNaN(LoginActionTimeoutBox.Value) ? 5 : (int)LoginActionTimeoutBox.Value;
 
-            // Replace item to trigger UI refresh
             int idx = LoginActions.IndexOf(_editingAction);
             if (idx >= 0) LoginActions[idx] = _editingAction;
         }
@@ -507,7 +479,6 @@ public sealed partial class ServerDialog : Window
                     TermFgBox.Text = "#FFFFFF"; TermBgBox.Text = "#000000"; break;
             }
 
-            // CRITICAL FIX: Force the color bars to redraw instantly, bypassing the hidden text boxes
             UpdateColorPreview(TermFgBox.Text, TermFgPreview);
             UpdateColorPreview(TermBgBox.Text, TermBgPreview);
 
@@ -541,7 +512,6 @@ public sealed partial class ServerDialog : Window
                 byte a = 255;
                 int offset = 0;
 
-                // Support both #RRGGBB and #AARRGGBB hex formats
                 if (hex.Length == 8)
                 {
                     a = Convert.ToByte(hex.Substring(0, 2), 16);
@@ -558,7 +528,7 @@ public sealed partial class ServerDialog : Window
                 }
             }
         }
-        catch { } // Silently ignore malformed colors
+        catch { }
     }
 
     private void TermFgPicker_ColorChanged(ColorPicker sender, ColorChangedEventArgs args)
@@ -575,67 +545,39 @@ public sealed partial class ServerDialog : Window
 
     private void ResetAppearance_Click(object sender, RoutedEventArgs e)
     {
-        var localSettings = Windows.Storage.ApplicationData.Current.LocalSettings;
+        var localSettings = new Services.UnpackagedSettings();
 
-        // Mute events so the Scheme dropdown doesn't scramble while loading
         _isColorUpdating = true;
 
-        // 1. Apply ALL Global Appearance Defaults
         PaletteBox.SelectedIndex = (int)(localSettings.Values["GlobalDefaultPalette"] ?? 0);
         ColorSchemeBox.SelectedIndex = (int)(localSettings.Values["GlobalDefaultScheme"] ?? 0);
 
         TermFgBox.Text = localSettings.Values["GlobalDefaultFg"] as string ?? "#000000";
         TermBgBox.Text = localSettings.Values["GlobalDefaultBg"] as string ?? "#FFFFDD";
 
-        // Parse the Global Font into Name and Size
-        string globalFont = localSettings.Values["GlobalDefaultFont"] as string ?? "Consolas 11";
+        string globalFont = localSettings.Values["GlobalDefaultFont"] as string ?? "Consolas 16";
         int lastSpaceGlobal = globalFont.LastIndexOf(' ');
-        string globalFontName;
-        double globalFontSize;
+        string globalFontName = lastSpaceGlobal > 0 ? globalFont.Substring(0, lastSpaceGlobal).Trim() : globalFont;
+        double globalFontSize = 16;
 
         if (lastSpaceGlobal > 0 && double.TryParse(globalFont.Substring(lastSpaceGlobal + 1), out double parsedGlobalSize))
         {
-            globalFontName = globalFont.Substring(0, lastSpaceGlobal).Trim();
             globalFontSize = parsedGlobalSize;
         }
-        else
-        {
-            globalFontName = globalFont;
-            globalFontSize = 11;
-        }
 
-        if (TermFontBox.Items.Contains(globalFontName))
-        {
-            TermFontBox.SelectedItem = globalFontName;
-        }
-        else
-        {
-            TermFontBox.Text = globalFontName;
-        }
+        SetComboValue(TermFontBox, globalFontName);
+        SetComboValue(TermFontSizeBox, globalFontSize.ToString());
 
-        // Convert the numeric size to a string and apply the same ComboBox fix
-        string sizeStr = globalFontSize.ToString();
-        if (TermFontSizeBox.Items.Contains(sizeStr))
-        {
-            TermFontSizeBox.SelectedItem = sizeStr;
-        }
-        else
-        {
-            TermFontSizeBox.Text = sizeStr;
-        }
-
-        // 2. Apply Global Terminal Defaults
         TermScrollbackBox.Value = (double)(localSettings.Values["GlobalDefaultScrollback"] ?? 10000.0);
 
         string? globalLog = localSettings.Values["GlobalDefaultLogPath"] as string;
         if (!string.IsNullOrWhiteSpace(globalLog))
         {
-            LogPathTextBox.Text = globalLog; // Safely set the log path if one exists globally
+            LogPathTextBox.Text = globalLog;
         }
 
         _isColorUpdating = false;
 
-        // Force preview squares to update
         UpdateColorPreview(TermFgBox.Text, TermFgPreview);
         UpdateColorPreview(TermBgBox.Text, TermBgPreview);
     }
@@ -651,90 +593,123 @@ public sealed partial class ServerDialog : Window
         else if (fgUpper == "#AAAAAA" && bgUpper == "#000000") ColorSchemeBox.SelectedIndex = 2;
         else if (fgUpper == "#00FF00" && bgUpper == "#000000") ColorSchemeBox.SelectedIndex = 3;
         else if (fgUpper == "#FFFFFF" && bgUpper == "#000000") ColorSchemeBox.SelectedIndex = 4;
-        else ColorSchemeBox.SelectedIndex = 5; // Custom
+        else ColorSchemeBox.SelectedIndex = 5;
         _isColorUpdating = false;
     }
 
-    private void PortForward_Add_Click(object sender, RoutedEventArgs e)
+    // --- POPUP DIALOG PORT FORWARDING HANDLERS ---
+
+    private async void PortForward_Add_Click(object sender, RoutedEventArgs e)
     {
-        _editingPortRule = null;
-        PortForwardEditTitle.Text = "Add Port Forwarding Rule";
-        PortForwardTypeBox.SelectedIndex = 0;
-        PortForwardSourceBox.Value = 8080;
-        PortForwardDestHostBox.Text = "localhost";
-        PortForwardDestPortBox.Value = 80;
-        PortForwardEditPanel.Visibility = Visibility.Visible;
+        var newRule = new PortForwardRule { Type = "Local", SourcePort = 8080, DestinationHost = "localhost", DestinationPort = 80 };
+        if (await ShowPortForwardEditorAsync("Add Port Forwarding Rule", newRule))
+        {
+            PortForwardRules.Add(newRule);
+        }
     }
 
-    private void PortForward_Edit_Click(object sender, RoutedEventArgs e)
+    private async void PortForward_Edit_Click(object sender, RoutedEventArgs e)
     {
-        if (PortForwardList.SelectedItem is PortForwardRule rule)
+        if (PortForwardList.SelectedItem is not PortForwardRule selectedRule)
         {
-            _editingPortRule = rule;
-            PortForwardEditTitle.Text = "Edit Port Forwarding Rule";
+            await ShowAlertAsync("Selection", "Please select a rule to edit.");
+            return;
+        }
 
-            foreach (ComboBoxItem item in PortForwardTypeBox.Items)
-            {
-                if (item.Content?.ToString() == rule.Type)
-                    PortForwardTypeBox.SelectedItem = item;
-            }
-
-            PortForwardSourceBox.Value = rule.SourcePort;
-            PortForwardDestHostBox.Text = rule.DestinationHost;
-            PortForwardDestPortBox.Value = rule.DestinationPort;
-            PortForwardEditPanel.Visibility = Visibility.Visible;
+        if (await ShowPortForwardEditorAsync("Edit Port Forwarding Rule", selectedRule))
+        {
+            int idx = PortForwardRules.IndexOf(selectedRule);
+            if (idx >= 0) PortForwardRules[idx] = selectedRule;
         }
     }
 
     private void PortForward_Delete_Click(object sender, RoutedEventArgs e)
     {
         if (PortForwardList.SelectedItem is PortForwardRule rule)
+        {
             PortForwardRules.Remove(rule);
+        }
     }
 
-    private void PortForward_SaveEdit_Click(object sender, RoutedEventArgs e)
+    private async Task<bool> ShowPortForwardEditorAsync(string title, PortForwardRule rule)
     {
-        string type = (PortForwardTypeBox.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "Local";
-        int source = double.IsNaN(PortForwardSourceBox.Value) ? 8080 : (int)PortForwardSourceBox.Value;
-        string destHost = PortForwardDestHostBox.Text.Trim();
-        int destPort = double.IsNaN(PortForwardDestPortBox.Value) ? 80 : (int)PortForwardDestPortBox.Value;
-
-        if (_editingPortRule != null)
+        var typeBox = new ComboBox
         {
-            _editingPortRule.Type = type;
-            _editingPortRule.SourcePort = source;
-            _editingPortRule.DestinationHost = destHost;
-            _editingPortRule.DestinationPort = destPort;
+            ItemsSource = new[] { "Local", "Remote", "Dynamic" },
+            SelectedItem = rule.Type,
+            HorizontalAlignment = HorizontalAlignment.Stretch
+        };
+        var sourcePortBox = new TextBox { Text = rule.SourcePort.ToString(), Header = "Source Port" };
+        var destHostBox = new TextBox { Text = rule.DestinationHost, Header = "Destination Host" };
+        var destPortBox = new TextBox { Text = rule.DestinationPort.ToString(), Header = "Destination Port" };
 
-            // Replace item to trigger UI refresh (same trick used in LoginActions)
-            int idx = PortForwardRules.IndexOf(_editingPortRule);
-            if (idx >= 0) PortForwardRules[idx] = _editingPortRule;
-        }
-        else
+        var contentPanel = new StackPanel
         {
-            PortForwardRules.Add(new PortForwardRule
+            Spacing = 10,
+            Width = 300,
+            Children =
             {
-                Type = type,
-                SourcePort = source,
-                DestinationHost = destHost,
-                DestinationPort = destPort
-            });
+                new TextBlock { Text = "Type" },
+                typeBox,
+                sourcePortBox,
+                destHostBox,
+                destPortBox
+            }
+        };
+
+        var dialog = new ContentDialog
+        {
+            Title = title,
+            Content = contentPanel,
+            PrimaryButtonText = "OK",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Primary,
+            XamlRoot = this.Content.XamlRoot
+        };
+
+        var result = await dialog.ShowAsync();
+        if (result == ContentDialogResult.Primary)
+        {
+            rule.Type = typeBox.SelectedItem?.ToString() ?? "Local";
+            if (int.TryParse(sourcePortBox.Text, out int sp)) rule.SourcePort = sp;
+            rule.DestinationHost = destHostBox.Text.Trim();
+            if (int.TryParse(destPortBox.Text, out int dp)) rule.DestinationPort = dp;
+            return true;
         }
-        PortForwardEditPanel.Visibility = Visibility.Collapsed;
+        return false;
     }
 
-    private void PortForward_CancelEdit_Click(object sender, RoutedEventArgs e)
+    private async Task ShowAlertAsync(string title, string message)
     {
-        PortForwardEditPanel.Visibility = Visibility.Collapsed;
+        var dialog = new ContentDialog
+        {
+            Title = title,
+            Content = message,
+            CloseButtonText = "OK",
+            XamlRoot = this.Content.XamlRoot
+        };
+        await dialog.ShowAsync();
     }
 
-    private void PortForwardTypeBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    private string GetComboValue(ComboBox cb, string fallback)
     {
-        if (PortForwardDestHostBox == null) return;
+        if (cb.SelectedItem is ComboBoxItem item) return item.Content?.ToString() ?? fallback;
+        if (cb.SelectedItem != null) return cb.SelectedItem.ToString() ?? fallback;
+        if (!string.IsNullOrWhiteSpace(cb.Text)) return cb.Text;
+        return fallback;
+    }
 
-        // Hide Destination fields if this is a Dynamic (SOCKS) proxy rule
-        bool isDynamic = (PortForwardTypeBox.SelectedItem as ComboBoxItem)?.Content?.ToString() == "Dynamic";
-        PortForwardDestHostBox.Visibility = isDynamic ? Visibility.Collapsed : Visibility.Visible;
-        PortForwardDestPortBox.Visibility = isDynamic ? Visibility.Collapsed : Visibility.Visible;
+    private void SetComboValue(ComboBox cb, string targetValue)
+    {
+        foreach (var item in cb.Items)
+        {
+            string itemStr = (item as ComboBoxItem)?.Content?.ToString() ?? item?.ToString() ?? "";
+            if (itemStr == targetValue)
+            {
+                cb.SelectedItem = item;
+                return;
+            }
+        }
+        cb.Text = targetValue;
     }
 }

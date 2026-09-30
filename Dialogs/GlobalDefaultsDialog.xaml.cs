@@ -10,7 +10,7 @@ namespace scarpa_connection_manager_win.Dialogs;
 public sealed partial class GlobalDefaultsDialog : Window
 {
     private bool _isColorUpdating = false;
-    private ApplicationDataContainer _localSettings = ApplicationData.Current.LocalSettings;
+    private Services.UnpackagedSettings _localSettings = new Services.UnpackagedSettings();
 
     public GlobalDefaultsDialog()
     {
@@ -54,41 +54,18 @@ public sealed partial class GlobalDefaultsDialog : Window
         TermBgBox.Text = _localSettings.Values["GlobalDefaultBg"] as string ?? "#FFFFDD";
 
         // Parse the Global Font into Name and Size
-        string globalFont = _localSettings.Values["GlobalDefaultFont"] as string ?? "Cascadia Mono 11";
+        string globalFont = _localSettings.Values["GlobalDefaultFont"] as string ?? "Cascadia Mono 16";
         int lastSpace = globalFont.LastIndexOf(' ');
-        string fontName;
-        double fontSize;
+        string fontName = lastSpace > 0 ? globalFont.Substring(0, lastSpace).Trim() : globalFont;
+        double fontSize = 16;
 
         if (lastSpace > 0 && double.TryParse(globalFont.Substring(lastSpace + 1), out double parsedSize))
         {
-            fontName = globalFont.Substring(0, lastSpace).Trim();
             fontSize = parsedSize;
         }
-        else
-        {
-            fontName = globalFont;
-            fontSize = 11;
-        }
 
-        if (TermFontBox.Items.Contains(fontName))
-        {
-            TermFontBox.SelectedItem = fontName;
-        }
-        else
-        {
-            TermFontBox.Text = fontName;
-        }
-
-        // Convert the numeric size to a string and apply the same ComboBox fix
-        string sizeStr = fontSize.ToString(); // Note: change 'fontSize' to 'globalFontSize' or 'parsedSize' depending on the method you are pasting into
-        if (TermFontSizeBox.Items.Contains(sizeStr))
-        {
-            TermFontSizeBox.SelectedItem = sizeStr;
-        }
-        else
-        {
-            TermFontSizeBox.Text = sizeStr;
-        }
+        SetComboValue(TermFontBox, fontName);
+        SetComboValue(TermFontSizeBox, fontSize.ToString());
 
         TermScrollbackBox.Value = (double)(_localSettings.Values["GlobalDefaultScrollback"] ?? 10000.0);
         LogPathBox.Text = _localSettings.Values["GlobalDefaultLogPath"] as string ?? "";
@@ -110,7 +87,11 @@ public sealed partial class GlobalDefaultsDialog : Window
         _localSettings.Values["GlobalDefaultScheme"] = ColorSchemeBox.SelectedIndex;
         _localSettings.Values["GlobalDefaultFg"] = TermFgBox.Text;
         _localSettings.Values["GlobalDefaultBg"] = TermBgBox.Text;
-        _localSettings.Values["GlobalDefaultFont"] = $"{(TermFontBox.Text ?? "").Trim()} {(TermFontSizeBox.Text ?? "").Trim()}";
+
+        string finalFont = GetComboValue(TermFontBox, "Cascadia Mono");
+        string finalSize = GetComboValue(TermFontSizeBox, "16");
+        _localSettings.Values["GlobalDefaultFont"] = $"{finalFont.Trim()} {finalSize.Trim()}";
+
         _localSettings.Values["GlobalDefaultScrollback"] = TermScrollbackBox.Value;
 
         // Your existing log path save
@@ -192,7 +173,7 @@ public sealed partial class GlobalDefaultsDialog : Window
                 if (hex.Length == 6 || hex.Length == 8)
                 {
                     byte r = Convert.ToByte(hex.Substring(offset, 2), 16);
-                    byte g = Convert.ToByte(hex.Substring(offset + 2, 2), 16);
+                    byte g = Convert.ToByte(hex.Substring(offset + 2), 16);
                     byte b = Convert.ToByte(hex.Substring(offset + 4, 2), 16);
 
                     preview.Fill = new SolidColorBrush(Windows.UI.Color.FromArgb(a, r, g, b));
@@ -225,5 +206,28 @@ public sealed partial class GlobalDefaultsDialog : Window
 
         var folder = await folderPicker.PickSingleFolderAsync();
         if (folder != null) LogPathBox.Text = folder.Path;
+    }
+
+    // --- HELPER METHODS ---
+    private string GetComboValue(ComboBox cb, string fallback)
+    {
+        if (cb.SelectedItem is ComboBoxItem item) return item.Content?.ToString() ?? fallback;
+        if (cb.SelectedItem != null) return cb.SelectedItem.ToString() ?? fallback;
+        if (!string.IsNullOrWhiteSpace(cb.Text)) return cb.Text;
+        return fallback;
+    }
+
+    private void SetComboValue(ComboBox cb, string targetValue)
+    {
+        foreach (var item in cb.Items)
+        {
+            string itemStr = (item as ComboBoxItem)?.Content?.ToString() ?? item?.ToString() ?? "";
+            if (itemStr == targetValue)
+            {
+                cb.SelectedItem = item;
+                return;
+            }
+        }
+        cb.Text = targetValue;
     }
 }

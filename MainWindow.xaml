@@ -15,13 +15,16 @@
         <MenuBar Grid.Row="0">
             <MenuBarItem Title="File">
                 <MenuFlyoutSubItem Text="Import">
-                    <MenuFlyoutItem Text="Scarpa JSON…" Click="ImportScarpa_Click" />
+                    <MenuFlyoutItem Text="Scarpa..." Click="ImportScarpa_Click" />
                     <MenuFlyoutItem Text="PuTTY (this computer)" Click="ImportPuttyRegistry_Click" />
                     <MenuFlyoutItem Text="PuTTY .reg file…" Click="ImportPuttyFile_Click" />
                     <MenuFlyoutItem Text="SecureCRT XML…" Click="ImportSecureCrt_Click" />
                     <MenuFlyoutItem Text="MobaXterm sessions…" Click="ImportMoba_Click" />
                 </MenuFlyoutSubItem>
-                <MenuFlyoutItem Text="Export vault (plain JSON)…" Click="Export_Click" />
+                <MenuFlyoutSubItem Text="Export">
+                    <MenuFlyoutItem Text="Export Encrypted" Click="ExportEncrypted_Click"/>
+                    <MenuFlyoutItem Text="Export Cleartext" Click="ExportCleartext_Click"/>
+                </MenuFlyoutSubItem>
                 <MenuFlyoutSeparator />
                 <MenuFlyoutItem Text="Change master passphrase…" Click="ChangePassphrase_Click" />
                 <MenuFlyoutItem Text="Forget saved passphrase" Click="ForgetPassphrase_Click" />

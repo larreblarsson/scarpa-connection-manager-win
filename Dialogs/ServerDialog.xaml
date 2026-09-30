@@ -259,7 +259,7 @@
                         <StackPanel x:Name="PortForwardingPage" Visibility="Collapsed" Padding="16" Spacing="12">
                             <TextBlock Text="Port Forwarding Rules" Style="{StaticResource SubtitleTextBlockStyle}" />
 
-                            <ListView x:Name="PortForwardList" Height="150" BorderBrush="Gray" BorderThickness="1" CornerRadius="4">
+                            <ListView x:Name="PortForwardList" Height="200" BorderBrush="Gray" BorderThickness="1" CornerRadius="4">
                                 <ListView.ItemTemplate>
                                     <DataTemplate>
                                         <TextBlock Text="{Binding DisplayText}" VerticalAlignment="Center" />
@@ -272,28 +272,6 @@
                                 <Button Content="Edit" Click="PortForward_Edit_Click" />
                                 <Button Content="Delete" Click="PortForward_Delete_Click" />
                             </StackPanel>
-
-                            <!-- Hidden Edit Panel -->
-                            <Border x:Name="PortForwardEditPanel" Visibility="Collapsed" Background="{ThemeResource LayerFillColorDefaultBrush}" Padding="12" CornerRadius="4" Margin="0,12,0,0">
-                                <StackPanel Spacing="12">
-                                    <TextBlock x:Name="PortForwardEditTitle" Text="Add Port Forwarding Rule" FontWeight="SemiBold" />
-
-                                    <ComboBox x:Name="PortForwardTypeBox" Header="Type" SelectedIndex="0" SelectionChanged="PortForwardTypeBox_SelectionChanged">
-                                        <ComboBoxItem Content="Local" />
-                                        <ComboBoxItem Content="Remote" />
-                                        <ComboBoxItem Content="Dynamic" />
-                                    </ComboBox>
-
-                                    <NumberBox x:Name="PortForwardSourceBox" Header="Source Port" Minimum="1" Maximum="65535" Value="8080" />
-                                    <TextBox x:Name="PortForwardDestHostBox" Header="Destination Host" PlaceholderText="e.g., 127.0.0.1" Text="localhost" />
-                                    <NumberBox x:Name="PortForwardDestPortBox" Header="Destination Port" Minimum="1" Maximum="65535" Value="80" />
-
-                                    <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,8,0,0">
-                                        <Button Content="Save" Style="{StaticResource AccentButtonStyle}" Click="PortForward_SaveEdit_Click" />
-                                        <Button Content="Cancel" Click="PortForward_CancelEdit_Click" />
-                                    </StackPanel>
-                                </StackPanel>
-                            </Border>
                         </StackPanel>
 
                         <!-- 5. APPEARANCE PAGE -->

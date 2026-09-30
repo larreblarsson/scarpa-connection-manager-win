@@ -151,4 +151,71 @@ public static class CryptoStore
 			}
 		}
 	}
+    // --- EXPORT / IMPORT METHODS ---
+
+    public static void ExportClearText(List<ServerConfig> servers, string filePath)
+    {
+        string json = System.Text.Json.JsonSerializer.Serialize(servers, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+        System.IO.File.WriteAllText(filePath, json);
+    }
+
+    public static List<ServerConfig> ImportClearText(string filePath)
+    {
+        string json = System.IO.File.ReadAllText(filePath);
+        return System.Text.Json.JsonSerializer.Deserialize<List<ServerConfig>>(json) ?? new List<ServerConfig>();
+    }
+
+    public static void ExportEncrypted(List<ServerConfig> servers, string filePath, string password)
+    {
+        string json = System.Text.Json.JsonSerializer.Serialize(servers);
+
+        byte[] salt = new byte[16];
+        System.Security.Cryptography.RandomNumberGenerator.Fill(salt);
+
+        using var pbkdf2 = new System.Security.Cryptography.Rfc2898DeriveBytes(password, salt, 100000, System.Security.Cryptography.HashAlgorithmName.SHA256);
+        using var aes = System.Security.Cryptography.Aes.Create();
+        aes.Key = pbkdf2.GetBytes(32);
+        aes.GenerateIV();
+
+        using var encryptor = aes.CreateEncryptor();
+        using var ms = new System.IO.MemoryStream();
+
+        // Write Salt and IV to the beginning of the file so we can read them during import
+        ms.Write(salt, 0, salt.Length);
+        ms.Write(aes.IV, 0, aes.IV.Length);
+
+        using (var cs = new System.Security.Cryptography.CryptoStream(ms, encryptor, System.Security.Cryptography.CryptoStreamMode.Write))
+        using (var sw = new System.IO.StreamWriter(cs))
+        {
+            sw.Write(json);
+        }
+
+        System.IO.File.WriteAllBytes(filePath, ms.ToArray());
+    }
+
+    public static List<ServerConfig> ImportEncrypted(string filePath, string password)
+    {
+        byte[] encryptedBytes = System.IO.File.ReadAllBytes(filePath);
+        using var ms = new System.IO.MemoryStream(encryptedBytes);
+
+        // Extract the Salt and IV from the beginning of the file
+        byte[] salt = new byte[16];
+        ms.Read(salt, 0, salt.Length);
+
+        byte[] iv = new byte[16];
+        ms.Read(iv, 0, iv.Length);
+
+        using var pbkdf2 = new System.Security.Cryptography.Rfc2898DeriveBytes(password, salt, 100000, System.Security.Cryptography.HashAlgorithmName.SHA256);
+        using var aes = System.Security.Cryptography.Aes.Create();
+        aes.Key = pbkdf2.GetBytes(32);
+        aes.IV = iv;
+
+        using var decryptor = aes.CreateDecryptor();
+        using var cs = new System.Security.Cryptography.CryptoStream(ms, decryptor, System.Security.Cryptography.CryptoStreamMode.Read);
+        using var sr = new System.IO.StreamReader(cs);
+
+        string decryptedJson = sr.ReadToEnd();
+
+        return System.Text.Json.JsonSerializer.Deserialize<List<ServerConfig>>(decryptedJson) ?? new List<ServerConfig>();
+    }
 }

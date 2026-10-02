@@ -12,7 +12,6 @@ namespace scarpa_connection_manager_win.Dialogs;
 public sealed partial class ServerDialog : Window
 {
     public ObservableCollection<LoginActionStep> LoginActions { get; set; } = new();
-    private LoginActionStep? _editingAction = null;
 
     public ServerConfig Config { get; private set; }
     public bool Saved { get; private set; } = false;
@@ -92,6 +91,7 @@ public sealed partial class ServerDialog : Window
                 {
                     PortForwardRules.Add(new PortForwardRule
                     {
+                        Name = rule.Name,
                         Type = rule.Type,
                         SourcePort = rule.SourcePort,
                         DestinationHost = rule.DestinationHost,
@@ -191,8 +191,6 @@ public sealed partial class ServerDialog : Window
             PortForwardList.ItemsSource = PortForwardRules;
 
             // Appearance
-
-            // 1. Initialize Default Palette
             string targetPalette = "None";
             foreach (ComboBoxItem item in PaletteBox.Items)
             {
@@ -202,9 +200,8 @@ public sealed partial class ServerDialog : Window
                     break;
                 }
             }
-            if (PaletteBox.SelectedItem == null) PaletteBox.SelectedIndex = 0; // Fallback
+            if (PaletteBox.SelectedItem == null) PaletteBox.SelectedIndex = 0;
 
-            // 2. Initialize Default Font
             SetComboValue(TermFontBox, "Cascadia Mono");
             SetComboValue(TermFontSizeBox, "16");
 
@@ -213,8 +210,6 @@ public sealed partial class ServerDialog : Window
             TermScrollbackBox.Value = 10000;
 
             SyncSchemeDropdown(TermFgBox.Text, TermBgBox.Text);
-
-            // Force the color bars to paint themselves when the window opens!
             UpdateColorPreview(TermFgBox.Text, TermFgPreview);
             UpdateColorPreview(TermBgBox.Text, TermBgPreview);
 
@@ -356,36 +351,39 @@ public sealed partial class ServerDialog : Window
         Config.RdpDrivePath = RdpDrivePathBox.Text;
 
         Saved = true;
-        _tcs.TrySetResult(true);
+        _tcs?.TrySetResult(true);
         this.Close();
     }
 
     private void Cancel_Click(object sender, RoutedEventArgs e)
     {
-        _tcs.TrySetResult(false);
+        _tcs?.TrySetResult(false);
         this.Close();
     }
 
-    private void LoginAction_Add_Click(object sender, RoutedEventArgs e)
+    // --- POPUP DIALOG LOGIN ACTIONS HANDLERS ---
+
+    private async void LoginAction_Add_Click(object sender, RoutedEventArgs e)
     {
-        _editingAction = null;
-        LoginActionEditTitle.Text = "Add Sequence Step";
-        LoginActionExpectBox.Text = "";
-        LoginActionSendBox.Text = "";
-        LoginActionTimeoutBox.Value = 5;
-        LoginActionEditPanel.Visibility = Visibility.Visible;
+        var newStep = new LoginActionStep { Expect = "", Send = "", Timeout = 5 };
+        if (await ShowLoginActionEditorAsync("Add Sequence Step", newStep))
+        {
+            LoginActions.Add(newStep);
+        }
     }
 
-    private void LoginAction_Edit_Click(object sender, RoutedEventArgs e)
+    private async void LoginAction_Edit_Click(object sender, RoutedEventArgs e)
     {
-        if (LoginActionList.SelectedItem is LoginActionStep step)
+        if (LoginActionList.SelectedItem is not LoginActionStep selectedStep)
         {
-            _editingAction = step;
-            LoginActionEditTitle.Text = "Edit Sequence Step";
-            LoginActionExpectBox.Text = step.Expect;
-            LoginActionSendBox.Text = step.Send;
-            LoginActionTimeoutBox.Value = step.Timeout;
-            LoginActionEditPanel.Visibility = Visibility.Visible;
+            await ShowAlertAsync("Selection", "Please select a step to edit.");
+            return;
+        }
+
+        if (await ShowLoginActionEditorAsync("Edit Sequence Step", selectedStep))
+        {
+            int idx = LoginActions.IndexOf(selectedStep);
+            if (idx >= 0) LoginActions[idx] = selectedStep;
         }
     }
 
@@ -418,33 +416,46 @@ public sealed partial class ServerDialog : Window
         }
     }
 
-    private void LoginAction_SaveEdit_Click(object sender, RoutedEventArgs e)
+    private async Task<bool> ShowLoginActionEditorAsync(string title, LoginActionStep step)
     {
-        if (_editingAction != null)
-        {
-            _editingAction.Expect = LoginActionExpectBox.Text;
-            _editingAction.Send = LoginActionSendBox.Text;
-            _editingAction.Timeout = double.IsNaN(LoginActionTimeoutBox.Value) ? 5 : (int)LoginActionTimeoutBox.Value;
+        var expectBox = new TextBox { Text = step.Expect, Header = "Expect (Pattern to match)", PlaceholderText = "e.g., password:" };
+        var sendBox = new TextBox { Text = step.Send, Header = "Send (Response to send)", PlaceholderText = "e.g., MyPassword" };
+        var timeoutBox = new NumberBox { Value = step.Timeout, Header = "Timeout (seconds)", Minimum = 1, Maximum = 300, HorizontalAlignment = HorizontalAlignment.Stretch };
 
-            int idx = LoginActions.IndexOf(_editingAction);
-            if (idx >= 0) LoginActions[idx] = _editingAction;
-        }
-        else
+        var contentPanel = new StackPanel
         {
-            LoginActions.Add(new LoginActionStep
+            Spacing = 10,
+            Width = 320,
+            Children =
             {
-                Expect = LoginActionExpectBox.Text,
-                Send = LoginActionSendBox.Text,
-                Timeout = double.IsNaN(LoginActionTimeoutBox.Value) ? 5 : (int)LoginActionTimeoutBox.Value
-            });
+                expectBox,
+                sendBox,
+                timeoutBox
+            }
+        };
+
+        var dialog = new ContentDialog
+        {
+            Title = title,
+            Content = contentPanel,
+            PrimaryButtonText = "OK",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Primary,
+            XamlRoot = this.Content.XamlRoot
+        };
+
+        var result = await dialog.ShowAsync();
+        if (result == ContentDialogResult.Primary)
+        {
+            step.Expect = expectBox.Text.Trim();
+            step.Send = sendBox.Text; // Keeping original formatting for passwords or spaces
+            step.Timeout = double.IsNaN(timeoutBox.Value) ? 5 : (int)timeoutBox.Value;
+            return true;
         }
-        LoginActionEditPanel.Visibility = Visibility.Collapsed;
+        return false;
     }
 
-    private void LoginAction_CancelEdit_Click(object sender, RoutedEventArgs e)
-    {
-        LoginActionEditPanel.Visibility = Visibility.Collapsed;
-    }
+    // --- OTHER UI HANDLERS ---
 
     private void ShowPasswordCheck_Changed(object sender, RoutedEventArgs e)
     {
@@ -601,7 +612,7 @@ public sealed partial class ServerDialog : Window
 
     private async void PortForward_Add_Click(object sender, RoutedEventArgs e)
     {
-        var newRule = new PortForwardRule { Type = "Local", SourcePort = 8080, DestinationHost = "localhost", DestinationPort = 80 };
+        var newRule = new PortForwardRule { Name = "", Type = "Local", SourcePort = 8080, DestinationHost = "localhost", DestinationPort = 80 };
         if (await ShowPortForwardEditorAsync("Add Port Forwarding Rule", newRule))
         {
             PortForwardRules.Add(newRule);
@@ -633,6 +644,7 @@ public sealed partial class ServerDialog : Window
 
     private async Task<bool> ShowPortForwardEditorAsync(string title, PortForwardRule rule)
     {
+        var nameBox = new TextBox { Text = rule.Name, Header = "Rule Name (Optional)", PlaceholderText = "e.g., Web UI or DB Tunnel" };
         var typeBox = new ComboBox
         {
             ItemsSource = new[] { "Local", "Remote", "Dynamic" },
@@ -649,6 +661,7 @@ public sealed partial class ServerDialog : Window
             Width = 300,
             Children =
             {
+                nameBox,
                 new TextBlock { Text = "Type" },
                 typeBox,
                 sourcePortBox,
@@ -670,6 +683,7 @@ public sealed partial class ServerDialog : Window
         var result = await dialog.ShowAsync();
         if (result == ContentDialogResult.Primary)
         {
+            rule.Name = nameBox.Text.Trim();
             rule.Type = typeBox.SelectedItem?.ToString() ?? "Local";
             if (int.TryParse(sourcePortBox.Text, out int sp)) rule.SourcePort = sp;
             rule.DestinationHost = destHostBox.Text.Trim();

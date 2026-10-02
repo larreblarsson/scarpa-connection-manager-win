@@ -72,13 +72,18 @@
                   DoubleTapped="Tree_DoubleClick"
                   Tapped="Tree_Tapped"
                   RightTapped="Tree_RightTapped"
-                  KeyDown="Tree_KeyDown" 
+                  PreviewKeyDown="Tree_PreviewKeyDown" 
                   ItemInvoked="Tree_ItemInvoked"
                   AllowDrop="True" 
                   CanDragItems="True" 
                   CanReorderItems="True" 
                   DragItemsCompleted="Tree_DragItemsCompleted"
                   Padding="8">
+            <TreeView.ItemContainerStyle>
+                <Style TargetType="TreeViewItem">
+                    <Setter Property="UseSystemFocusVisuals" Value="False" />
+                </Style>
+            </TreeView.ItemContainerStyle>
             <TreeView.ItemTemplate>
                 <DataTemplate>
                     <Grid Background="{Binding Content.BackgroundBrush}" CornerRadius="4" Margin="0,2">

@@ -1,4 +1,4 @@
-<Window
+﻿<Window
     x:Class="scarpa_connection_manager_win.Dialogs.ServerDialog"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
@@ -185,73 +185,28 @@
                         </StackPanel>
 
                         <!-- 3. LOGIN ACTION PAGE -->
-                        <StackPanel x:Name="LoginActionPage" Spacing="16" Visibility="Collapsed">
-                            <TextBlock Text="Automated Login Sequence" FontWeight="SemiBold" />
-                            <TextBlock Text="Define expect/send sequences to execute automatically after connection." Foreground="Gray" TextWrapping="Wrap" />
+                        <StackPanel x:Name="LoginActionPage" Visibility="Collapsed" Padding="16" Spacing="12">
+                            <TextBlock Text="Automation / Login Actions" Style="{StaticResource SubtitleTextBlockStyle}" />
 
-                            <Border BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="4" Height="200" HorizontalAlignment="Stretch">
-                                <ListView x:Name="LoginActionList" SelectionMode="Single">
-                                    <ListView.HeaderTemplate>
-                                        <DataTemplate>
-                                            <Grid Padding="12,8" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,0,0,1">
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="2*" />
-                                                    <ColumnDefinition Width="2*" />
-                                                    <ColumnDefinition Width="1*" />
-                                                </Grid.ColumnDefinitions>
-                                                <TextBlock Text="Expect" FontWeight="SemiBold" Grid.Column="0" />
-                                                <TextBlock Text="Send" FontWeight="SemiBold" Grid.Column="1" />
-                                                <TextBlock Text="Timeouts)" FontWeight="SemiBold" Grid.Column="2" />
-                                            </Grid>
-                                        </DataTemplate>
-                                    </ListView.HeaderTemplate>
-                                    <ListView.ItemTemplate>
-                                        <DataTemplate>
-                                            <Grid Padding="0,8">
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="2*" />
-                                                    <ColumnDefinition Width="2*" />
-                                                    <ColumnDefinition Width="1*" />
-                                                </Grid.ColumnDefinitions>
-                                                <TextBlock Text="{Binding Expect}" Grid.Column="0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="0,0,8,0"/>
-                                                <TextBlock Text="{Binding Send}" Grid.Column="1" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="0,0,8,0"/>
-                                                <TextBlock Text="{Binding Timeout}" Grid.Column="2" VerticalAlignment="Center" />
-                                            </Grid>
-                                        </DataTemplate>
-                                    </ListView.ItemTemplate>
-                                </ListView>
-                            </Border>
+                            <ListView x:Name="LoginActionList" Height="180" BorderBrush="Gray" BorderThickness="1" CornerRadius="4">
+                                <ListView.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Orientation="Horizontal" Spacing="12" Padding="4">
+                                            <TextBlock Text="{Binding Expect}" FontWeight="SemiBold" Width="120"/>
+                                            <TextBlock Text="→" Foreground="Gray"/>
+                                            <TextBlock Text="{Binding Send}" Width="150"/>
+                                            <TextBlock Text="{Binding Timeout}" Foreground="Gray"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ListView.ItemTemplate>
+                            </ListView>
 
-                            <!-- Control Buttons -->
                             <StackPanel Orientation="Horizontal" Spacing="8">
                                 <Button Content="Add" Click="LoginAction_Add_Click" />
                                 <Button Content="Edit" Click="LoginAction_Edit_Click" />
                                 <Button Content="Delete" Click="LoginAction_Delete_Click" />
-                                <Button Click="LoginAction_Up_Click" ToolTipService.ToolTip="Move Up">
-                                    <FontIcon Glyph="&#xE70E;" FontSize="12" />
-                                </Button>
-                                <Button Click="LoginAction_Down_Click" ToolTipService.ToolTip="Move Down">
-                                    <FontIcon Glyph="&#xE70D;" FontSize="12" />
-                                </Button>
-                            </StackPanel>
-
-                            <!-- Inline Edit Panel -->
-                            <StackPanel x:Name="LoginActionEditPanel" Visibility="Collapsed" Spacing="8" Margin="0,8,0,0" Padding="12" Background="{ThemeResource LayerOnMicaBaseAltFillColorDefaultBrush}" CornerRadius="4">
-                                <TextBlock x:Name="LoginActionEditTitle" Text="Add Action" FontWeight="SemiBold" />
-                                <Grid ColumnSpacing="8">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="120" />
-                                    </Grid.ColumnDefinitions>
-                                    <TextBox x:Name="LoginActionExpectBox" Header="Expect" Grid.Column="0" />
-                                    <TextBox x:Name="LoginActionSendBox" Header="Send" Grid.Column="1" />
-                                    <NumberBox x:Name="LoginActionTimeoutBox" Header="Timeout (s)" Value="5" Minimum="1" Maximum="300" SpinButtonPlacementMode="Inline" Grid.Column="2" />
-                                </Grid>
-                                <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" Margin="0,8,0,0">
-                                    <Button Content="Save" Style="{ThemeResource AccentButtonStyle}" Click="LoginAction_SaveEdit_Click" />
-                                    <Button Content="Cancel" Click="LoginAction_CancelEdit_Click" />
-                                </StackPanel>
+                                <Button Content="Move Up" Click="LoginAction_Up_Click" />
+                                <Button Content="Move Down" Click="LoginAction_Down_Click" />
                             </StackPanel>
                         </StackPanel>
 

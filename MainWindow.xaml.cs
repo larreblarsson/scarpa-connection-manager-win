@@ -79,6 +79,7 @@ public sealed partial class MainWindow : Window
     private bool _isCutOperation = false;
 
     private TreeViewNode? _lastClickedNode;
+    private TreeViewNode? _keyboardFocusNode;
     private DateTime _lastClickTime = DateTime.MinValue;
     private DispatcherTimer? _renameTimer;
     private Dictionary<TreeViewNode, object> _nodeTags = new();
@@ -636,13 +637,22 @@ public sealed partial class MainWindow : Window
     {
         if (e.OriginalSource is DependencyObject element)
         {
+            // Ignore clicks on the scrollbar
             if (FindParent<Microsoft.UI.Xaml.Controls.Primitives.ScrollBar>(element) != null)
                 return;
 
+            // NEW: If the user clicked anywhere except inside the renaming TextBox itself,
+            // force the TreeView to take focus. This automatically triggers the 
+            // TextBox_LostFocus event and saves the new name!
+            if (FindParent<TextBox>(element) == null)
+            {
+                Tree.Focus(FocusState.Programmatic);
+            }
+
+            // Existing logic: if they clicked completely outside any TreeViewItem, clear selection
             if (FindParent<TreeViewItem>(element) == null)
             {
                 ClearSelection();
-                // FIX: User clicked empty space, reset the rename "memory"
                 _lastClickedNode = null;
             }
         }
@@ -724,10 +734,14 @@ public sealed partial class MainWindow : Window
         return FindParent<T>(parent);
     }
 
-    private void Tree_KeyDown(object sender, KeyRoutedEventArgs e)
+    // 1. Renamed to PreviewKeyDown to intercept keys before the TreeView swallows them
+    private void Tree_PreviewKeyDown(object sender, KeyRoutedEventArgs e)
     {
         var ctrl = Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Control);
+        var shift = Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Shift);
+
         bool isCtrlDown = ctrl.HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down);
+        bool isShiftDown = shift.HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down);
 
         if (isCtrlDown)
         {
@@ -738,8 +752,61 @@ public sealed partial class MainWindow : Window
 
         switch (e.Key)
         {
-            case VirtualKey.Enter: Ssh_Click(sender, new RoutedEventArgs()); break;
-            case VirtualKey.Delete: DeleteSelected_Click(sender, new RoutedEventArgs()); break;
+            case VirtualKey.Enter:
+                Ssh_Click(sender, new RoutedEventArgs());
+                e.Handled = true;
+                break;
+            case VirtualKey.Delete:
+                DeleteSelected_Click(sender, new RoutedEventArgs());
+                e.Handled = true;
+                break;
+            case VirtualKey.Up:
+            case VirtualKey.Down:
+                HandleArrowNavigation(e.Key, isShiftDown);
+                e.Handled = true; // Block native navigation entirely
+                break;
+        }
+    }
+
+    // 2. Updated to physically move Windows Keyboard Focus along with your custom selection
+    private void HandleArrowNavigation(VirtualKey key, bool isShiftDown)
+    {
+        var visibleNodes = GetVisibleNodes(Tree.RootNodes);
+        if (visibleNodes.Count == 0) return;
+
+        var currentNode = _keyboardFocusNode ?? _lastClickedNode ?? (_selectedNodes.LastOrDefault() ?? visibleNodes[0]);
+        int currentIndex = visibleNodes.IndexOf(currentNode);
+
+        if (currentIndex == -1) currentIndex = 0;
+
+        int nextIndex = key == VirtualKey.Up ? currentIndex - 1 : currentIndex + 1;
+
+        if (nextIndex < 0) nextIndex = 0;
+        if (nextIndex >= visibleNodes.Count) nextIndex = visibleNodes.Count - 1;
+
+        if (nextIndex == currentIndex) return;
+
+        var targetNode = visibleNodes[nextIndex];
+
+        if (isShiftDown)
+        {
+            var anchor = _lastClickedNode ?? currentNode;
+            SelectRange(anchor, targetNode);
+        }
+        else
+        {
+            ClearSelection();
+            SetNodeSelection(targetNode, true);
+            _lastClickedNode = targetNode;
+        }
+
+        _keyboardFocusNode = targetNode;
+
+        // Bring the new item into view and physically force the Windows focus onto it
+        if (Tree.ContainerFromNode(targetNode) is Control container)
+        {
+            container.StartBringIntoView();
+            container.Focus(FocusState.Keyboard);
         }
     }
 
@@ -1078,9 +1145,7 @@ public sealed partial class MainWindow : Window
     {
         if (args.InvokedItem is TreeViewNode node)
         {
-            // NEW: Block further actions if this node is currently being renamed
-            if (node.Content is TreeItemData nodeData && nodeData.IsEditing)
-                return;
+            if (node.Content is TreeItemData nodeData && nodeData.IsEditing) return;
 
             var ctrl = Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Control);
             var shift = Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Shift);
@@ -1093,7 +1158,6 @@ public sealed partial class MainWindow : Window
             if (_lastClickedNode == node && !isCtrlDown && !isShiftDown)
             {
                 var elapsed = (now - _lastClickTime).TotalMilliseconds;
-
                 if (elapsed > 500 && elapsed < 3000)
                 {
                     _renameTimer?.Stop();
@@ -1111,6 +1175,7 @@ public sealed partial class MainWindow : Window
             }
 
             _lastClickedNode = node;
+            _keyboardFocusNode = node; // NEW: Keep keyboard focus perfectly synced with the mouse
             _lastClickTime = now;
         }
     }
@@ -1283,26 +1348,231 @@ public sealed partial class MainWindow : Window
         return result == ContentDialogResult.Primary ? passBox.Password : null;
     }
 
+    // --- Helper for deduplicating, saving, and refreshing the UI ---
+    // Added 'warningMessage = null' to the parameters
+    private async void ProcessImportedServers(List<ServerConfig>? imported, string sourceName, List<string>? additionalFolders = null, string? warningMessage = null)
+    {
+        if ((imported == null || imported.Count == 0) && (additionalFolders == null || additionalFolders.Count == 0))
+        {
+            await ShowAlertAsync("Import", $"No valid sessions or folders were found from {sourceName}.");
+            Log($"{sourceName} import yielded 0 items.");
+            return;
+        }
+
+        int addedCount = 0;
+        int skippedCount = 0;
+        bool foldersAdded = false;
+
+        if (additionalFolders != null)
+        {
+            foreach (var folderPath in additionalFolders)
+            {
+                if (!string.IsNullOrEmpty(folderPath) && folderPath != AppPaths.RootFolder)
+                {
+                    var parts = folderPath.Split('/');
+                    var currentBuild = "";
+                    foreach (var part in parts)
+                    {
+                        currentBuild = string.IsNullOrEmpty(currentBuild) ? part : $"{currentBuild}/{part}";
+                        if (!_settings.Folders.Contains(currentBuild))
+                        {
+                            _settings.Folders.Add(currentBuild);
+                            foldersAdded = true;
+                        }
+                    }
+                }
+            }
+        }
+
+        if (imported != null)
+        {
+            foreach (var incomingServer in imported)
+            {
+                bool isDuplicate = _servers.Any(existing =>
+                    string.Equals(existing.Name ?? "", incomingServer.Name ?? "", StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(existing.Folder ?? "", incomingServer.Folder ?? "", StringComparison.OrdinalIgnoreCase));
+
+                if (!isDuplicate)
+                {
+                    _servers.Add(incomingServer);
+
+                    string folder = incomingServer.Folder ?? "";
+                    if (!string.IsNullOrEmpty(folder) && folder != AppPaths.RootFolder)
+                    {
+                        var parts = folder.Split('/');
+                        var currentBuild = "";
+                        foreach (var part in parts)
+                        {
+                            currentBuild = string.IsNullOrEmpty(currentBuild) ? part : $"{currentBuild}/{part}";
+                            if (!_settings.Folders.Contains(currentBuild))
+                            {
+                                _settings.Folders.Add(currentBuild);
+                                foldersAdded = true;
+                            }
+                        }
+                    }
+                    addedCount++;
+                }
+                else
+                {
+                    skippedCount++;
+                }
+            }
+        }
+
+        if (addedCount > 0 || foldersAdded)
+        {
+            SettingsService.Save(_settings);
+            Persist();
+            RebuildTree();
+        }
+
+        string resultMsg = $"Imported {addedCount} session(s) and synced folders from {sourceName}.";
+        if (skippedCount > 0) resultMsg += $" Skipped {skippedCount} duplicate(s).";
+
+        // Append the warning message to the final dialog if one was provided
+        if (!string.IsNullOrEmpty(warningMessage))
+        {
+            resultMsg += $"\n\n{warningMessage}";
+        }
+
+        await ShowAlertAsync("Import Complete", resultMsg);
+        Log(resultMsg);
+    }
+
+    // --- PuTTY Reg File Import ---
     private async void ImportPuttyFile_Click(object sender, RoutedEventArgs e)
     {
+        Tree.ContextFlyout?.Hide();
+
         var path = await PickFileAsync(".reg");
-        if (path != null) Log($"Import target selected: {path}");
+        if (path == null) return;
+
+        try
+        {
+            Log($"Importing PuTTY sessions from file: {path}");
+            var imported = Importers.FromPuttyRegFile(path);
+            ProcessImportedServers(imported, "PuTTY file");
+        }
+        catch (Exception ex)
+        {
+            await ShowAlertAsync("Import Failed", $"Could not parse PuTTY file:\n{ex.Message}");
+            Log($"PuTTY file import error: {ex.Message}");
+        }
+    }
+
+    // --- Live PuTTY Registry Import ---
+    private async void ImportPuttyRegistry_Click(object sender, RoutedEventArgs e)
+    {
+        Tree.ContextFlyout?.Hide();
+
+        try
+        {
+            Log("Importing PuTTY sessions from Windows Registry...");
+            // No file picker needed; reads directly from HKCU
+            var imported = Importers.FromPuttyRegistry();
+            ProcessImportedServers(imported, "PuTTY registry");
+        }
+        catch (Exception ex)
+        {
+            await ShowAlertAsync("Import Failed", $"Could not read PuTTY registry:\n{ex.Message}");
+            Log($"PuTTY registry import error: {ex.Message}");
+        }
+    }
+
+    // --- MobaXterm Import ---
+    private async void ImportMoba_Click(object sender, RoutedEventArgs e)
+    {
+        Tree.ContextFlyout?.Hide();
+
+        var path = await PickFileAsync(".mxtsessions");
+        if (path == null) return;
+
+        try
+        {
+            Log($"Importing MobaXterm sessions from: {path}");
+            var (servers, folders) = Importers.FromMobaXterm(path);
+
+            // Pass the warning message specifically for MobaXterm
+            ProcessImportedServers(servers, "MobaXterm", folders,
+                "Note: MobaXterm encrypts saved passwords, so they could not be imported. You will need to re-enter and save your passwords for these sessions.");
+        }
+        catch (Exception ex)
+        {
+            await ShowAlertAsync("Import Failed", $"Could not parse MobaXterm file:\n{ex.Message}");
+            Log($"MobaXterm import error: {ex.Message}");
+        }
     }
 
     private async void ImportSecureCrt_Click(object sender, RoutedEventArgs e)
     {
+        Tree.ContextFlyout?.Hide();
+
         var path = await PickFileAsync(".xml");
-        if (path != null) Log($"Import target selected: {path}");
-    }
+        if (path == null) return;
 
-    private async void ImportMoba_Click(object sender, RoutedEventArgs e)
-    {
-        var path = await PickFileAsync(".mxtsessions");
-        if (path != null) Log($"Import target selected: {path}");
-    }
+        try
+        {
+            Log($"Importing SecureCRT XML from: {path}");
+            var imported = Importers.FromSecureCrtXml(path);
 
-    private void ImportPuttyRegistry_Click(object sender, RoutedEventArgs e) { Log("Importing from registry."); }
-    
+            if (imported != null && imported.Count > 0)
+            {
+                int addedCount = 0;
+                int skippedCount = 0;
+
+                foreach (var incomingServer in imported)
+                {
+                    // Deduplication: A server is a duplicate if it has the exact same Name and Folder
+                    bool isDuplicate = _servers.Any(existing =>
+                        string.Equals(existing.Name ?? "", incomingServer.Name ?? "", StringComparison.OrdinalIgnoreCase) &&
+                        string.Equals(existing.Folder ?? "", incomingServer.Folder ?? "", StringComparison.OrdinalIgnoreCase));
+
+                    if (!isDuplicate)
+                    {
+                        _servers.Add(incomingServer);
+
+                        // If this imported server introduces a new folder, track it in settings
+                        string folder = incomingServer.Folder ?? "";
+                        if (!string.IsNullOrEmpty(folder) && folder != AppPaths.RootFolder && !_settings.Folders.Contains(folder))
+                        {
+                            _settings.Folders.Add(folder);
+                        }
+
+                        addedCount++;
+                    }
+                    else
+                    {
+                        skippedCount++;
+                    }
+                }
+
+                if (addedCount > 0)
+                {
+                    SettingsService.Save(_settings); // Save newly discovered folders
+                    Persist(); // Save the newly added servers into the encrypted vault
+                    RebuildTree(); // Refresh the UI
+                }
+
+                string resultMsg = $"Imported {addedCount} SecureCRT session(s).";
+                if (skippedCount > 0) resultMsg += $" Skipped {skippedCount} duplicate(s).";
+
+                await ShowAlertAsync("Import Complete", resultMsg);
+                Log(resultMsg);
+            }
+            else
+            {
+                await ShowAlertAsync("Import", "No valid SecureCRT sessions were found in the selected XML file.");
+                Log("SecureCRT import yielded 0 sessions.");
+            }
+        }
+        catch (Exception ex)
+        {
+            await ShowAlertAsync("Import Failed", $"Could not parse SecureCRT XML:\n{ex.Message}");
+            Log($"SecureCRT import error: {ex.Message}");
+        }
+    }
+            
     private void GlobalDefaults_Click(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
     {
         var dialog = new scarpa_connection_manager_win.Dialogs.GlobalDefaultsDialog();

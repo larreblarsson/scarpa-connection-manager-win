@@ -132,14 +132,17 @@ public class LoginActionStep
 
 public class PortForwardRule
 {
+    public string Name { get; set; } = "";
     public string Type { get; set; } = "Local"; // "Local", "Remote", or "Dynamic"
     public int SourcePort { get; set; }
     public string DestinationHost { get; set; } = "localhost";
     public int DestinationPort { get; set; }
 
-    // Helper to render nicely in the ListView
-    public string DisplayText => Type == "Dynamic"
-        ? $"Dynamic (SOCKS) on Port {SourcePort}"
-        : $"{Type}: {SourcePort} -> {DestinationHost}:{DestinationPort}";
+    // Helper to render nicely in the ListView with optional custom name support
+    public string DisplayText => string.IsNullOrWhiteSpace(Name)
+        ? (Type == "Dynamic" ? $"Dynamic (SOCKS) on Port {SourcePort}" : $"{Type}: {SourcePort} -> {DestinationHost}:{DestinationPort}")
+        : $"{Name}  —  ({(Type == "Dynamic" ? $"Dynamic (SOCKS) on Port {SourcePort}" : $"{Type}: {SourcePort} -> {DestinationHost}:{DestinationPort}")})";
 }
+
+
 

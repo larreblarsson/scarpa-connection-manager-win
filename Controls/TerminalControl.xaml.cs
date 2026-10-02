@@ -243,10 +243,9 @@ public sealed partial class TerminalControl : UserControl
                     {
                         foreach (var prompt in e.Prompts)
                         {
-                            if (string.IsNullOrEmpty(pass))
-                                SendToTerminal($"\r\n\x1b[36m[Server Prompt]: {prompt.Request}\x1b[0m\r\n");
-
-                            prompt.Response = pass;
+                            // Feed the password to the prompt, regardless of whether 
+                            // the server asks in English, Swedish, or anything else!
+                            prompt.Response = cfg.Password ?? "";
                         }
                     };
                     authMethods.Add(kbdAuth);

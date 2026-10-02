@@ -18,6 +18,9 @@ public sealed partial class SshSessionWindow : Window
         var windowId = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hwnd);
         var appWindow = Microsoft.UI.Windowing.AppWindow.GetFromWindowId(windowId);
         appWindow.Resize(new Windows.Graphics.SizeInt32(1050, 750));
+        string iconPath = System.IO.Path.Combine(System.AppContext.BaseDirectory, "Assets\\scarpa_icon.ico");
+        appWindow.SetIcon(iconPath);
+
 
         // Create the terminal control programmatically
         _termControl = new TerminalControl(cfg, logPath);

@@ -16,17 +16,19 @@
             <MenuBarItem Title="File">
                 <MenuFlyoutSubItem Text="Import">
                     <MenuFlyoutItem Text="Scarpa..." Click="ImportScarpa_Click" />
-                    <MenuFlyoutItem Text="PuTTY (this computer)" Click="ImportPuttyRegistry_Click" />
-                    <MenuFlyoutItem Text="PuTTY .reg file…" Click="ImportPuttyFile_Click" />
-                    <MenuFlyoutItem Text="SecureCRT XML…" Click="ImportSecureCrt_Click" />
-                    <MenuFlyoutItem Text="MobaXterm sessions…" Click="ImportMoba_Click" />
+                    <MenuFlyoutSubItem Text="PuTTY">
+                        <MenuFlyoutItem Text="From this computer..." Click="ImportPuttyRegistry_Click" />
+                        <MenuFlyoutItem Text="From .reg file..." Click="ImportPuttyFile_Click" />
+                    </MenuFlyoutSubItem>
+                    <MenuFlyoutItem Text="SecureCRT..." Click="ImportSecureCrt_Click" />
+                    <MenuFlyoutItem Text="MobaXterm..." Click="ImportMoba_Click" />
                 </MenuFlyoutSubItem>
                 <MenuFlyoutSubItem Text="Export">
-                    <MenuFlyoutItem Text="Export Encrypted" Click="ExportEncrypted_Click"/>
-                    <MenuFlyoutItem Text="Export Cleartext" Click="ExportCleartext_Click"/>
+                    <MenuFlyoutItem Text="Export Encrypted..." Click="ExportEncrypted_Click"/>
+                    <MenuFlyoutItem Text="Export Cleartext..." Click="ExportCleartext_Click"/>
                 </MenuFlyoutSubItem>
                 <MenuFlyoutSeparator />
-                <MenuFlyoutItem Text="Change master passphrase…" Click="ChangePassphrase_Click" />
+                <MenuFlyoutItem Text="Change master passphra..." Click="ChangePassphrase_Click" />
                 <MenuFlyoutItem Text="Forget saved passphrase" Click="ForgetPassphrase_Click" />
                 <MenuFlyoutItem Text="Global Defaults..." Click="GlobalDefaults_Click" />
                 <MenuFlyoutSeparator />

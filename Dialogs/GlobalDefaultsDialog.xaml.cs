@@ -22,6 +22,9 @@ public sealed partial class GlobalDefaultsDialog : Window
         var windowId = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hwnd);
         var appWindow = Microsoft.UI.Windowing.AppWindow.GetFromWindowId(windowId);
 
+        string iconPath = System.IO.Path.Combine(System.AppContext.BaseDirectory, "Assets\\scarpa_icon.ico");
+        appWindow.SetIcon(iconPath);
+
         int windowWidth = 500;
         int windowHeight = 650;
 

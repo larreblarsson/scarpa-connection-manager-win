@@ -31,6 +31,9 @@ public sealed partial class ServerDialog : Window
         var windowId = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hwnd);
         var appWindow = Microsoft.UI.Windowing.AppWindow.GetFromWindowId(windowId);
 
+        string iconPath = System.IO.Path.Combine(System.AppContext.BaseDirectory, "Assets\\scarpa_icon.ico");
+        appWindow.SetIcon(iconPath);
+
         int windowWidth = 850;
         int windowHeight = 700;
 

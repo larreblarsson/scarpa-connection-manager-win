@@ -93,6 +93,9 @@ public sealed partial class MainWindow : Window
         var windowId = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hwnd);
         var appWindow = Microsoft.UI.Windowing.AppWindow.GetFromWindowId(windowId);
 
+        string iconPath = System.IO.Path.Combine(System.AppContext.BaseDirectory, "Assets\\scarpa_icon.ico");
+        appWindow.SetIcon(iconPath);
+
         var windowWidth = 650;
         var windowHeight = 700;
 
@@ -1388,6 +1391,8 @@ public sealed partial class MainWindow : Window
         {
             foreach (var incomingServer in imported)
             {
+                ApplyGlobalDefaultsToImportedServer(incomingServer);
+
                 bool isDuplicate = _servers.Any(existing =>
                     string.Equals(existing.Name ?? "", incomingServer.Name ?? "", StringComparison.OrdinalIgnoreCase) &&
                     string.Equals(existing.Folder ?? "", incomingServer.Folder ?? "", StringComparison.OrdinalIgnoreCase));
@@ -1523,6 +1528,8 @@ public sealed partial class MainWindow : Window
 
                 foreach (var incomingServer in imported)
                 {
+                    ApplyGlobalDefaultsToImportedServer(incomingServer);
+                    
                     // Deduplication: A server is a duplicate if it has the exact same Name and Folder
                     bool isDuplicate = _servers.Any(existing =>
                         string.Equals(existing.Name ?? "", incomingServer.Name ?? "", StringComparison.OrdinalIgnoreCase) &&
@@ -1578,6 +1585,30 @@ public sealed partial class MainWindow : Window
         var dialog = new scarpa_connection_manager_win.Dialogs.GlobalDefaultsDialog();
         // FIXED: Window uses Activate() to show itself. ShowAsync() is only for ContentDialog.
         dialog.Activate();
+    }
+
+    private void ApplyGlobalDefaultsToImportedServer(ServerConfig server)
+    {
+        // Removed the 'if' check! We unconditionally apply Global Defaults to all imports.
+        var localSettings = new Services.UnpackagedSettings();
+
+        server.TermFont = localSettings.Values["GlobalDefaultFont"] as string ?? "Cascadia Mono 16";
+        server.TermForeground = localSettings.Values["GlobalDefaultFg"] as string ?? "#000000";
+        server.TermBackground = localSettings.Values["GlobalDefaultBg"] as string ?? "#FFFFDD";
+
+        if (localSettings.Values["GlobalDefaultPalette"] != null)
+        {
+            server.TermPalette = localSettings.Values["GlobalDefaultPalette"].ToString() == "0" ? "None" : "Custom";
+        }
+        else
+        {
+            server.TermPalette = "None";
+        }
+
+        if (localSettings.Values["GlobalDefaultScrollback"] is double sb)
+            server.TermScrollback = (int)sb;
+        else
+            server.TermScrollback = 10000;
     }
 
     private void SortTreeNodes(TreeViewNode node)

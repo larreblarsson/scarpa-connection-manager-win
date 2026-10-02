@@ -31,8 +31,11 @@ public sealed partial class SftpWindow : Window
         var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
         var windowId = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hwnd);
         var appWindow = Microsoft.UI.Windowing.AppWindow.GetFromWindowId(windowId);
+        
 
         appWindow.Resize(new Windows.Graphics.SizeInt32(1000, 700));
+        string iconPath = System.IO.Path.Combine(System.AppContext.BaseDirectory, "Assets\\scarpa_icon.ico");
+        appWindow.SetIcon(iconPath);
 
         this.Title = $"{cfg.Name} - SFTP File Manager";
         RemoteFileList.ItemsSource = _remoteFiles;
@@ -48,8 +51,23 @@ public sealed partial class SftpWindow : Window
         {
             try
             {
-                var authMethod = new PasswordAuthenticationMethod(cfg.User, cfg.Password ?? "");
-                var connectionInfo = new ConnectionInfo(cfg.Host, cfg.Port > 0 ? cfg.Port : 22, cfg.User, authMethod);
+                // 1. Setup standard password authentication
+                var passAuth = new PasswordAuthenticationMethod(cfg.User, cfg.Password ?? "");
+
+                // 2. Setup keyboard-interactive authentication (Fallback for modern Linux)
+                var kbdAuth = new KeyboardInteractiveAuthenticationMethod(cfg.User);
+                kbdAuth.AuthenticationPrompt += (sender, e) =>
+                {
+                    foreach (var prompt in e.Prompts)
+                    {
+                        // Feed the password to the prompt, regardless of whether 
+                        // the server asks in English, Swedish, or anything else!
+                        prompt.Response = cfg.Password ?? "";
+                    }
+                };
+
+                // 3. Provide BOTH methods to the ConnectionInfo
+                var connectionInfo = new ConnectionInfo(cfg.Host, cfg.Port > 0 ? cfg.Port : 22, cfg.User, passAuth, kbdAuth);
 
                 _sftpClient = new SftpClient(connectionInfo);
                 _sftpClient.Connect();

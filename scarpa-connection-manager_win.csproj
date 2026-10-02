@@ -88,6 +88,14 @@
     <Folder Include="Views\" />
   </ItemGroup>
   <ItemGroup>
+    <Content Update="Assets\scarpa_icon.ico">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Update="Assets\snap_icon.ico">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+  <ItemGroup>
     <Page Update="Dialogs\SshSessionDialog.xaml">
       <Generator>MSBuild:Compile</Generator>
     </Page>

@@ -31,8 +31,15 @@ public static class Importers
                 {
                     var user = key.Elements("string").FirstOrDefault(e => (string?)e.Attribute("name") == "Username")?.Value ?? "";
 
-                    // NEW: Attempt to extract the password (may be encrypted depending on SecureCRT export settings)
-                    var password = key.Elements("string").FirstOrDefault(e => (string?)e.Attribute("name") == "Password" || (string?)e.Attribute("name") == "[SSH2] Password")?.Value ?? "";
+                    // NEW: Extract SecureCRT's proprietary encrypted password string
+                    var passwordRaw = key.Elements("string").FirstOrDefault(e =>
+                        (string?)e.Attribute("name") == "Password V2" ||
+                        (string?)e.Attribute("name") == "Password" ||
+                        (string?)e.Attribute("name") == "[SSH2] Password V2" ||
+                        (string?)e.Attribute("name") == "[SSH2] Password")?.Value ?? "";
+
+                    // Pass it through our brand new native decrypter
+                    var password = DecryptSecureCrtPassword(passwordRaw);
 
                     var portRaw = key.Elements("dword").FirstOrDefault(e => (string?)e.Attribute("name") == "[SSH2] Port")?.Value
                                ?? key.Elements("dword").FirstOrDefault(e => (string?)e.Attribute("name") == "Port")?.Value;
@@ -40,8 +47,6 @@ public static class Importers
                     var port = 22;
                     if (!string.IsNullOrWhiteSpace(portRaw))
                     {
-                        // FIX: SecureCRT XML usually exports decimal "22". Parsing "22" as hex yields 34. 
-                        // Try decimal first, fallback to hex if it fails.
                         if (!int.TryParse(portRaw, out port))
                         {
                             int.TryParse(portRaw, System.Globalization.NumberStyles.HexNumber, null, out port);
@@ -54,7 +59,7 @@ public static class Importers
                         Name = name,
                         Host = host!,
                         User = user,
-                        Password = password, // Map the extracted password
+                        Password = password,
                         Port = port,
                         AuthMethod = "password",
                         Folder = string.IsNullOrEmpty(folderPath) ? AppPaths.RootFolder : folderPath
@@ -71,6 +76,82 @@ public static class Importers
         if (sessions != null) Walk(sessions, "");
 
         return result;
+    }
+
+    // --- NATIVE SECURECRT DECRYPTOR ---
+    private static string DecryptSecureCrtPassword(string raw)
+    {
+        if (string.IsNullOrEmpty(raw)) return "";
+
+        try
+        {
+            // SecureCRT V2 uses AES-256-CBC
+            if (raw.StartsWith("02:"))
+            {
+                string hex = raw.Substring(3);
+                byte[] ciphered = Convert.FromHexString(hex);
+
+                byte[] key = System.Security.Cryptography.SHA256.HashData(Array.Empty<byte>());
+                byte[] iv = new byte[16];
+
+                using var aes = System.Security.Cryptography.Aes.Create();
+                aes.Key = key;
+                aes.IV = iv;
+                aes.Mode = System.Security.Cryptography.CipherMode.CBC;
+                aes.Padding = System.Security.Cryptography.PaddingMode.None;
+
+                using var decryptor = aes.CreateDecryptor();
+                byte[] decrypted = decryptor.TransformFinalBlock(ciphered, 0, ciphered.Length);
+
+                int len = BitConverter.ToInt32(decrypted, 0);
+                if (len > 0 && len <= decrypted.Length - 4)
+                {
+                    string decoded = System.Text.Encoding.UTF8.GetString(decrypted, 4, len);
+
+                    // FIX: Strip the invisible null-terminator (\0) that SecureCRT leaves behind!
+                    return decoded.Replace("\0", "");
+                }
+            }
+            // SecureCRT V1 uses a double-pass Blowfish-CBC
+            else if (raw.StartsWith("u", StringComparison.OrdinalIgnoreCase))
+            {
+                string hex = raw.Substring(1);
+                byte[] ciphered = Convert.FromHexString(hex);
+                if (ciphered.Length <= 8) return "";
+
+                byte[] key1 = { 0x24, 0xa6, 0x3d, 0xde, 0x5b, 0xd3, 0xb3, 0x82, 0x9c, 0x7e, 0x06, 0xf4, 0x08, 0x16, 0xaa, 0x07 };
+                byte[] key2 = { 0x5f, 0xb0, 0x45, 0xa2, 0x94, 0x17, 0xd9, 0x16, 0xc6, 0xc6, 0xa2, 0xff, 0x06, 0x41, 0x82, 0xb7 };
+                byte[] iv = new byte[8];
+
+                var engine1 = new Org.BouncyCastle.Crypto.BufferedBlockCipher(new Org.BouncyCastle.Crypto.Modes.CbcBlockCipher(new Org.BouncyCastle.Crypto.Engines.BlowfishEngine()));
+                engine1.Init(false, new Org.BouncyCastle.Crypto.Parameters.ParametersWithIV(new Org.BouncyCastle.Crypto.Parameters.KeyParameter(key1), iv));
+                byte[] step1 = engine1.DoFinal(ciphered);
+
+                byte[] trimmed = new byte[step1.Length - 8];
+                Array.Copy(step1, 4, trimmed, 0, trimmed.Length);
+
+                var engine2 = new Org.BouncyCastle.Crypto.BufferedBlockCipher(new Org.BouncyCastle.Crypto.Modes.CbcBlockCipher(new Org.BouncyCastle.Crypto.Engines.BlowfishEngine()));
+                engine2.Init(false, new Org.BouncyCastle.Crypto.Parameters.ParametersWithIV(new Org.BouncyCastle.Crypto.Parameters.KeyParameter(key2), iv));
+                byte[] step2 = engine2.DoFinal(trimmed);
+
+                string result = System.Text.Encoding.Unicode.GetString(step2);
+
+                // FIX: Clean null terminators here as well
+                int nullIdx = result.IndexOf('\0');
+                return nullIdx >= 0 ? result.Substring(0, nullIdx) : result.Replace("\0", "");
+            }
+            else if (!raw.StartsWith("03:"))
+            {
+                // Unencrypted passwords (if any)
+                return raw.Replace("\0", "");
+            }
+        }
+        catch
+        {
+            // Fail silently on decryption errors
+        }
+
+        return "";
     }
 
     /// <summary>Reads live PuTTY sessions straight out of HKCU (Windows-native advantage).</summary>

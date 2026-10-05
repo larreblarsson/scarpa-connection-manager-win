@@ -3,49 +3,92 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
-    <Grid Padding="10">
-        <Grid.ColumnDefinitions>
-            <!-- Even 50/50 split -->
-            <ColumnDefinition Width="*" />
-            <ColumnDefinition Width="Auto" />
-            <ColumnDefinition Width="*" />
-        </Grid.ColumnDefinitions>
-
-        <!-- Left Pane: Local Files -->
-        <Grid Grid.Column="0">
+    <Grid>
+        <Grid Padding="10">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
-            <TextBlock Text="Local Machine" FontWeight="SemiBold" Margin="0,0,0,10" />
-            <ListView x:Name="LocalFileList" Grid.Row="1" BorderBrush="Gray" BorderThickness="1" />
+
+            <!-- Reordered Windows 11 Native Toolbar -->
+            <CommandBar Grid.Row="0" HorizontalAlignment="Left" DefaultLabelPosition="Right" Background="Transparent" Margin="0,0,0,10">
+                <AppBarButton Icon="Upload" Label="Upload" Click="Upload_Click" ToolTipService.ToolTip="Upload selected local files to remote server"/>
+                <AppBarButton Icon="Download" Label="Download" Click="Download_Click" ToolTipService.ToolTip="Download selected remote files to local machine"/>
+                <AppBarSeparator/>
+                <AppBarButton Icon="Add" Label="New Folder" Click="NewFolder_Click" ToolTipService.ToolTip="Create a new folder"/>
+                <AppBarButton Icon="Delete" Label="Delete" Click="Delete_Click" ToolTipService.ToolTip="Delete selected items"/>
+                <AppBarButton Icon="Refresh" Label="Refresh" Click="Refresh_Click"/>
+            </CommandBar>
+
+            <Grid Grid.Row="1">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+
+                <!-- Left Pane: Local Files -->
+                <Grid Grid.Column="0">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <StackPanel Orientation="Horizontal" Grid.Row="0" Margin="0,0,0,10">
+                        <TextBlock Text="Local: " FontWeight="SemiBold" />
+                        <TextBlock x:Name="LocalPathText" Text="C:\" Foreground="Gray" />
+                    </StackPanel>
+
+                    <!-- Added GotFocus and KeyDown -->
+                    <ListView x:Name="LocalFileList" Grid.Row="1" BorderBrush="Gray" BorderThickness="1" 
+                        DoubleTapped="LocalFileList_DoubleTapped" SelectionMode="Extended"
+                        GotFocus="LocalFileList_GotFocus" PreviewKeyDown="FileList_PreviewKeyDown">    
+                        <ListView.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Orientation="Horizontal" Padding="5">
+                                    <FontIcon Glyph="{Binding Icon}" Margin="0,0,10,0" Foreground="{Binding IconColor}"/>
+                                    <TextBlock Text="{Binding Name}" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+                </Grid>
+
+                <Border Grid.Column="1" Width="2" Background="DarkGray" Margin="10,0,10,0" />
+
+                <!-- Right Pane: Remote Files -->
+                <Grid Grid.Column="2">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <StackPanel Orientation="Horizontal" Grid.Row="0" Margin="0,0,0,10">
+                        <TextBlock Text="Remote: " FontWeight="SemiBold" />
+                        <TextBlock x:Name="RemotePathText" Text="/" Foreground="Gray" />
+                    </StackPanel>
+
+                    <!-- Added GotFocus and KeyDown -->
+                    <ListView x:Name="RemoteFileList" Grid.Row="1" BorderBrush="Gray" BorderThickness="1" 
+                        DoubleTapped="RemoteFileList_DoubleTapped" SelectionMode="Extended"
+                        GotFocus="RemoteFileList_GotFocus" PreviewKeyDown="FileList_PreviewKeyDown">
+                        <ListView.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Orientation="Horizontal" Padding="5">
+                                    <FontIcon Glyph="{Binding Icon}" Margin="0,0,10,0" Foreground="{Binding IconColor}"/>
+                                    <TextBlock Text="{Binding Name}" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+                </Grid>
+            </Grid>
         </Grid>
 
-        <!-- Static Divider (Replaces GridSplitter) -->
-        <Border Grid.Column="1" Width="2" Background="DarkGray" Margin="10,0,10,0" />
-
-        <!-- Right Pane: Remote Files via SSH.NET -->
-        <Grid Grid.Column="2">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto" />
-                <RowDefinition Height="*" />
-            </Grid.RowDefinitions>
-
-            <StackPanel Orientation="Horizontal" Grid.Row="0" Margin="0,0,0,10">
-                <TextBlock Text="Remote Server: " FontWeight="SemiBold" />
-                <TextBlock x:Name="RemotePathText" Text="/" Foreground="Gray" />
+        <!-- Loading Overlay for File Transfers -->
+        <Grid x:Name="ProgressOverlay" Background="#80000000" Visibility="Collapsed" Canvas.ZIndex="100">
+            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Background="{ThemeResource ApplicationPageBackgroundThemeBrush}" Padding="30" CornerRadius="8">
+                <ProgressRing IsActive="True" Width="50" Height="50" Margin="0,0,0,10"/>
+                <TextBlock x:Name="ProgressText" Text="Transferring..." HorizontalAlignment="Center" FontWeight="SemiBold"/>
             </StackPanel>
-
-            <ListView x:Name="RemoteFileList" Grid.Row="1" BorderBrush="Gray" BorderThickness="1">
-                <ListView.ItemTemplate>
-                    <DataTemplate>
-                        <StackPanel Orientation="Horizontal" Padding="5">
-                            <FontIcon Glyph="{Binding Icon}" Margin="0,0,10,0" Foreground="{Binding IconColor}"/>
-                            <TextBlock Text="{Binding Name}" VerticalAlignment="Center" />
-                        </StackPanel>
-                    </DataTemplate>
-                </ListView.ItemTemplate>
-            </ListView>
         </Grid>
     </Grid>
 </Window>

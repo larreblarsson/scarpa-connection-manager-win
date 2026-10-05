@@ -9,7 +9,7 @@ using System.Threading.Tasks;
 
 namespace scarpa_connection_manager_win.Dialogs;
 
-public sealed partial class ServerDialog : Window
+public sealed partial class ServerDialog : Microsoft.UI.Xaml.Window
 {
     public ObservableCollection<LoginActionStep> LoginActions { get; set; } = new();
 

@@ -34,6 +34,7 @@ namespace scarpa_connection_manager_win
         public App()
         {
             this.InitializeComponent();
+            UnhandledException += (s, e) => System.IO.File.WriteAllText("crash.txt", e.Exception.ToString());
         }
 
         protected override void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)

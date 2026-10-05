@@ -59,8 +59,7 @@
 
             <MenuBarItem Title="Connect">
                 <MenuFlyoutItem Text="SSH" Click="Ssh_Click" />
-                <MenuFlyoutItem Text="SFTP" Click="SftpCli_Click" />
-                <MenuFlyoutItem Text="SFTP GUI" Click="SftpGui_Click" />
+                <MenuFlyoutItem Text="SFTP" Click="SftpGui_Click" />
             </MenuBarItem>
 
             <MenuBarItem Title="Help">
@@ -183,14 +182,8 @@
                             <FontIcon Glyph="&#xE756;" />
                         </MenuFlyoutItem.Icon>
                     </MenuFlyoutItem>
-
-                    <MenuFlyoutItem Text="SFTP" Click="SftpCli_Click">
-                        <MenuFlyoutItem.Icon>
-                            <FontIcon Glyph="&#xE83B;" />
-                        </MenuFlyoutItem.Icon>
-                    </MenuFlyoutItem>
-
-                    <MenuFlyoutItem Text="SFTP GUI" Click="SftpGui_Click">
+                    
+                    <MenuFlyoutItem Text="SFTP" Click="SftpGui_Click">
                         <MenuFlyoutItem.Icon>
                             <FontIcon Glyph="&#xE7B4;" />
                         </MenuFlyoutItem.Icon>

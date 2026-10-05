@@ -844,28 +844,7 @@ public sealed partial class MainWindow : Window
         }
         sender.TabItems.Remove(args.Tab);
     }
-
-
-
-    private async void SftpCli_Click(object sender, RoutedEventArgs e)
-    {
-        var nodes = _selectedNodes.ToList();
-        if (nodes.Count == 0) { Log("Select a server first."); return; }
-
-        foreach (var node in nodes)
-        {
-            if (_nodeTags.TryGetValue(node, out var tag) && tag is ServerConfig cfg)
-            {
-                Log($"Launching SFTP CLI: {cfg.Name}");
-
-                // Wait for the physical mouse button release (PointerReleased)
-                await Task.Delay(250);
-
-                ConnectionLauncher.LaunchSftpCli(cfg, _settings);
-            }
-        }
-    }
-
+        
     private async void SftpGui_Click(object sender, RoutedEventArgs e)
     {
         var nodes = _selectedNodes.ToList();

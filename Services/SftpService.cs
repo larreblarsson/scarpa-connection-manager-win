@@ -17,7 +17,8 @@ public sealed class SftpService : IDisposable
 
     public bool IsConnected => _client?.IsConnected == true;
 
-    public void Connect(ServerConfig cfg, string? password)
+    // Update the method signature to accept DispatcherQueue and XamlRoot
+    public void Connect(ServerConfig cfg, string? password, Microsoft.UI.Dispatching.DispatcherQueue dispatcher, Microsoft.UI.Xaml.XamlRoot xamlRoot)
     {
         ConnectionInfo info;
         if (cfg.AuthMethod == "key_file" && !string.IsNullOrWhiteSpace(cfg.KeyFile))
@@ -25,15 +26,28 @@ public sealed class SftpService : IDisposable
             var keyFile = string.IsNullOrEmpty(password)
                 ? new PrivateKeyFile(cfg.KeyFile)
                 : new PrivateKeyFile(cfg.KeyFile, password);
-            info = new ConnectionInfo(cfg.Host, cfg.Port, cfg.User, new PrivateKeyAuthenticationMethod(cfg.User, keyFile));
+            info = new ConnectionInfo(cfg.Host, cfg.Port > 0 ? cfg.Port : 22, cfg.User, new PrivateKeyAuthenticationMethod(cfg.User, keyFile));
         }
         else
         {
-            info = new ConnectionInfo(cfg.Host, cfg.Port, cfg.User,
-                new PasswordAuthenticationMethod(cfg.User, password ?? ""));
+            var passAuth = new PasswordAuthenticationMethod(cfg.User, password ?? "");
+            var kbdAuth = new KeyboardInteractiveAuthenticationMethod(cfg.User);
+            kbdAuth.AuthenticationPrompt += (sender, e) =>
+            {
+                foreach (var prompt in e.Prompts) prompt.Response = password ?? "";
+            };
+
+            info = new ConnectionInfo(cfg.Host, cfg.Port > 0 ? cfg.Port : 22, cfg.User, passAuth, kbdAuth);
         }
 
         _client = new SftpClient(info);
+
+        // ADD THIS HOOK: Validates the key before allowing the connection to complete
+        _client.HostKeyReceived += (sender, e) =>
+        {
+            KnownHostsValidator.HandleHostKey(e, cfg.Host, dispatcher, xamlRoot);
+        };
+
         _client.Connect();
     }
 

@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
@@ -33,7 +34,7 @@ public sealed partial class SftpWindow : Window
     private string _currentRemotePath = "";
 
     private bool _isLocalFocused = true;
-    private System.Collections.Generic.List<FileItem> _clipboardFiles = new();
+    private List<FileItem> _clipboardFiles = new();
     private string _clipboardSource = ""; // Will be "Local" or "Remote"
     private bool _isCut = false;
 
@@ -58,7 +59,11 @@ public sealed partial class SftpWindow : Window
 
         LoadLocalDirectory(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
         _ = ConnectAndListFilesAsync(cfg);
+
+        SetActivePane(true);
     }
+
+    // --- Directory Loading ---
 
     private void LoadLocalDirectory(string path)
     {
@@ -98,11 +103,14 @@ public sealed partial class SftpWindow : Window
 
     private async Task ConnectAndListFilesAsync(ServerConfig cfg)
     {
+        var dispatcher = this.DispatcherQueue;
+        var xamlRoot = this.Content.XamlRoot;
+
         await Task.Run(() =>
         {
             try
             {
-                _sftpService.Connect(cfg, cfg.Password);
+                _sftpService.Connect(cfg, cfg.Password, dispatcher, xamlRoot);
                 LoadRemoteDirectory(_sftpService.WorkingDirectory);
             }
             catch (Exception ex)
@@ -221,8 +229,50 @@ public sealed partial class SftpWindow : Window
         }
     }
 
-    private void LocalFileList_GotFocus(object sender, RoutedEventArgs e) => _isLocalFocused = true;
-    private void RemoteFileList_GotFocus(object sender, RoutedEventArgs e) => _isLocalFocused = false;
+    private async void NewFolder_Click(object sender, RoutedEventArgs e)
+    {
+        var inputBox = new TextBox { PlaceholderText = "Folder Name", Width = 300 };
+        var locationCombo = new ComboBox { Width = 300, Margin = new Thickness(0, 10, 0, 0) };
+        locationCombo.Items.Add("Local: " + _currentLocalPath);
+        locationCombo.Items.Add("Remote: " + _currentRemotePath);
+        locationCombo.SelectedIndex = 1; // Default to creating it on the Remote side
+
+        var dialog = new ContentDialog
+        {
+            Title = "Create New Folder",
+            Content = new StackPanel { Children = { inputBox, locationCombo } },
+            PrimaryButtonText = "Create",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Primary,
+            XamlRoot = this.Content.XamlRoot
+        };
+
+        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+        {
+            string newName = inputBox.Text.Trim();
+            if (string.IsNullOrWhiteSpace(newName)) return;
+
+            try
+            {
+                if (locationCombo.SelectedIndex == 0) // Local
+                {
+                    Directory.CreateDirectory(Path.Combine(_currentLocalPath, newName));
+                    LoadLocalDirectory(_currentLocalPath);
+                }
+                else // Remote
+                {
+                    string target = _currentRemotePath == "/" ? $"/{newName}" : $"{_currentRemotePath}/{newName}";
+                    _sftpService.CreateDirectory(target);
+                    LoadRemoteDirectory(_currentRemotePath);
+                }
+            }
+            catch (Exception ex)
+            {
+                var errDlg = new ContentDialog { Title = "Error", Content = ex.Message, CloseButtonText = "OK", XamlRoot = this.Content.XamlRoot };
+                await errDlg.ShowAsync();
+            }
+        }
+    }
 
     private async void Delete_Click(object sender, RoutedEventArgs e)
     {
@@ -272,6 +322,184 @@ public sealed partial class SftpWindow : Window
         if (_sftpService.IsConnected) Task.Run(() => LoadRemoteDirectory(_currentRemotePath));
     }
 
+    // --- Focus & UI State ---
+
+    private void SetActivePane(bool isLocal)
+    {
+        _isLocalFocused = isLocal;
+
+        var activeBrush = new SolidColorBrush(Microsoft.UI.Colors.DodgerBlue);
+        var inactiveBrush = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+        var topOnlyThickness = new Thickness(0, 2, 0, 0);
+
+        LocalFileList.BorderBrush = isLocal ? activeBrush : inactiveBrush;
+        LocalFileList.BorderThickness = topOnlyThickness;
+
+        RemoteFileList.BorderBrush = !isLocal ? activeBrush : inactiveBrush;
+        RemoteFileList.BorderThickness = topOnlyThickness;
+    }
+
+    private void LocalFileList_GotFocus(object sender, RoutedEventArgs e) => SetActivePane(true);
+    private void LocalFileList_PointerPressed(object sender, PointerRoutedEventArgs e) => SetActivePane(true);
+
+    private void RemoteFileList_GotFocus(object sender, RoutedEventArgs e) => SetActivePane(false);
+    private void RemoteFileList_PointerPressed(object sender, PointerRoutedEventArgs e) => SetActivePane(false);
+
+    // --- Keyboard Accelerators ---
+
+    private void CtrlC_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    {
+        var activeList = _isLocalFocused ? LocalFileList : RemoteFileList;
+        CopySelected(activeList, _isLocalFocused, isCut: false);
+        args.Handled = true;
+    }
+
+    private void CtrlX_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    {
+        var activeList = _isLocalFocused ? LocalFileList : RemoteFileList;
+        CopySelected(activeList, _isLocalFocused, isCut: true);
+        args.Handled = true;
+    }
+
+    private void CtrlV_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    {
+        PasteClipboard(_isLocalFocused);
+        args.Handled = true;
+    }
+
+    private void DeleteKey_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+    {
+        // Passed 'this' instead of 'null' to fix CS8625 warning
+        Delete_Click(this, new RoutedEventArgs());
+        args.Handled = true;
+    }
+
+    // --- Clipboard Operations ---
+
+    private void CopySelected(ListView? listView, bool isLocal, bool isCut)
+    {
+        if (listView == null) return;
+        var selected = listView.SelectedItems.Cast<FileItem>().Where(x => x.Name != "..").ToList();
+        if (selected.Count == 0) return;
+
+        _clipboardFiles = selected;
+        _clipboardSource = isLocal ? "Local" : "Remote";
+        _isCut = isCut;
+    }
+
+    private async void PasteClipboard(bool pasteToLocal)
+    {
+        if (_clipboardFiles.Count == 0) return;
+
+        if ((_clipboardSource == "Local" && !pasteToLocal) || (_clipboardSource == "Remote" && pasteToLocal))
+        {
+            var dialog = new ContentDialog
+            {
+                Title = "Cross-Pane Paste Disabled",
+                Content = "Please use the Upload and Download buttons in the toolbar to transfer files between your computer and the server.",
+                CloseButtonText = "OK",
+                XamlRoot = this.Content.XamlRoot
+            };
+            await dialog.ShowAsync();
+            return;
+        }
+
+        if (pasteToLocal)
+        {
+            await PerformTransferAsync(_isCut ? $"Moving {_clipboardFiles.Count} item(s)..." : $"Copying {_clipboardFiles.Count} item(s)...", () =>
+            {
+                foreach (var item in _clipboardFiles)
+                {
+                    string target = Path.Combine(_currentLocalPath, item.Name);
+                    if (item.FullPath == target) continue;
+
+                    if (_isCut)
+                    {
+                        if (item.IsDirectory) Directory.Move(item.FullPath, target);
+                        else File.Move(item.FullPath, target);
+                    }
+                    else
+                    {
+                        if (item.IsDirectory) CopyDirectoryLocal(item.FullPath, target);
+                        else File.Copy(item.FullPath, target, true);
+                    }
+                }
+            });
+            LoadLocalDirectory(_currentLocalPath);
+        }
+        else
+        {
+            string targetDir = _currentRemotePath == "/" ? "" : _currentRemotePath;
+            await PerformTransferAsync(_isCut ? $"Moving {_clipboardFiles.Count} item(s)..." : $"Copying {_clipboardFiles.Count} item(s)...", () =>
+            {
+                foreach (var item in _clipboardFiles)
+                {
+                    string target = $"{targetDir}/{item.Name}";
+                    if (item.FullPath == target) continue;
+
+                    if (_isCut)
+                    {
+                        _sftpService.Rename(item.FullPath, target);
+                    }
+                    else
+                    {
+                        if (item.IsDirectory) CopyDirectoryRemote(item.FullPath, target);
+                        else CopyFileRemote(item.FullPath, target);
+                    }
+                }
+            });
+            LoadRemoteDirectory(_currentRemotePath);
+        }
+
+        if (_isCut)
+        {
+            _clipboardFiles.Clear();
+            _isCut = false;
+        }
+    }
+
+    private void CopyDirectoryLocal(string sourceDir, string destDir)
+    {
+        Directory.CreateDirectory(destDir);
+        foreach (var file in Directory.GetFiles(sourceDir))
+            File.Copy(file, Path.Combine(destDir, Path.GetFileName(file)), true);
+
+        foreach (var dir in Directory.GetDirectories(sourceDir))
+            CopyDirectoryLocal(dir, Path.Combine(destDir, Path.GetFileName(dir)));
+    }
+
+    private void CopyFileRemote(string sourceRemote, string destRemote)
+    {
+        string tempFile = Path.GetTempFileName();
+        try
+        {
+            _sftpService.Download(sourceRemote, tempFile);
+            _sftpService.Upload(tempFile, destRemote);
+        }
+        finally
+        {
+            if (File.Exists(tempFile)) File.Delete(tempFile);
+        }
+    }
+
+    private void CopyDirectoryRemote(string sourceRemote, string destRemote)
+    {
+        try { _sftpService.CreateDirectory(destRemote); } catch { /* Ignore if exists */ }
+
+        foreach (var item in _sftpService.List(sourceRemote))
+        {
+            if (item.Name == "." || item.Name == "..") continue;
+
+            string newSource = $"{sourceRemote}/{item.Name}";
+            string newDest = $"{destRemote}/{item.Name}";
+
+            if (item.IsDirectory) CopyDirectoryRemote(newSource, newDest);
+            else CopyFileRemote(newSource, newDest);
+        }
+    }
+
+    // --- Core Utilities ---
+
     private async Task PerformTransferAsync(string message, Action work)
     {
         ProgressText.Text = message;
@@ -302,19 +530,73 @@ public sealed partial class SftpWindow : Window
     {
         _sftpService.Dispose();
     }
-    private async void NewFolder_Click(object sender, RoutedEventArgs e)
+    // --- Context Menu Handlers ---
+
+    private void FileList_RightTapped(object sender, RightTappedRoutedEventArgs e)
     {
-        var inputBox = new TextBox { PlaceholderText = "Folder Name", Width = 300 };
-        var locationCombo = new ComboBox { Width = 300, Margin = new Thickness(0, 10, 0, 0) };
-        locationCombo.Items.Add("Local: " + _currentLocalPath);
-        locationCombo.Items.Add("Remote: " + _currentRemotePath);
-        locationCombo.SelectedIndex = 1; // Default to creating it on the Remote side
+        var listView = sender as ListView;
+        if (listView == null) return;
+
+        bool isLocal = listView == LocalFileList;
+        SetActivePane(isLocal); // Instantly move the blue border
+
+        // Find the specific file that was right-clicked
+        if (e.OriginalSource is FrameworkElement element && element.DataContext is FileItem item)
+        {
+            // If the item isn't already part of a multi-selection, select it exclusively
+            if (!listView.SelectedItems.Contains(item))
+            {
+                listView.SelectedItem = item;
+            }
+
+            // Show the modern horizontal flyout at the mouse pointer
+            FileContextMenu.ShowAt(listView, e.GetPosition(listView));
+        }
+    }
+
+    private void ContextCut_Click(object sender, RoutedEventArgs e)
+    {
+        var activeList = _isLocalFocused ? LocalFileList : RemoteFileList;
+        CopySelected(activeList, _isLocalFocused, isCut: true);
+    }
+
+    private void ContextCopy_Click(object sender, RoutedEventArgs e)
+    {
+        var activeList = _isLocalFocused ? LocalFileList : RemoteFileList;
+        CopySelected(activeList, _isLocalFocused, isCut: false);
+    }
+
+    private void ContextPaste_Click(object sender, RoutedEventArgs e)
+    {
+        PasteClipboard(_isLocalFocused);
+    }
+
+    private void ContextDelete_Click(object sender, RoutedEventArgs e)
+    {
+        Delete_Click(this, new RoutedEventArgs());
+    }
+
+    private async void ContextRename_Click(object sender, RoutedEventArgs e)
+    {
+        var activeList = _isLocalFocused ? LocalFileList : RemoteFileList;
+        var selected = activeList.SelectedItems.Cast<FileItem>().Where(x => x.Name != "..").FirstOrDefault();
+
+        if (selected == null) return;
+
+        var inputBox = new TextBox { Text = selected.Name, Width = 300 };
+
+        // Auto-select text so the user can just start typing immediately
+        inputBox.Loaded += (s, ev) =>
+        {
+            inputBox.Focus(FocusState.Programmatic);
+            inputBox.SelectAll();
+        };
 
         var dialog = new ContentDialog
         {
-            Title = "Create New Folder",
-            Content = new StackPanel { Children = { inputBox, locationCombo } },
-            PrimaryButtonText = "Create",
+            Title = "Rename",
+            Content = inputBox,
+            PrimaryButtonText = "Rename",
             CloseButtonText = "Cancel",
             DefaultButton = ContentDialogButton.Primary,
             XamlRoot = this.Content.XamlRoot
@@ -323,19 +605,27 @@ public sealed partial class SftpWindow : Window
         if (await dialog.ShowAsync() == ContentDialogResult.Primary)
         {
             string newName = inputBox.Text.Trim();
-            if (string.IsNullOrWhiteSpace(newName)) return;
+            if (string.IsNullOrWhiteSpace(newName) || newName == selected.Name) return;
 
             try
             {
-                if (locationCombo.SelectedIndex == 0) // Local
+                if (_isLocalFocused)
                 {
-                    Directory.CreateDirectory(Path.Combine(_currentLocalPath, newName));
+                    string newPath = Path.Combine(_currentLocalPath, newName);
+                    if (selected.IsDirectory) Directory.Move(selected.FullPath, newPath);
+                    else File.Move(selected.FullPath, newPath);
                     LoadLocalDirectory(_currentLocalPath);
                 }
-                else // Remote
+                else
                 {
-                    string target = _currentRemotePath == "/" ? $"/{newName}" : $"{_currentRemotePath}/{newName}";
-                    _sftpService.CreateDirectory(target);
+                    string targetDir = _currentRemotePath == "/" ? "" : _currentRemotePath;
+                    string newPath = $"{targetDir}/{newName}";
+
+                    await PerformTransferAsync($"Renaming to {newName}...", () =>
+                    {
+                        _sftpService.Rename(selected.FullPath, newPath);
+                    });
+
                     LoadRemoteDirectory(_currentRemotePath);
                 }
             }
@@ -344,165 +634,6 @@ public sealed partial class SftpWindow : Window
                 var errDlg = new ContentDialog { Title = "Error", Content = ex.Message, CloseButtonText = "OK", XamlRoot = this.Content.XamlRoot };
                 await errDlg.ShowAsync();
             }
-        }
-    }
-
-    private void FileList_PreviewKeyDown(object sender, KeyRoutedEventArgs e)
-    {
-        var listView = sender as ListView;
-        bool isLocal = listView == LocalFileList;
-
-        var ctrl = Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(Windows.System.VirtualKey.Control);
-        bool isCtrlDown = ctrl.HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down);
-
-        if (e.Key == Windows.System.VirtualKey.Delete)
-        {
-            Delete_Click(sender, new RoutedEventArgs());
-            e.Handled = true;
-        }
-        else if (isCtrlDown && e.Key == Windows.System.VirtualKey.C)
-        {
-            CopySelected(listView, isLocal, false);
-            e.Handled = true;
-        }
-        else if (isCtrlDown && e.Key == Windows.System.VirtualKey.X)
-        {
-            CopySelected(listView, isLocal, true);
-            e.Handled = true;
-        }
-        else if (isCtrlDown && e.Key == Windows.System.VirtualKey.V)
-        {
-            PasteClipboard(isLocal);
-            e.Handled = true;
-        }
-    }
-
-    private void CopySelected(ListView? listView, bool isLocal, bool isCut)
-    {
-        if (listView == null) return;
-        var selected = listView.SelectedItems.Cast<FileItem>().Where(x => x.Name != "..").ToList();
-        if (selected.Count == 0) return;
-
-        _clipboardFiles = selected;
-        _clipboardSource = isLocal ? "Local" : "Remote";
-        _isCut = isCut;
-    }
-
-    private async void PasteClipboard(bool pasteToLocal)
-    {
-        if (_clipboardFiles.Count == 0) return;
-
-        // 1. Block cross-pane pasting via Keyboard Shortcuts
-        if ((_clipboardSource == "Local" && !pasteToLocal) || (_clipboardSource == "Remote" && pasteToLocal))
-        {
-            var dialog = new ContentDialog
-            {
-                Title = "Cross-Pane Paste Disabled",
-                Content = "Please use the Upload and Download buttons in the toolbar to transfer files between your computer and the server.",
-                CloseButtonText = "OK",
-                XamlRoot = this.Content.XamlRoot
-            };
-            await dialog.ShowAsync();
-            return;
-        }
-
-        // 2. Local-to-Local Operations
-        if (pasteToLocal)
-        {
-            await PerformTransferAsync(_isCut ? $"Moving {_clipboardFiles.Count} item(s)..." : $"Copying {_clipboardFiles.Count} item(s)...", () =>
-            {
-                foreach (var item in _clipboardFiles)
-                {
-                    string target = Path.Combine(_currentLocalPath, item.Name);
-                    if (item.FullPath == target) continue; // Prevent pasting into itself
-
-                    if (_isCut)
-                    {
-                        if (item.IsDirectory) Directory.Move(item.FullPath, target);
-                        else File.Move(item.FullPath, target);
-                    }
-                    else
-                    {
-                        if (item.IsDirectory) CopyDirectoryLocal(item.FullPath, target);
-                        else File.Copy(item.FullPath, target, true);
-                    }
-                }
-            });
-            LoadLocalDirectory(_currentLocalPath);
-        }
-        // 3. Remote-to-Remote Operations
-        else
-        {
-            string targetDir = _currentRemotePath == "/" ? "" : _currentRemotePath;
-            await PerformTransferAsync(_isCut ? $"Moving {_clipboardFiles.Count} item(s)..." : $"Copying {_clipboardFiles.Count} item(s)...", () =>
-            {
-                foreach (var item in _clipboardFiles)
-                {
-                    string target = $"{targetDir}/{item.Name}";
-                    if (item.FullPath == target) continue;
-
-                    if (_isCut)
-                    {
-                        _sftpService.Rename(item.FullPath, target);
-                    }
-                    else
-                    {
-                        if (item.IsDirectory) CopyDirectoryRemote(item.FullPath, target);
-                        else CopyFileRemote(item.FullPath, target);
-                    }
-                }
-            });
-            LoadRemoteDirectory(_currentRemotePath);
-        }
-
-        // Clear clipboard memory after a Cut operation is complete
-        if (_isCut)
-        {
-            _clipboardFiles.Clear();
-            _isCut = false;
-        }
-    }
-
-    // --- Clipboard Helper Methods ---
-
-    private void CopyDirectoryLocal(string sourceDir, string destDir)
-    {
-        Directory.CreateDirectory(destDir);
-        foreach (var file in Directory.GetFiles(sourceDir))
-            File.Copy(file, Path.Combine(destDir, Path.GetFileName(file)), true);
-
-        foreach (var dir in Directory.GetDirectories(sourceDir))
-            CopyDirectoryLocal(dir, Path.Combine(destDir, Path.GetFileName(dir)));
-    }
-
-    private void CopyFileRemote(string sourceRemote, string destRemote)
-    {
-        // SFTP has no native Copy. Download to Windows Temp, upload to new path, delete Temp.
-        string tempFile = Path.GetTempFileName();
-        try
-        {
-            _sftpService.Download(sourceRemote, tempFile);
-            _sftpService.Upload(tempFile, destRemote);
-        }
-        finally
-        {
-            if (File.Exists(tempFile)) File.Delete(tempFile);
-        }
-    }
-
-    private void CopyDirectoryRemote(string sourceRemote, string destRemote)
-    {
-        try { _sftpService.CreateDirectory(destRemote); } catch { /* Ignore if exists */ }
-
-        foreach (var item in _sftpService.List(sourceRemote))
-        {
-            if (item.Name == "." || item.Name == "..") continue;
-
-            string newSource = $"{sourceRemote}/{item.Name}";
-            string newDest = $"{destRemote}/{item.Name}";
-
-            if (item.IsDirectory) CopyDirectoryRemote(newSource, newDest);
-            else CopyFileRemote(newSource, newDest);
         }
     }
 }

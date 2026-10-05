@@ -4,13 +4,34 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
     <Grid>
+        <!-- Global Keyboard Accelerators -->
+        <Grid.KeyboardAccelerators>
+            <KeyboardAccelerator Modifiers="Control" Key="C" Invoked="CtrlC_Invoked" />
+            <KeyboardAccelerator Modifiers="Control" Key="X" Invoked="CtrlX_Invoked" />
+            <KeyboardAccelerator Modifiers="Control" Key="V" Invoked="CtrlV_Invoked" />
+            <KeyboardAccelerator Key="Delete" Invoked="DeleteKey_Invoked" />
+        </Grid.KeyboardAccelerators>
+
+        <!-- The Modern Windows 11 Context Menu -->
+        <Grid.Resources>
+            <CommandBarFlyout x:Name="FileContextMenu">
+                <CommandBarFlyout.PrimaryCommands>
+                    <AppBarButton Icon="Cut" Label="Cut" Click="ContextCut_Click" />
+                    <AppBarButton Icon="Copy" Label="Copy" Click="ContextCopy_Click" />
+                    <AppBarButton Icon="Paste" Label="Paste" Click="ContextPaste_Click" />
+                    <AppBarButton Icon="Rename" Label="Rename" Click="ContextRename_Click" />
+                    <AppBarButton Icon="Delete" Label="Delete" Click="ContextDelete_Click" />
+                </CommandBarFlyout.PrimaryCommands>
+            </CommandBarFlyout>
+        </Grid.Resources>
+
         <Grid Padding="10">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
-            <!-- Reordered Windows 11 Native Toolbar -->
+            <!-- Windows 11 Native Toolbar -->
             <CommandBar Grid.Row="0" HorizontalAlignment="Left" DefaultLabelPosition="Right" Background="Transparent" Margin="0,0,0,10">
                 <AppBarButton Icon="Upload" Label="Upload" Click="Upload_Click" ToolTipService.ToolTip="Upload selected local files to remote server"/>
                 <AppBarButton Icon="Download" Label="Download" Click="Download_Click" ToolTipService.ToolTip="Download selected remote files to local machine"/>
@@ -38,10 +59,10 @@
                         <TextBlock x:Name="LocalPathText" Text="C:\" Foreground="Gray" />
                     </StackPanel>
 
-                    <!-- Added GotFocus and KeyDown -->
                     <ListView x:Name="LocalFileList" Grid.Row="1" BorderBrush="Gray" BorderThickness="1" 
-                        DoubleTapped="LocalFileList_DoubleTapped" SelectionMode="Extended"
-                        GotFocus="LocalFileList_GotFocus" PreviewKeyDown="FileList_PreviewKeyDown">    
+                              DoubleTapped="LocalFileList_DoubleTapped" SelectionMode="Extended"
+                              GotFocus="LocalFileList_GotFocus" PointerPressed="LocalFileList_PointerPressed"
+                              RightTapped="FileList_RightTapped">
                         <ListView.ItemTemplate>
                             <DataTemplate>
                                 <StackPanel Orientation="Horizontal" Padding="5">
@@ -66,10 +87,10 @@
                         <TextBlock x:Name="RemotePathText" Text="/" Foreground="Gray" />
                     </StackPanel>
 
-                    <!-- Added GotFocus and KeyDown -->
                     <ListView x:Name="RemoteFileList" Grid.Row="1" BorderBrush="Gray" BorderThickness="1" 
-                        DoubleTapped="RemoteFileList_DoubleTapped" SelectionMode="Extended"
-                        GotFocus="RemoteFileList_GotFocus" PreviewKeyDown="FileList_PreviewKeyDown">
+                              DoubleTapped="RemoteFileList_DoubleTapped" SelectionMode="Extended"
+                              GotFocus="RemoteFileList_GotFocus" PointerPressed="RemoteFileList_PointerPressed"
+                              RightTapped="FileList_RightTapped">
                         <ListView.ItemTemplate>
                             <DataTemplate>
                                 <StackPanel Orientation="Horizontal" Padding="5">

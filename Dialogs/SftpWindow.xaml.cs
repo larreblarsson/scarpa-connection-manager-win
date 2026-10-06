@@ -549,8 +549,14 @@ public sealed partial class SftpWindow : Window
                 listView.SelectedItem = item;
             }
 
+            // Create FlyoutShowOptions to specify the exact point
+            var showOptions = new Microsoft.UI.Xaml.Controls.Primitives.FlyoutShowOptions
+            {
+                Position = e.GetPosition(listView)
+            };
+
             // Show the modern horizontal flyout at the mouse pointer
-            FileContextMenu.ShowAt(listView, e.GetPosition(listView));
+            FileContextMenu.ShowAt(listView, showOptions);
         }
     }
 

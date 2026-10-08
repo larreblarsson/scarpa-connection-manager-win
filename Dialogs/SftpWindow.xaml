@@ -60,9 +60,11 @@
                     </StackPanel>
 
                     <ListView x:Name="LocalFileList" Grid.Row="1" BorderBrush="Gray" BorderThickness="1" 
-                              DoubleTapped="LocalFileList_DoubleTapped" SelectionMode="Extended"
-                              GotFocus="LocalFileList_GotFocus" PointerPressed="LocalFileList_PointerPressed"
-                              RightTapped="FileList_RightTapped">
+                        DoubleTapped="LocalFileList_DoubleTapped" SelectionMode="Extended"
+                        GotFocus="LocalFileList_GotFocus" PointerPressed="LocalFileList_PointerPressed"
+                        RightTapped="FileList_RightTapped" Tapped="FileList_Tapped"
+                        CanDragItems="True" AllowDrop="True" 
+                        DragItemsStarting="FileList_DragItemsStarting" DragOver="FileList_DragOver" Drop="FileList_Drop" DragLeave="FileList_DragLeave">    
                         <ListView.ItemTemplate>
                             <DataTemplate>
                                 <StackPanel Orientation="Horizontal" Padding="5">
@@ -73,7 +75,7 @@
                         </ListView.ItemTemplate>
                     </ListView>
                 </Grid>
-
+                
                 <Border Grid.Column="1" Width="2" Background="DarkGray" Margin="10,0,10,0" />
 
                 <!-- Right Pane: Remote Files -->
@@ -88,9 +90,11 @@
                     </StackPanel>
 
                     <ListView x:Name="RemoteFileList" Grid.Row="1" BorderBrush="Gray" BorderThickness="1" 
-                              DoubleTapped="RemoteFileList_DoubleTapped" SelectionMode="Extended"
-                              GotFocus="RemoteFileList_GotFocus" PointerPressed="RemoteFileList_PointerPressed"
-                              RightTapped="FileList_RightTapped">
+                        DoubleTapped="RemoteFileList_DoubleTapped" SelectionMode="Extended"
+                        GotFocus="RemoteFileList_GotFocus" PointerPressed="RemoteFileList_PointerPressed"
+                        RightTapped="FileList_RightTapped" Tapped="FileList_Tapped"
+                        CanDragItems="True" AllowDrop="True" 
+                        DragItemsStarting="FileList_DragItemsStarting" DragOver="FileList_DragOver" Drop="FileList_Drop" DragLeave="FileList_DragLeave">
                         <ListView.ItemTemplate>
                             <DataTemplate>
                                 <StackPanel Orientation="Horizontal" Padding="5">

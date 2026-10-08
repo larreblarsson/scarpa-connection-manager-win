@@ -37,6 +37,9 @@ public sealed partial class SftpWindow : Window
     private List<FileItem> _clipboardFiles = new();
     private string _clipboardSource = ""; // Will be "Local" or "Remote"
     private bool _isCut = false;
+    private List<FileItem> _draggedFiles = new();
+    private string _dragSource = ""; // "Local" or "Remote"
+    private ListViewItem? _currentHighlightedItem = null;
 
     public SftpWindow(ServerConfig cfg)
     {
@@ -50,6 +53,7 @@ public sealed partial class SftpWindow : Window
         string iconPath = System.IO.Path.Combine(System.AppContext.BaseDirectory, "Assets\\scarpa_icon.ico");
         appWindow.SetIcon(iconPath);
 
+        // ... existing code ...
         this.Title = $"{cfg.Name} - SFTP File Manager";
 
         LocalFileList.ItemsSource = _localFiles;
@@ -58,9 +62,16 @@ public sealed partial class SftpWindow : Window
         this.Closed += SftpWindow_Closed;
 
         LoadLocalDirectory(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile));
-        _ = ConnectAndListFilesAsync(cfg);
+        SetActivePane(true); // Set initial visual state
 
-        SetActivePane(true);
+        // DELAY CONNECTION: Wait for the window to render so XamlRoot is not null
+        if (this.Content is FrameworkElement rootElement)
+        {
+            rootElement.Loaded += (s, e) =>
+            {
+                _ = ConnectAndListFilesAsync(cfg);
+            };
+        }
     }
 
     // --- Directory Loading ---
@@ -641,5 +652,210 @@ public sealed partial class SftpWindow : Window
                 await errDlg.ShowAsync();
             }
         }
+    }
+    private void FileList_Tapped(object sender, TappedRoutedEventArgs e)
+    {
+        if (sender is ListView listView)
+        {
+            // If the element the user clicked on contains a FileItem, they clicked a file.
+            // If it does not, they clicked the empty background space.
+            if (e.OriginalSource is FrameworkElement element && element.DataContext is FileItem)
+            {
+                return; // Do nothing, let standard selection handle it
+            }
+
+            // Clicked empty space: clear the selected items
+            listView.SelectedItems.Clear();
+        }
+    }
+    // --- Drag and Drop Handlers ---
+
+    private void FileList_DragItemsStarting(object sender, DragItemsStartingEventArgs e)
+    {
+        var listView = sender as ListView;
+        _dragSource = listView == LocalFileList ? "Local" : "Remote";
+
+        // Exclude the ".." back button from being dragged
+        _draggedFiles = e.Items.Cast<FileItem>().Where(x => x.Name != "..").ToList();
+
+        if (_draggedFiles.Count == 0)
+        {
+            e.Cancel = true;
+        }
+    }
+
+    private void FileList_DragOver(object sender, DragEventArgs e)
+    {
+        var listView = sender as ListView;
+        if (listView == null) return;
+
+        string dropTarget = listView == LocalFileList ? "Local" : "Remote";
+
+        if (_draggedFiles.Count > 0)
+        {
+            e.DragUIOverride.IsCaptionVisible = false;
+            e.DragUIOverride.IsGlyphVisible = false;
+
+            // Use the new visual tree helper instead of pixel coordinates
+            var targetLvi = GetFolderItemFromEvent(e);
+            FileItem? targetFolder = targetLvi?.DataContext as FileItem;
+
+            // --- Apply the visual folder highlight ---
+            if (_currentHighlightedItem != targetLvi)
+            {
+                ClearDropHighlight();
+                if (targetLvi != null)
+                {
+                    _currentHighlightedItem = targetLvi;
+                    _currentHighlightedItem.Background = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(40, 30, 144, 255));
+                    _currentHighlightedItem.BorderBrush = new SolidColorBrush(Microsoft.UI.Colors.DodgerBlue);
+                    _currentHighlightedItem.BorderThickness = new Thickness(1);
+                }
+            }
+
+            // --- Determine Allowed Operation ---
+            if (_dragSource != dropTarget)
+            {
+                e.AcceptedOperation = Windows.ApplicationModel.DataTransfer.DataPackageOperation.Copy;
+            }
+            else
+            {
+                if (targetFolder != null)
+                {
+                    e.AcceptedOperation = Windows.ApplicationModel.DataTransfer.DataPackageOperation.Move;
+                }
+                else
+                {
+                    e.AcceptedOperation = Windows.ApplicationModel.DataTransfer.DataPackageOperation.None;
+                }
+            }
+        }
+    }
+
+    private void FileList_DragLeave(object sender, DragEventArgs e)
+    {
+        // Mouse left the list view, clear the highlight
+        ClearDropHighlight();
+    }
+
+    private async void FileList_Drop(object sender, DragEventArgs e)
+    {
+        var listView = sender as ListView;
+        if (listView == null) return;
+        string dropTarget = listView == LocalFileList ? "Local" : "Remote";
+
+        // Read the target folder directly from the visual tree
+        var targetLvi = GetFolderItemFromEvent(e);
+        FileItem? targetFolder = targetLvi?.DataContext as FileItem;
+
+        // Clear the highlight the exact moment the user drops the file
+        ClearDropHighlight();
+
+        if (_draggedFiles.Count == 0) return;
+
+        // 1. UPLOAD (Local to Remote)
+        if (_dragSource == "Local" && dropTarget == "Remote")
+        {
+            if (!_sftpService.IsConnected) return;
+            string baseTarget = _currentRemotePath == "/" ? "" : _currentRemotePath;
+            string finalDest = targetFolder != null ? targetFolder.FullPath : baseTarget;
+
+            await PerformTransferAsync($"Uploading {_draggedFiles.Count} item(s)...", () =>
+            {
+                foreach (var file in _draggedFiles)
+                    UploadRecursive(file.FullPath, $"{finalDest}/{file.Name}");
+            });
+            LoadRemoteDirectory(_currentRemotePath);
+        }
+        // 2. DOWNLOAD (Remote to Local)
+        else if (_dragSource == "Remote" && dropTarget == "Local")
+        {
+            string finalDest = targetFolder != null ? targetFolder.FullPath : _currentLocalPath;
+
+            await PerformTransferAsync($"Downloading {_draggedFiles.Count} item(s)...", () =>
+            {
+                foreach (var file in _draggedFiles)
+                    DownloadRecursive(file.FullPath, Path.Combine(finalDest, file.Name), file.IsDirectory);
+            });
+            LoadLocalDirectory(_currentLocalPath);
+        }
+        // 3. MOVE LOCALLY (Local to Local Folder)
+        else if (_dragSource == "Local" && dropTarget == "Local" && targetFolder != null)
+        {
+            await PerformTransferAsync($"Moving {_draggedFiles.Count} item(s)...", () =>
+            {
+                foreach (var file in _draggedFiles)
+                {
+                    string dest = Path.Combine(targetFolder.FullPath, file.Name);
+                    if (file.FullPath == dest) continue;
+
+                    if (file.IsDirectory) Directory.Move(file.FullPath, dest);
+                    else File.Move(file.FullPath, dest);
+                }
+            });
+            LoadLocalDirectory(_currentLocalPath);
+        }
+        // 4. MOVE REMOTELY (Remote to Remote Folder)
+        else if (_dragSource == "Remote" && dropTarget == "Remote" && targetFolder != null)
+        {
+            await PerformTransferAsync($"Moving {_draggedFiles.Count} item(s)...", () =>
+            {
+                foreach (var file in _draggedFiles)
+                {
+                    string dest = $"{targetFolder.FullPath}/{file.Name}";
+                    if (file.FullPath == dest) continue;
+                    _sftpService.Rename(file.FullPath, dest);
+                }
+            });
+            LoadRemoteDirectory(_currentRemotePath);
+        }
+
+        _draggedFiles.Clear();
+    }
+
+    private FileItem? GetFolderUnderMouse(ListView listView, DragEventArgs e)
+    {
+        // Get the exact mouse coordinates relative to the application window
+        var pos = e.GetPosition(null);
+
+        // Find all UI elements directly underneath the mouse cursor
+        var elements = VisualTreeHelper.FindElementsInHostCoordinates(pos, listView);
+
+        foreach (var el in elements)
+        {
+            // If the element is a UI row, and its data is a Folder, return it!
+            if (el is FrameworkElement fe && fe.DataContext is FileItem item && item.IsDirectory)
+            {
+                return item;
+            }
+        }
+        return null;
+    }
+    private void ClearDropHighlight()
+    {
+        if (_currentHighlightedItem != null)
+        {
+            // Remove our manual color and restore the native Windows UI hover states
+            _currentHighlightedItem.ClearValue(Control.BackgroundProperty);
+            _currentHighlightedItem.ClearValue(Control.BorderBrushProperty);
+            _currentHighlightedItem.ClearValue(Control.BorderThicknessProperty);
+            _currentHighlightedItem = null;
+        }
+    }
+
+    private ListViewItem? GetFolderItemFromEvent(DragEventArgs e)
+    {
+        DependencyObject? current = e.OriginalSource as DependencyObject;
+
+        // Walk up the visual tree from the hovered text/icon to find the row
+        while (current != null)
+        {
+            if (current is ListViewItem lvi && lvi.DataContext is FileItem item && item.IsDirectory)
+            {
+                return lvi;
+            }
+            current = VisualTreeHelper.GetParent(current);
+        }
+        return null;
     }
 }

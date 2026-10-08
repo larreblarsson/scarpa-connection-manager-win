@@ -696,39 +696,34 @@ public sealed partial class SftpWindow : Window
             e.DragUIOverride.IsCaptionVisible = false;
             e.DragUIOverride.IsGlyphVisible = false;
 
-            // Use the new visual tree helper instead of pixel coordinates
-            var targetLvi = GetFolderItemFromEvent(e);
-            FileItem? targetFolder = targetLvi?.DataContext as FileItem;
+            // Hit-test using bounding boxes
+            FileItem? targetFolder = GetFolderUnderMouse(listView, e);
+            ListViewItem? targetLvi = targetFolder != null ? listView.ContainerFromItem(targetFolder) as ListViewItem : null;
 
-            // --- Apply the visual folder highlight ---
             if (_currentHighlightedItem != targetLvi)
             {
                 ClearDropHighlight();
                 if (targetLvi != null)
                 {
                     _currentHighlightedItem = targetLvi;
-                    _currentHighlightedItem.Background = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(40, 30, 144, 255));
-                    _currentHighlightedItem.BorderBrush = new SolidColorBrush(Microsoft.UI.Colors.DodgerBlue);
-                    _currentHighlightedItem.BorderThickness = new Thickness(1);
+                    _currentHighlightedItem.Background = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(120, 50, 150, 255));
                 }
             }
 
-            // --- Determine Allowed Operation ---
+            // Always allow the operation so tracking doesn't freeze
             if (_dragSource != dropTarget)
-            {
                 e.AcceptedOperation = Windows.ApplicationModel.DataTransfer.DataPackageOperation.Copy;
-            }
             else
-            {
-                if (targetFolder != null)
-                {
-                    e.AcceptedOperation = Windows.ApplicationModel.DataTransfer.DataPackageOperation.Move;
-                }
-                else
-                {
-                    e.AcceptedOperation = Windows.ApplicationModel.DataTransfer.DataPackageOperation.None;
-                }
-            }
+                e.AcceptedOperation = Windows.ApplicationModel.DataTransfer.DataPackageOperation.Move;
+        }
+    }
+
+    private void ClearDropHighlight()
+    {
+        if (_currentHighlightedItem != null)
+        {
+            _currentHighlightedItem.ClearValue(Control.BackgroundProperty);
+            _currentHighlightedItem = null;
         }
     }
 
@@ -744,11 +739,9 @@ public sealed partial class SftpWindow : Window
         if (listView == null) return;
         string dropTarget = listView == LocalFileList ? "Local" : "Remote";
 
-        // Read the target folder directly from the visual tree
-        var targetLvi = GetFolderItemFromEvent(e);
-        FileItem? targetFolder = targetLvi?.DataContext as FileItem;
+        // Hit-test the drop location using the geometric bounds
+        FileItem? targetFolder = GetFolderUnderMouse(listView, e);
 
-        // Clear the highlight the exact moment the user drops the file
         ClearDropHighlight();
 
         if (_draggedFiles.Count == 0) return;
@@ -815,47 +808,38 @@ public sealed partial class SftpWindow : Window
 
     private FileItem? GetFolderUnderMouse(ListView listView, DragEventArgs e)
     {
-        // Get the exact mouse coordinates relative to the application window
-        var pos = e.GetPosition(null);
+        // Get mouse position relative to the ListView itself
+        var pos = e.GetPosition(listView);
 
-        // Find all UI elements directly underneath the mouse cursor
-        var elements = VisualTreeHelper.FindElementsInHostCoordinates(pos, listView);
-
-        foreach (var el in elements)
+        // Iterate through all items currently rendered on the screen
+        foreach (var item in listView.Items)
         {
-            // If the element is a UI row, and its data is a Folder, return it!
-            if (el is FrameworkElement fe && fe.DataContext is FileItem item && item.IsDirectory)
+            if (item is FileItem fileItem && fileItem.IsDirectory)
             {
-                return item;
+                // FIX: Use the 'is' keyword for proper C# pattern matching
+                if (listView.ContainerFromItem(item) is ListViewItem lvi)
+                {
+                    try
+                    {
+                        // Calculate the exact mathematical rectangle of this row on the screen
+                        var transform = lvi.TransformToVisual(listView);
+                        var bounds = transform.TransformBounds(new Windows.Foundation.Rect(0, 0, lvi.ActualWidth, lvi.ActualHeight));
+
+                        // If the mouse X/Y is inside this row's rectangle, we found our target!
+                        if (bounds.Contains(pos))
+                        {
+                            return fileItem;
+                        }
+                    }
+                    catch
+                    {
+                        // Ignore UI elements that are virtually detached or still loading
+                    }
+                }
             }
         }
-        return null;
-    }
-    private void ClearDropHighlight()
-    {
-        if (_currentHighlightedItem != null)
-        {
-            // Remove our manual color and restore the native Windows UI hover states
-            _currentHighlightedItem.ClearValue(Control.BackgroundProperty);
-            _currentHighlightedItem.ClearValue(Control.BorderBrushProperty);
-            _currentHighlightedItem.ClearValue(Control.BorderThicknessProperty);
-            _currentHighlightedItem = null;
-        }
+        return null; // Mouse is over a file or empty space
     }
 
-    private ListViewItem? GetFolderItemFromEvent(DragEventArgs e)
-    {
-        DependencyObject? current = e.OriginalSource as DependencyObject;
 
-        // Walk up the visual tree from the hovered text/icon to find the row
-        while (current != null)
-        {
-            if (current is ListViewItem lvi && lvi.DataContext is FileItem item && item.IsDirectory)
-            {
-                return lvi;
-            }
-            current = VisualTreeHelper.GetParent(current);
-        }
-        return null;
-    }
 }

@@ -8,6 +8,14 @@ using System.Text.Json.Serialization;
 
 namespace ScarpaConnectionManager.Models;
 
+public class JumpHost
+{
+    [JsonPropertyName("host")] public string Host { get; set; } = "";
+    [JsonPropertyName("port")] public int Port { get; set; } = 22;
+    [JsonPropertyName("user")] public string User { get; set; } = "";
+    [JsonPropertyName("password")] public string Password { get; set; } = "";
+}
+
 /// <summary>Port forwarding rule (ssh -L / -R / -D).</summary>
 public sealed class PortForward
 {
@@ -82,7 +90,6 @@ public sealed class ServerConfig
     // Port Forwarding
     public List<PortForwardRule> PortForwardRules { get; set; } = new();
 
-
     // RDP
     [JsonPropertyName("rdp_enabled")] public bool RdpEnabled { get; set; }
     [JsonPropertyName("rdp_port")] public int RdpPort { get; set; } = 3389;
@@ -92,6 +99,7 @@ public sealed class ServerConfig
     [JsonPropertyName("rdp_cert_ignore")] public bool RdpIgnoreCert { get; set; } = true;
     [JsonPropertyName("rdp_drive")] public bool RdpRedirectDrive { get; set; }
     [JsonPropertyName("rdp_drive_path")] public string? RdpDrivePath { get; set; }
+    [JsonPropertyName("rdp_jump_hosts")] public List<JumpHost> RdpJumpHosts { get; set; } = new();
 
     public ServerConfig Clone()
     {
@@ -105,6 +113,22 @@ public sealed class ServerConfig
             foreach (var action in this.LoginActions)
             {
                 clone.LoginActions.Add(new LoginActionStep { Expect = action.Expect, Send = action.Send, Timeout = action.Timeout });
+            }
+        }
+
+        // Deep copy Jump Hosts
+        if (this.RdpJumpHosts != null)
+        {
+            clone.RdpJumpHosts = new List<JumpHost>();
+            foreach (var host in this.RdpJumpHosts)
+            {
+                clone.RdpJumpHosts.Add(new JumpHost
+                {
+                    Host = host.Host,
+                    Port = host.Port,
+                    User = host.User,
+                    Password = host.Password
+                });
             }
         }
 

@@ -687,8 +687,6 @@ public sealed partial class MainWindow : Window
 
     private void ContextMenu_AddFolder_Click(object sender, RoutedEventArgs e)
     {
-        var targetNode = GetTargetParentNode();
-        targetNode.IsExpanded = true;
         NewFolder_Click(sender, e);
     }
 
@@ -714,6 +712,10 @@ public sealed partial class MainWindow : Window
         string locationName = string.IsNullOrEmpty(targetFolder) ? "Root" : targetFolder;
         Log($"Added server '{dlg.Config.Name}' to {locationName}");
     }
+
+
+
+
 
     private TreeViewNode GetTargetParentNode()
     {
@@ -756,6 +758,12 @@ public sealed partial class MainWindow : Window
         switch (e.Key)
         {
             case VirtualKey.Enter:
+                // NEW: If we are currently editing/creating a folder, let the TextBox handle the Enter key!
+                if (_selectedNodes.Count > 0 && _selectedNodes[0].Content is TreeItemData data && data.IsEditing)
+                {
+                    return;
+                }
+
                 Ssh_Click(sender, new RoutedEventArgs());
                 e.Handled = true;
                 break;
@@ -766,7 +774,7 @@ public sealed partial class MainWindow : Window
             case VirtualKey.Up:
             case VirtualKey.Down:
                 HandleArrowNavigation(e.Key, isShiftDown);
-                e.Handled = true; // Block native navigation entirely
+                e.Handled = true;
                 break;
         }
     }
@@ -980,6 +988,12 @@ public sealed partial class MainWindow : Window
         if (textBox.DataContext is TreeViewNode node && node.Content is TreeItemData data && data.IsEditing)
         {
             data.IsEditing = false;
+
+            // If they cancelled creating a NEW folder, just rebuild the tree to safely wipe away the temporary node
+            if (_nodeTags.TryGetValue(node, out var tag) && tag is NewFolderMarker)
+            {
+                RebuildTree();
+            }
         }
     }
 
@@ -988,11 +1002,33 @@ public sealed partial class MainWindow : Window
         if (!(textBox.DataContext is TreeViewNode treeNode) || !(treeNode.Content is TreeItemData data) || !data.IsEditing) return;
 
         data.IsEditing = false;
-
         string newName = textBox.Text.Trim().Replace("/", "").Replace("\\", "");
-        if (string.IsNullOrWhiteSpace(newName) || newName == data.Name) return;
 
         if (!_nodeTags.TryGetValue(treeNode, out var tag)) return;
+
+        // --- NEW FOLDER CREATION LOGIC ---
+        if (tag is NewFolderMarker marker)
+        {
+            // If they hit enter on an empty string, treat it as a cancel and remove the dummy node
+            if (string.IsNullOrWhiteSpace(newName))
+            {
+                RebuildTree();
+                return;
+            }
+
+            string fullPath = string.IsNullOrEmpty(marker.ParentPath) ? newName : $"{marker.ParentPath}/{newName}";
+            fullPath = GetUniqueFolderPath(fullPath, isCopy: false);
+
+            _settings.Folders.Add(fullPath);
+            SettingsService.Save(_settings);
+            Log($"Created folder '{fullPath}'.");
+
+            RebuildTree();
+            return;
+        }
+
+        // --- EXISTING RENAME LOGIC ---
+        if (string.IsNullOrWhiteSpace(newName) || newName == data.Name) return;
 
         if (tag is ServerConfig server)
         {
@@ -1084,43 +1120,110 @@ public sealed partial class MainWindow : Window
         RebuildTree();
     }
 
-    private async void NewFolder_Click(object sender, RoutedEventArgs e)
+    private class NewFolderMarker
     {
-        var inputBox = new TextBox { PlaceholderText = "Enter folder name", AcceptsReturn = false };
-        var dialog = new ContentDialog
+        public string ParentPath { get; set; } = "";
+    }
+
+    private void NewFolder_Click(object sender, RoutedEventArgs e)
+    {
+        Tree.ContextFlyout?.Hide();
+
+        // Figure out where to put the new folder based on the current selection
+        var parentNode = GetTargetParentNode();
+        if (parentNode == null) return;
+
+        string targetFolder = "";
+        if (_nodeTags.TryGetValue(parentNode, out var tag) && tag is string path)
         {
-            Title = "Create Folder",
-            Content = inputBox,
-            PrimaryButtonText = "Create",
-            CloseButtonText = "Cancel",
-            DefaultButton = ContentDialogButton.Primary,
+            targetFolder = path == AppPaths.RootFolder ? "" : path;
+        }
+
+        // Create a temporary dummy node
+        var newFolderData = new TreeItemData
+        {
+            Name = "",
+            IconGlyph = "\uE8D5",
+            IconColor = new SolidColorBrush(Microsoft.UI.Colors.Gold),
+            IsEditing = true // Immediately put it into edit mode!
+        };
+        var newNode = new TreeViewNode { Content = newFolderData };
+
+        // Tag it with our special marker so CommitRename knows it's new
+        _nodeTags[newNode] = new NewFolderMarker { ParentPath = targetFolder };
+
+        // Insert at the top of the folder list and select it
+        parentNode.Children.Insert(0, newNode);
+
+        ClearSelection();
+        SetNodeSelection(newNode, true);
+    }
+
+    private async void ChangePassphrase_Click(object sender, RoutedEventArgs e)
+    {
+        // 1. Verify current passphrase first for security
+        var verifyDlg = new Dialogs.PassphraseDialog("Verify Current Passphrase",
+            "Please enter your current master passphrase to authorize this change.",
+            showRemember: false)
+        {
             XamlRoot = this.Content.XamlRoot
         };
 
-        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+        await verifyDlg.ShowAsync();
+        if (!verifyDlg.IsSuccess) return;
+
+        var currentSalt = Convert.FromHexString(_settings.MasterSaltHex ?? "");
+        if (CryptoStore.HashPassphrase(verifyDlg.Passphrase, currentSalt) != _settings.MasterHashHex)
         {
-            string newName = inputBox.Text.Trim().Replace("/", "").Replace("\\", "");
-            if (string.IsNullOrWhiteSpace(newName)) { Log("Folder creation cancelled."); return; }
-
-            string targetFolder = "";
-            if (_selectedNodes.Count == 1 && _nodeTags.TryGetValue(_selectedNodes[0], out var tag))
-            {
-                targetFolder = tag is string path ? path : ((tag as ServerConfig)?.Folder ?? "");
-            }
-            if (targetFolder == AppPaths.RootFolder) targetFolder = "";
-
-            string fullPath = string.IsNullOrEmpty(targetFolder) ? newName : $"{targetFolder}/{newName}";
-            fullPath = GetUniqueFolderPath(fullPath, isCopy: false);
-
-            _settings.Folders.Add(fullPath);
-            SettingsService.Save(_settings);
-            RebuildTree();
-            Log($"Created folder '{fullPath}'.");
+            await ShowAlertAsync("Error", "Incorrect current passphrase. Request denied.");
+            return;
         }
+
+        // 2. Prompt for the new passphrase
+        var newDlg = new Dialogs.PassphraseDialog("Set New Master Passphrase",
+            "Choose a new master passphrase. Your vault will be securely re-encrypted.",
+            requireConfirm: true, showRemember: true)
+        {
+            XamlRoot = this.Content.XamlRoot
+        };
+
+        await newDlg.ShowAsync();
+        if (!newDlg.IsSuccess) return;
+
+        // 3. Generate new crypto material and apply the changes
+        var newSalt = CryptoStore.GenerateSalt();
+        _settings.MasterSaltHex = Convert.ToHexString(newSalt);
+        _settings.MasterHashHex = CryptoStore.HashPassphrase(newDlg.Passphrase, newSalt);
+        _settings.RememberMaster = newDlg.RememberMe;
+
+        _passphrase = newDlg.Passphrase;
+
+        // 4. Update Windows Credential Manager
+        if (newDlg.RememberMe) CredentialVault.Set(_passphrase);
+        else CredentialVault.Clear();
+
+        // 5. Save settings and re-encrypt the actual vault file!
+        SettingsService.Save(_settings);
+        CryptoStore.Save(_servers, _passphrase);
+
+        Log("Master passphrase successfully changed and vault re-encrypted.");
+        await ShowAlertAsync("Success", "Master passphrase changed and vault re-encrypted successfully.");
     }
 
-    private void ChangePassphrase_Click(object sender, RoutedEventArgs e) { Log("Passphrase Dialog needs porting."); }
-    private void ForgetPassphrase_Click(object sender, RoutedEventArgs e) { Log("Forgot passphrase."); }
+    private async void ForgetPassphrase_Click(object sender, RoutedEventArgs e)
+    {
+        _settings.RememberMaster = false;
+        SettingsService.Save(_settings);
+
+        // Wipe it from the secure Windows Credential Manager
+        CredentialVault.Clear();
+
+        Log("Cleared saved master passphrase from Windows Credential Manager.");
+
+        // Show the confirmation popup
+        await ShowAlertAsync("Passphrase Forgotten", "Your saved master passphrase has been successfully cleared from this computer.");
+    }
+
     private void Exit_Click(object sender, RoutedEventArgs e) => Close();
 
     private void Tree_ItemInvoked(TreeView sender, TreeViewItemInvokedEventArgs args)

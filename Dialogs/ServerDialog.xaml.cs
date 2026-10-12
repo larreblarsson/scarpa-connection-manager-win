@@ -20,6 +20,7 @@ public sealed partial class ServerDialog : Microsoft.UI.Xaml.Window
     private TaskCompletionSource<bool>? _tcs;
 
     public ObservableCollection<PortForwardRule> PortForwardRules { get; set; } = new();
+    private ObservableCollection<JumpHost> _jumpHosts = new();
 
     public ServerDialog(ServerConfig? existingConfig, IEnumerable<string> folders, string? defaultFolder = null)
     {
@@ -221,6 +222,8 @@ public sealed partial class ServerDialog : Microsoft.UI.Xaml.Window
             RdpClipboardCheck.IsChecked = true;
             RdpCertCheck.IsChecked = true;
         }
+        _jumpHosts = new ObservableCollection<JumpHost>(Config.RdpJumpHosts ?? new());
+        JumpHostsList.ItemsSource = _jumpHosts;
     }
 
     public Task<bool> ShowModalAsync()
@@ -352,6 +355,7 @@ public sealed partial class ServerDialog : Microsoft.UI.Xaml.Window
         Config.RdpIgnoreCert = RdpCertCheck.IsChecked == true;
         Config.RdpRedirectDrive = RdpDriveCheck.IsChecked == true;
         Config.RdpDrivePath = RdpDrivePathBox.Text;
+        Config.RdpJumpHosts = new List<JumpHost>(_jumpHosts);
 
         Saved = true;
         _tcs?.TrySetResult(true);
@@ -729,4 +733,122 @@ public sealed partial class ServerDialog : Microsoft.UI.Xaml.Window
         }
         cb.Text = targetValue;
     }
+
+    // --- POPUP DIALOG JUMP HOST HANDLERS ---
+
+    private async void BtnAddJumpHost_Click(object sender, RoutedEventArgs e)
+    {
+        var newHost = new JumpHost { Port = 22 };
+        if (await ShowJumpHostDialogAsync("Add Jump Host", newHost))
+        {
+            _jumpHosts.Add(newHost);
+        }
+    }
+
+    private async void BtnEditJumpHost_Click(object sender, RoutedEventArgs e)
+    {
+        if (JumpHostsList.SelectedItem is not JumpHost selectedHost)
+        {
+            await ShowAlertAsync("Selection", "Please select a jump host to edit.");
+            return;
+        }
+
+        // Clone the object in case they cancel
+        var editHost = new JumpHost
+        {
+            Host = selectedHost.Host,
+            Port = selectedHost.Port,
+            User = selectedHost.User,
+            Password = selectedHost.Password
+        };
+
+        if (await ShowJumpHostDialogAsync("Edit Jump Host", editHost))
+        {
+            int idx = _jumpHosts.IndexOf(selectedHost);
+            if (idx >= 0) _jumpHosts[idx] = editHost;
+        }
+    }
+
+    private void BtnDeleteJumpHost_Click(object sender, RoutedEventArgs e)
+    {
+        if (JumpHostsList.SelectedItem is JumpHost host) _jumpHosts.Remove(host);
+    }
+
+    private void BtnMoveJumpHostUp_Click(object sender, RoutedEventArgs e)
+    {
+        int idx = JumpHostsList.SelectedIndex;
+        if (idx > 0)
+        {
+            var item = _jumpHosts[idx];
+            _jumpHosts.RemoveAt(idx);
+            _jumpHosts.Insert(idx - 1, item);
+            JumpHostsList.SelectedIndex = idx - 1;
+        }
+    }
+
+    private void BtnMoveJumpHostDown_Click(object sender, RoutedEventArgs e)
+    {
+        int idx = JumpHostsList.SelectedIndex;
+        if (idx >= 0 && idx < _jumpHosts.Count - 1)
+        {
+            var item = _jumpHosts[idx];
+            _jumpHosts.RemoveAt(idx);
+            _jumpHosts.Insert(idx + 1, item);
+            JumpHostsList.SelectedIndex = idx + 1;
+        }
+    }
+
+    private async Task<bool> ShowJumpHostDialogAsync(string title, JumpHost host)
+    {
+        var hostBox = new TextBox { Text = host.Host, Width = 250 };
+        var portBox = new NumberBox { Value = host.Port, SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Inline, Width = 150 };
+        var userBox = new TextBox { Text = host.User, Width = 250 };
+        var passBox = new PasswordBox { Password = host.Password, Width = 250 };
+
+        var grid = new Grid { ColumnSpacing = 15, RowSpacing = 15 };
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+        for (int i = 0; i < 4; i++) grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+        void AddRow(string label, UIElement input, int row)
+        {
+            var txt = new TextBlock { Text = label, VerticalAlignment = VerticalAlignment.Center };
+            Grid.SetRow(txt, row);
+            Grid.SetColumn(txt, 0);
+            grid.Children.Add(txt);
+
+            Grid.SetRow(input as FrameworkElement, row);
+            Grid.SetColumn(input as FrameworkElement, 1);
+            grid.Children.Add(input);
+        }
+
+        AddRow("Host:", hostBox, 0);
+        AddRow("Port:", portBox, 1);
+        AddRow("User:", userBox, 2);
+        AddRow("Password:", passBox, 3);
+
+        var dialog = new ContentDialog
+        {
+            Title = title,
+            Content = grid,
+            PrimaryButtonText = "OK",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Primary,
+            XamlRoot = this.Content.XamlRoot
+        };
+
+        hostBox.Loaded += (s, ev) => hostBox.Focus(FocusState.Programmatic);
+
+        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+        {
+            host.Host = hostBox.Text.Trim();
+            host.Port = double.IsNaN(portBox.Value) ? 22 : (int)portBox.Value;
+            host.User = userBox.Text.Trim();
+            host.Password = passBox.Password;
+            return true;
+        }
+        return false;
+    }
+
 }

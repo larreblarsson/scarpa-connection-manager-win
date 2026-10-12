@@ -13,7 +13,6 @@ using ScarpaConnectionManager.Services;
 
 namespace scarpa_connection_manager_win.Dialogs;
 
-// --- NEW CONTAINER TO LEGALLY SET THE CURSOR IN WINUI 3 ---
 public sealed class SplitterContainer : Grid
 {
     public SplitterContainer()
@@ -29,6 +28,25 @@ public class FileItem : System.ComponentModel.INotifyPropertyChanged
     private static readonly SolidColorBrush FileIconBrush = new(Microsoft.UI.Colors.LightGray);
     private static readonly SolidColorBrush HighlightBrush = new(Microsoft.UI.ColorHelper.FromArgb(120, 50, 150, 255));
     private static readonly SolidColorBrush TransparentBrush = new(Microsoft.UI.Colors.Transparent);
+
+    private Microsoft.UI.Xaml.Media.ImageSource? _imageIcon;
+    public Microsoft.UI.Xaml.Media.ImageSource? ImageIcon
+    {
+        get => _imageIcon;
+        set
+        {
+            _imageIcon = value;
+            PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(ImageIcon)));
+            PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(FontIconVisibility)));
+            PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(ImageIconVisibility)));
+        }
+    }
+
+    // Show the FontIcon if it's a folder OR if the Image hasn't loaded yet
+    public Visibility FontIconVisibility => IsDirectory || _imageIcon == null ? Visibility.Visible : Visibility.Collapsed;
+
+    // Show the real Image icon only for files once it is fully loaded
+    public Visibility ImageIconVisibility => !IsDirectory && _imageIcon != null ? Visibility.Visible : Visibility.Collapsed;
 
     private bool _isDropHighlight;
     private bool _isEditing;
@@ -134,6 +152,9 @@ public sealed partial class SftpWindow : Window, System.ComponentModel.INotifyPr
     private string _currentLocalPath = "";
     private string _currentRemotePath = "";
 
+    private ObservableCollection<FileItem> _searchResults = new();
+    private bool _isSearchLocal = true;
+
     private bool _isLocalFocused = true;
     private List<FileItem> _clipboardFiles = new();
     private string _clipboardSource = "";
@@ -202,6 +223,7 @@ public sealed partial class SftpWindow : Window, System.ComponentModel.INotifyPr
 
         LocalFileList.ItemsSource = _localFiles;
         RemoteFileList.ItemsSource = _remoteFiles;
+        SearchResultsList.ItemsSource = _searchResults;
 
         this.Closed += SftpWindow_Closed;
 
@@ -254,6 +276,52 @@ public sealed partial class SftpWindow : Window, System.ComponentModel.INotifyPr
             else if (tag == "RemoteType") RemoteTypeColWidth = 120;
             else if (tag == "RemoteSize") RemoteSizeColWidth = 100;
         }
+    }
+
+    private static readonly Dictionary<string, Microsoft.UI.Xaml.Media.Imaging.BitmapImage> _iconCache = new();
+
+    private async Task LoadFileIconAsync(FileItem item)
+    {
+        if (item.IsDirectory) return;
+
+        string ext = Path.GetExtension(item.Name).ToLowerInvariant();
+        if (string.IsNullOrEmpty(ext)) ext = ".blank";
+
+        // 1. Check if we already loaded this extension in memory
+        if (_iconCache.TryGetValue(ext, out var cachedIcon))
+        {
+            DispatcherQueue.TryEnqueue(() => item.ImageIcon = cachedIcon);
+            return;
+        }
+
+        try
+        {
+            // 2. Create a dummy zero-byte file in Temp to trick Windows into handing over the exact shell icon
+            string tempFile = Path.Combine(Path.GetTempPath(), $"scarpa_icon_dummy{ext}");
+            if (!File.Exists(tempFile)) File.WriteAllBytes(tempFile, Array.Empty<byte>());
+
+            var storageFile = await Windows.Storage.StorageFile.GetFileFromPathAsync(tempFile);
+            var thumbnail = await storageFile.GetThumbnailAsync(
+                Windows.Storage.FileProperties.ThumbnailMode.ListView,
+                24,
+                Windows.Storage.FileProperties.ThumbnailOptions.UseCurrentScale);
+
+            if (thumbnail != null)
+            {
+                // 3. Send the thumbnail back to the UI Thread to update the image
+                DispatcherQueue.TryEnqueue(async () =>
+                {
+                    if (!_iconCache.ContainsKey(ext))
+                    {
+                        var bitmap = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage();
+                        await bitmap.SetSourceAsync(thumbnail);
+                        _iconCache[ext] = bitmap;
+                    }
+                    item.ImageIcon = _iconCache[ext];
+                });
+            }
+        }
+        catch { /* Fails silently and leaves the default File FontIcon visible */ }
     }
 
     // --- Directory Loading ---
@@ -326,7 +394,8 @@ public sealed partial class SftpWindow : Window, System.ComponentModel.INotifyPr
 
             foreach (var f in dir.GetFiles().OrderBy(x => x.Name))
             {
-                _localFiles.Add(new FileItem
+                // Extracted into a variable so we can pass it to the icon loader
+                var newLocalItem = new FileItem
                 {
                     Name = f.Name,
                     FullPath = f.FullName,
@@ -336,7 +405,12 @@ public sealed partial class SftpWindow : Window, System.ComponentModel.INotifyPr
                     ShowDate = _showDateCol,
                     ShowType = _showTypeCol,
                     ShowSize = _showSizeCol
-                });
+                };
+
+                _localFiles.Add(newLocalItem);
+
+                // Trigger the native icon extraction in the background
+                _ = LoadFileIconAsync(newLocalItem);
             }
         }
         catch (Exception) { /* Silently ignore */ }
@@ -374,7 +448,8 @@ public sealed partial class SftpWindow : Window, System.ComponentModel.INotifyPr
 
                 foreach (var f in files.Where(x => x.Name != "." && x.Name != "..").OrderByDescending(x => x.IsDirectory).ThenBy(x => x.Name))
                 {
-                    _remoteFiles.Add(new FileItem
+                    // Extracted into a variable so we can pass it to the icon loader
+                    var newRemoteItem = new FileItem
                     {
                         Name = f.Name,
                         FullPath = f.FullName,
@@ -384,7 +459,15 @@ public sealed partial class SftpWindow : Window, System.ComponentModel.INotifyPr
                         ShowDate = _showDateCol,
                         ShowType = _showTypeCol,
                         ShowSize = _showSizeCol
-                    });
+                    };
+
+                    _remoteFiles.Add(newRemoteItem);
+
+                    // Trigger the native icon extraction if it's a file, not a directory
+                    if (!newRemoteItem.IsDirectory)
+                    {
+                        _ = LoadFileIconAsync(newRemoteItem);
+                    }
                 }
             });
         }
@@ -398,18 +481,26 @@ public sealed partial class SftpWindow : Window, System.ComponentModel.INotifyPr
         }
     }
 
-    private void FileList_PreviewKeyDown(object sender, KeyRoutedEventArgs e)
+    private async void FileList_PreviewKeyDown(object sender, KeyRoutedEventArgs e)
     {
         if (sender is not ListView listView) return;
         var selected = listView.SelectedItem as FileItem;
 
         if (e.Key == Windows.System.VirtualKey.Enter)
         {
-            if (selected != null && selected.IsDirectory && !selected.IsEditing)
+            if (selected != null && !selected.IsEditing)
             {
                 e.Handled = true;
-                if (listView == LocalFileList) LoadLocalDirectory(selected.FullPath);
-                else Task.Run(() => LoadRemoteDirectory(selected.FullPath));
+                if (selected.IsDirectory)
+                {
+                    if (listView == LocalFileList) LoadLocalDirectory(selected.FullPath);
+                    else Task.Run(() => LoadRemoteDirectory(selected.FullPath));
+                }
+                else
+                {
+                    // Open the file if it's not a directory
+                    await OpenFileAsync(selected, isLocal: listView == LocalFileList);
+                }
             }
         }
         else if (e.Key == Windows.System.VirtualKey.Back)
@@ -540,49 +631,29 @@ public sealed partial class SftpWindow : Window, System.ComponentModel.INotifyPr
 
     private async void NewFolder_Click(object sender, RoutedEventArgs e)
     {
-        var inputBox = new TextBox { PlaceholderText = "Folder Name", Width = 300 };
-        var locationCombo = new ComboBox { Width = 300, Margin = new Thickness(0, 10, 0, 0) };
-        locationCombo.Items.Add("Local: " + _currentLocalPath);
-        locationCombo.Items.Add("Remote: " + _currentRemotePath);
-        locationCombo.SelectedIndex = 1;
+        var targetCollection = _isLocalFocused ? _localFiles : _remoteFiles;
+        var targetListView = _isLocalFocused ? LocalFileList : RemoteFileList;
 
-        if (this.Content?.XamlRoot == null) return;
-
-        var dialog = new ContentDialog
+        var newFolder = new FileItem
         {
-            Title = "Create New Folder",
-            Content = new StackPanel { Children = { inputBox, locationCombo } },
-            PrimaryButtonText = "Create",
-            CloseButtonText = "Cancel",
-            DefaultButton = ContentDialogButton.Primary,
-            XamlRoot = this.Content.XamlRoot
+            Name = "New Folder",
+            IsDirectory = true,
+            ShowDate = _showDateCol,
+            ShowType = _showTypeCol,
+            ShowSize = _showSizeCol,
+            IsNewFolder = true
         };
 
-        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
-        {
-            string newName = inputBox.Text.Trim();
-            if (string.IsNullOrWhiteSpace(newName)) return;
+        // Insert just below ".." if it exists
+        int insertIndex = (targetCollection.Count > 0 && targetCollection[0].Name == "..") ? 1 : 0;
+        targetCollection.Insert(insertIndex, newFolder);
 
-            try
-            {
-                if (locationCombo.SelectedIndex == 0) // Local
-                {
-                    Directory.CreateDirectory(Path.Combine(_currentLocalPath, newName));
-                    LoadLocalDirectory(_currentLocalPath);
-                }
-                else // Remote
-                {
-                    string target = _currentRemotePath == "/" ? $"/{newName}" : $"{_currentRemotePath}/{newName}";
-                    _sftpService.CreateDirectory(target);
-                    LoadRemoteDirectory(_currentRemotePath);
-                }
-            }
-            catch (Exception ex)
-            {
-                var errDlg = new ContentDialog { Title = "Error", Content = ex.Message, CloseButtonText = "OK", XamlRoot = this.Content.XamlRoot };
-                await errDlg.ShowAsync();
-            }
-        }
+        targetListView.SelectedItem = newFolder;
+        targetListView.ScrollIntoView(newFolder);
+
+        // Wait a tiny bit for the UI container to generate, then trigger your existing rename mode
+        await Task.Delay(50);
+        TriggerRename(targetListView, newFolder);
     }
 
     private async void Delete_Click(object sender, RoutedEventArgs e)
@@ -862,6 +933,66 @@ public sealed partial class SftpWindow : Window, System.ComponentModel.INotifyPr
         return await tcs.Task;
     }
 
+    // --- Cancellation & Progress Handlers ---
+
+    private System.Threading.CancellationTokenSource? _cancellationTokenSource;
+
+    private void CancelProgress_Click(object sender, RoutedEventArgs e)
+    {
+        _cancellationTokenSource?.Cancel();
+        CancelProgressButton.IsEnabled = false;
+        CancelProgressButton.Content = "Cancelling...";
+    }
+
+    private async Task PerformCancellableTaskAsync(string message, Func<System.Threading.CancellationToken, Task> work)
+    {
+        ProgressText.Text = message;
+        CancelProgressButton.Visibility = Visibility.Visible;
+        CancelProgressButton.IsEnabled = true;
+        CancelProgressButton.Content = "Cancel";
+
+        using (_cancellationTokenSource = new System.Threading.CancellationTokenSource())
+        {
+            var token = _cancellationTokenSource.Token;
+            var workTask = Task.Run(() => work(token), token);
+            var delayTask = Task.Delay(500, token);
+
+            if (await Task.WhenAny(workTask, delayTask) == delayTask)
+            {
+                ProgressOverlay.Visibility = Visibility.Visible;
+            }
+
+            try
+            {
+                await workTask;
+            }
+            catch (OperationCanceledException)
+            {
+                // Silently swallow the cancel exception so the UI just closes the popup
+            }
+            catch (Exception ex)
+            {
+                if (this.Content?.XamlRoot != null)
+                {
+                    var dialog = new ContentDialog
+                    {
+                        Title = "Error",
+                        Content = ex.Message,
+                        CloseButtonText = "OK",
+                        XamlRoot = this.Content.XamlRoot
+                    };
+                    await dialog.ShowAsync();
+                }
+            }
+            finally
+            {
+                ProgressOverlay.Visibility = Visibility.Collapsed;
+                CancelProgressButton.Visibility = Visibility.Collapsed; // Hide it again for normal transfers
+                _cancellationTokenSource = null;
+            }
+        }
+    }
+
     private async Task PerformTransferAsync(string message, Func<Task> work)
     {
         ProgressText.Text = message;
@@ -1044,12 +1175,14 @@ public sealed partial class SftpWindow : Window, System.ComponentModel.INotifyPr
         if (e.Key == Windows.System.VirtualKey.Enter)
         {
             e.Handled = true;
-            await CommitRename(tb, item);
+            if (item.IsNewFolder) await CommitNewFolder(tb, item);
+            else await CommitRename(tb, item);
         }
         else if (e.Key == Windows.System.VirtualKey.Escape)
         {
             e.Handled = true;
-            CancelRename(tb, item);
+            if (item.IsNewFolder) CancelNewFolder(item);
+            else CancelRename(tb, item);
         }
     }
 
@@ -1057,7 +1190,8 @@ public sealed partial class SftpWindow : Window, System.ComponentModel.INotifyPr
     {
         if (sender is TextBox tb && tb.DataContext is FileItem item)
         {
-            await CommitRename(tb, item);
+            if (item.IsNewFolder) await CommitNewFolder(tb, item);
+            else await CommitRename(tb, item);
         }
     }
 
@@ -1143,6 +1277,67 @@ public sealed partial class SftpWindow : Window, System.ComponentModel.INotifyPr
         }
     }
 
+    private void CancelNewFolder(FileItem item)
+    {
+        item.IsEditing = false;
+        if (_localFiles.Contains(item)) _localFiles.Remove(item);
+        if (_remoteFiles.Contains(item)) _remoteFiles.Remove(item);
+    }
+
+    private async Task CommitNewFolder(TextBox tb, FileItem item)
+    {
+        if (!item.IsEditing) return;
+
+        string newName = tb.Text.Trim();
+        if (string.IsNullOrWhiteSpace(newName))
+        {
+            CancelNewFolder(item);
+            return;
+        }
+
+        var activeList = _isLocalFocused ? LocalFileList : RemoteFileList;
+        activeList.Focus(FocusState.Pointer);
+        item.IsEditing = false;
+        item.IsNewFolder = false;
+
+        try
+        {
+            if (_isLocalFocused)
+            {
+                string targetDir = Path.Combine(_currentLocalPath, newName);
+                if (Directory.Exists(targetDir) || File.Exists(targetDir))
+                {
+                    CancelNewFolder(item);
+                    var errDlg = new ContentDialog { Title = "Error", Content = $"An item named '{newName}' already exists.", CloseButtonText = "OK", XamlRoot = this.Content?.XamlRoot };
+                    await errDlg.ShowAsync();
+                    return;
+                }
+
+                Directory.CreateDirectory(targetDir);
+                LoadLocalDirectory(_currentLocalPath);
+            }
+            else
+            {
+                string targetDir = _currentRemotePath == "/" ? $"/{newName}" : $"{_currentRemotePath}/{newName}";
+
+                await PerformTransferAsync($"Creating folder {newName}...", () =>
+                {
+                    _sftpService.CreateDirectory(targetDir);
+                });
+                LoadRemoteDirectory(_currentRemotePath);
+            }
+        }
+        catch (Exception ex)
+        {
+            CancelNewFolder(item);
+            if (this.Content?.XamlRoot != null)
+            {
+                var errDlg = new ContentDialog { Title = "Error", Content = ex.Message, CloseButtonText = "OK", XamlRoot = this.Content.XamlRoot };
+                await errDlg.ShowAsync();
+            }
+        }
+    }
+
     private static T? FindVisualChild<T>(DependencyObject? parent) where T : DependencyObject
     {
         if (parent == null) return null;
@@ -1200,18 +1395,85 @@ public sealed partial class SftpWindow : Window, System.ComponentModel.INotifyPr
         listView.SelectedItems.Clear();
     }
 
-    private void LocalFileList_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
+    private async Task OpenFileAsync(FileItem file, bool isLocal)
     {
-        _awaitingDoubleTap = false;
-        if (LocalFileList.SelectedItem is FileItem selected && selected.IsDirectory)
-            LoadLocalDirectory(selected.FullPath);
+        try
+        {
+            string pathToOpen = file.FullPath;
+
+            // If it's a remote file, we must download it to the Windows Temp folder first
+            if (!isLocal)
+            {
+                string tempDir = Path.Combine(Path.GetTempPath(), "ScarpaSFTP");
+                Directory.CreateDirectory(tempDir);
+                pathToOpen = Path.Combine(tempDir, file.Name);
+
+                bool success = true;
+                await PerformTransferAsync($"Downloading {file.Name} to open...", () =>
+                {
+                    try { _sftpService.Download(file.FullPath, pathToOpen); }
+                    catch { success = false; throw; } // PerformTransferAsync will handle the UI error
+                });
+
+                if (!success || !File.Exists(pathToOpen)) return;
+            }
+
+            // UseShellExecute = true tells Windows to look up the default associated application
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = pathToOpen,
+                UseShellExecute = true
+            });
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+            // Fires if Windows strictly refuses to open the file due to zero associations
+            if (this.Content?.XamlRoot != null)
+            {
+                var dialog = new ContentDialog
+                {
+                    Title = "Cannot Open File",
+                    Content = $"There is no default application installed to open '{Path.GetExtension(file.Name)}' files.",
+                    CloseButtonText = "OK",
+                    XamlRoot = this.Content.XamlRoot
+                };
+                await dialog.ShowAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            if (this.Content?.XamlRoot != null)
+            {
+                var dialog = new ContentDialog
+                {
+                    Title = "Error",
+                    Content = $"Failed to open file: {ex.Message}",
+                    CloseButtonText = "OK",
+                    XamlRoot = this.Content.XamlRoot
+                };
+                await dialog.ShowAsync();
+            }
+        }
     }
 
-    private void RemoteFileList_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
+    private async void LocalFileList_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
     {
         _awaitingDoubleTap = false;
-        if (RemoteFileList.SelectedItem is FileItem selected && selected.IsDirectory)
-            Task.Run(() => LoadRemoteDirectory(selected.FullPath));
+        if (LocalFileList.SelectedItem is FileItem selected)
+        {
+            if (selected.IsDirectory) LoadLocalDirectory(selected.FullPath);
+            else await OpenFileAsync(selected, isLocal: true);
+        }
+    }
+
+    private async void RemoteFileList_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
+    {
+        _awaitingDoubleTap = false;
+        if (RemoteFileList.SelectedItem is FileItem selected)
+        {
+            if (selected.IsDirectory) Task.Run(() => LoadRemoteDirectory(selected.FullPath));
+            else await OpenFileAsync(selected, isLocal: false);
+        }
     }
 
     // --- Drag and Drop Handlers ---
@@ -1495,6 +1757,9 @@ public sealed partial class SftpWindow : Window, System.ComponentModel.INotifyPr
             else Task.Run(() => LoadRemoteDirectory(targetPath));
         };
 
+        // --- NEW: Prevent the tap from bubbling up to the Border (which triggers edit mode) ---
+        btn.Tapped += (s, e) => e.Handled = true;
+
         btn.AllowDrop = true;
         string dropTarget = isLocal ? "Local" : "Remote";
 
@@ -1527,6 +1792,7 @@ public sealed partial class SftpWindow : Window, System.ComponentModel.INotifyPr
             await ExecuteDropTransferAsync(_dragSource, dropTarget, finalDest);
         };
     }
+
     private void Header_RightTapped(object sender, RightTappedRoutedEventArgs e)
     {
         if (sender is FrameworkElement element)
@@ -1785,4 +2051,213 @@ public sealed partial class SftpWindow : Window, System.ComponentModel.INotifyPr
             LoadLocalDirectory(_currentLocalPath);
         }
     }
+    // --- Search Logic ---
+
+    private async void Search_Click(object sender, RoutedEventArgs e)
+    {
+        if (this.Content?.XamlRoot == null) return;
+
+        var inputBox = new TextBox { PlaceholderText = "e.g. *.txt or report_?", Width = 300 };
+        var recursiveCheck = new CheckBox { Content = "Search subfolders recursively", IsChecked = false, Margin = new Thickness(0, 10, 0, 0) };
+
+        var dialog = new ContentDialog
+        {
+            Title = _isLocalFocused ? "Search Local Files" : "Search Remote Files",
+            Content = new StackPanel { Children = { inputBox, recursiveCheck } },
+            PrimaryButtonText = "Search",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Primary,
+            XamlRoot = this.Content.XamlRoot
+        };
+
+        if (await dialog.ShowAsync() == ContentDialogResult.Primary)
+        {
+            string query = inputBox.Text.Trim();
+            if (string.IsNullOrWhiteSpace(query)) return;
+
+            bool recursive = recursiveCheck.IsChecked ?? false;
+
+            // Remember where this search was executed so the Context Menu knows how to handle the files
+            _isSearchLocal = _isLocalFocused;
+
+            if (_isSearchLocal) await PerformLocalSearchAsync(query, recursive);
+            else await PerformRemoteSearchAsync(query, recursive);
+        }
+    }
+
+    private async Task PerformLocalSearchAsync(string query, bool recursive)
+    {
+        if (string.IsNullOrWhiteSpace(_currentLocalPath)) return;
+        string searchPattern = query.Contains("*") || query.Contains("?") ? query : $"*{query}*";
+
+        await PerformCancellableTaskAsync($"Searching local files for '{searchPattern}'...", (token) =>
+        {
+            var results = new List<FileItem>();
+
+            void SearchLocalDir(string path)
+            {
+                token.ThrowIfCancellationRequested();
+                try
+                {
+                    var dirInfo = new DirectoryInfo(path);
+                    foreach (var d in dirInfo.GetDirectories(searchPattern, SearchOption.TopDirectoryOnly))
+                    {
+                        token.ThrowIfCancellationRequested();
+                        results.Add(new FileItem { Name = d.Name, FullPath = d.FullName, IsDirectory = true, LastModified = d.LastWriteTime });
+                    }
+                    foreach (var f in dirInfo.GetFiles(searchPattern, SearchOption.TopDirectoryOnly))
+                    {
+                        token.ThrowIfCancellationRequested();
+                        var item = new FileItem { Name = f.Name, FullPath = f.FullName, IsDirectory = false, LastModified = f.LastWriteTime, Size = f.Length };
+                        results.Add(item);
+                        _ = LoadFileIconAsync(item);
+                    }
+                    if (recursive)
+                    {
+                        foreach (var d in dirInfo.GetDirectories("*", SearchOption.TopDirectoryOnly)) SearchLocalDir(d.FullName);
+                    }
+                }
+                catch { }
+            }
+
+            SearchLocalDir(_currentLocalPath);
+
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                _searchResults.Clear();
+                foreach (var item in results) _searchResults.Add(item);
+                SearchResultsTitle.Text = $"Local Search Results for '{searchPattern}'";
+                SearchResultsOverlay.Visibility = Visibility.Visible;
+            });
+
+            return Task.CompletedTask;
+        });
+    }
+
+    private async Task PerformRemoteSearchAsync(string query, bool recursive)
+    {
+        if (!_sftpService.IsConnected || string.IsNullOrWhiteSpace(_currentRemotePath)) return;
+
+        string searchPattern = query.Contains("*") || query.Contains("?") ? query : $"*{query}*";
+        var regex = WildcardToRegex(searchPattern);
+
+        await PerformCancellableTaskAsync($"Searching remote files for '{searchPattern}'...", (token) =>
+        {
+            var results = new List<FileItem>();
+
+            void SearchRemoteDirectory(string path)
+            {
+                token.ThrowIfCancellationRequested();
+                try
+                {
+                    var items = _sftpService.List(path);
+                    foreach (var item in items)
+                    {
+                        token.ThrowIfCancellationRequested();
+                        if (item.Name == "." || item.Name == "..") continue;
+
+                        if (regex.IsMatch(item.Name))
+                        {
+                            var fileItem = new FileItem { Name = item.Name, FullPath = item.FullName, IsDirectory = item.IsDirectory, LastModified = item.LastWriteTime, Size = item.Length };
+                            results.Add(fileItem);
+                            if (!item.IsDirectory) _ = LoadFileIconAsync(fileItem);
+                        }
+                        if (recursive && item.IsDirectory) SearchRemoteDirectory(item.FullName);
+                    }
+                }
+                catch { }
+            }
+
+            SearchRemoteDirectory(_currentRemotePath);
+
+            DispatcherQueue.TryEnqueue(() =>
+            {
+                _searchResults.Clear();
+                foreach (var item in results) _searchResults.Add(item);
+                SearchResultsTitle.Text = $"Remote Search Results for '{searchPattern}'";
+                SearchResultsOverlay.Visibility = Visibility.Visible;
+            });
+
+            return Task.CompletedTask;
+        });
+    }
+
+    private static System.Text.RegularExpressions.Regex WildcardToRegex(string pattern)
+    {
+        // Escapes special regex characters, then converts DOS wildcards (* and ?) to regex equivalents
+        string regexPattern = "^" + System.Text.RegularExpressions.Regex.Escape(pattern)
+                                  .Replace("\\*", ".*")
+                                  .Replace("\\?", ".") + "$";
+
+        return new System.Text.RegularExpressions.Regex(regexPattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+    }
+    // --- Search Results Overlay Handlers ---
+
+    private void CloseSearchResults_Click(object sender, RoutedEventArgs e)
+    {
+        SearchResultsOverlay.Visibility = Visibility.Collapsed;
+    }
+
+    private void SearchResultsList_RightTapped(object sender, RightTappedRoutedEventArgs e)
+    {
+        if (e.OriginalSource is FrameworkElement element && element.DataContext is FileItem item)
+        {
+            SearchResultsList.SelectedItem = item;
+            SearchResultsContextMenu.ShowAt(element, e.GetPosition(element));
+        }
+    }
+
+    private void SearchResultsList_DoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
+    {
+        // Double click does the same thing as clicking "Open"
+        SearchResultOpen_Click(sender, e);
+    }
+
+    private async void SearchResultOpen_Click(object sender, RoutedEventArgs e)
+    {
+        if (SearchResultsList.SelectedItem is FileItem item)
+        {
+            if (item.IsDirectory)
+            {
+                // If they open a folder, navigate the main pane to it and close the search window
+                SearchResultsOverlay.Visibility = Visibility.Collapsed;
+                SetActivePane(_isSearchLocal);
+
+                if (_isSearchLocal) LoadLocalDirectory(item.FullPath);
+                else _ = Task.Run(() => LoadRemoteDirectory(item.FullPath));
+            }
+            else
+            {
+                // If they open a file, use the Windows shell execution we built earlier
+                await OpenFileAsync(item, _isSearchLocal);
+            }
+        }
+    }
+
+    private void SearchResultGoToLocation_Click(object sender, RoutedEventArgs e)
+    {
+        if (SearchResultsList.SelectedItem is FileItem item)
+        {
+            SearchResultsOverlay.Visibility = Visibility.Collapsed;
+            SetActivePane(_isSearchLocal);
+
+            string parentPath;
+            if (_isSearchLocal)
+            {
+                // Get the parent folder for Windows paths
+                parentPath = Path.GetDirectoryName(item.FullPath) ?? _currentLocalPath;
+                LoadLocalDirectory(parentPath);
+            }
+            else
+            {
+                // Get the parent folder for Linux/SFTP paths
+                parentPath = item.FullPath.Substring(0, item.FullPath.LastIndexOf('/'));
+                if (string.IsNullOrEmpty(parentPath)) parentPath = "/";
+
+                _ = Task.Run(() => LoadRemoteDirectory(parentPath));
+            }
+        }
+    }
+
+
 }

@@ -25,7 +25,6 @@
                     <AppBarButton Icon="Paste" Label="Paste" Click="ContextPaste_Click" />
                     <AppBarButton Icon="Rename" Label="Rename" Click="ContextRename_Click" />
                     <AppBarButton Icon="Delete" Label="Delete" Click="ContextDelete_Click" />
-                    <!-- Removed the Resume button so Calculate Size fits without the three dots -->
                     <AppBarButton Icon="Calculator" Label="Calculate Size" Click="ContextCalculateSize_Click" />
                 </CommandBarFlyout.PrimaryCommands>
             </CommandBarFlyout>
@@ -38,6 +37,19 @@
                 <ToggleMenuFlyoutItem x:Name="MenuToggleType" Text="Type" IsChecked="True" Click="ToggleColumn_Click" />
                 <ToggleMenuFlyoutItem x:Name="MenuToggleSize" Text="Size" IsChecked="True" Click="ToggleColumn_Click" />
             </MenuFlyout>
+
+            <MenuFlyout x:Name="SearchResultsContextMenu">
+                    <MenuFlyoutItem Text="Open" Click="SearchResultOpen_Click">
+                        <MenuFlyoutItem.Icon>
+                            <FontIcon Glyph="&#xE8E5;" />
+                        </MenuFlyoutItem.Icon>
+                    </MenuFlyoutItem>
+                    <MenuFlyoutItem Text="Go to location" Click="SearchResultGoToLocation_Click">
+                        <MenuFlyoutItem.Icon>
+                            <FontIcon Glyph="&#xE8A0;" />
+                        </MenuFlyoutItem.Icon>
+                    </MenuFlyoutItem>
+                </MenuFlyout>
         </Grid.Resources>
 
         <!-- Tightened outer padding to reduce the side/top white space -->
@@ -55,6 +67,7 @@
                     <AppBarButton Icon="Add" Label="New Folder" Click="NewFolder_Click" ToolTipService.ToolTip="Create a new folder"/>
                     <AppBarButton Icon="Delete" Label="Delete" Click="Delete_Click" ToolTipService.ToolTip="Delete selected items"/>
                     <AppBarButton Icon="Refresh" Label="Refresh" Click="Refresh_Click"/>
+                    <AppBarButton Icon="Find" Label="Search" Click="Search_Click" ToolTipService.ToolTip="Search files and folders"/>
                 </CommandBar>
             </Grid>
             <Grid Grid.Row="1">
@@ -150,7 +163,10 @@
                                         <ColumnDefinition Width="*" />
                                     </Grid.ColumnDefinitions>
                                     <StackPanel Orientation="Horizontal" Grid.Column="0">
-                                        <FontIcon Glyph="{Binding Icon}" Margin="0,0,10,0" Foreground="{Binding IconColor}"/>
+                                        <Grid Margin="0,0,10,0" Width="16" Height="16" VerticalAlignment="Center">
+                                            <FontIcon Glyph="{Binding Icon}" Foreground="{Binding IconColor}" Visibility="{Binding FontIconVisibility, Mode=OneWay}" FontSize="16"/>
+                                            <Image Source="{Binding ImageIcon, Mode=OneWay}" Visibility="{Binding ImageIconVisibility, Mode=OneWay}" Width="16" Height="16"/>
+                                        </Grid>
                                         <Grid>
                                             <TextBlock Text="{Binding Name}" Visibility="{Binding TextVisibility, Mode=OneWay}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
                                             <TextBox Text="{Binding Name, Mode=OneWay}" Visibility="{Binding EditVisibility, Mode=OneWay}" KeyDown="RenameTextBox_KeyDown" LostFocus="RenameTextBox_LostFocus" MinWidth="150" Margin="-8,-4,0,-4" Padding="4,2,4,2"/>
@@ -255,7 +271,10 @@
                                         <ColumnDefinition Width="*" />
                                     </Grid.ColumnDefinitions>
                                     <StackPanel Orientation="Horizontal" Grid.Column="0">
-                                        <FontIcon Glyph="{Binding Icon}" Margin="0,0,10,0" Foreground="{Binding IconColor}"/>
+                                        <Grid Margin="0,0,10,0" Width="16" Height="16" VerticalAlignment="Center">
+                                            <FontIcon Glyph="{Binding Icon}" Foreground="{Binding IconColor}" Visibility="{Binding FontIconVisibility, Mode=OneWay}" FontSize="16"/>
+                                            <Image Source="{Binding ImageIcon, Mode=OneWay}" Visibility="{Binding ImageIconVisibility, Mode=OneWay}" Width="16" Height="16"/>
+                                        </Grid>
                                         <Grid>
                                             <TextBlock Text="{Binding Name}" Visibility="{Binding TextVisibility, Mode=OneWay}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
                                             <TextBox Text="{Binding Name, Mode=OneWay}" Visibility="{Binding EditVisibility, Mode=OneWay}" KeyDown="RenameTextBox_KeyDown" LostFocus="RenameTextBox_LostFocus" MinWidth="150" Margin="-8,-4,0,-4" Padding="4,2,4,2"/>
@@ -273,12 +292,72 @@
             </Grid>
         </Grid>
 
-        <!-- Loading Overlay for File Transfers -->
+        <!-- Search Results Overlay Modal -->
+        <Grid x:Name="SearchResultsOverlay" Background="#80000000" Visibility="Collapsed" Canvas.ZIndex="90">
+            <!-- Adjusted Width to 750 and Height to 450 to make the panel smaller -->
+            <Border Background="{ThemeResource ApplicationPageBackgroundThemeBrush}" Width="750" Height="450" CornerRadius="8" VerticalAlignment="Center" HorizontalAlignment="Center" BorderBrush="Gray" BorderThickness="1">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                        <!-- Added row for the footer -->
+                    </Grid.RowDefinitions>
+
+                    <!-- Header -->
+                    <Grid Grid.Row="0" Background="#F0F0F0" Padding="15,10" CornerRadius="8,8,0,0">
+                        <TextBlock x:Name="SearchResultsTitle" Text="Search Results" FontWeight="SemiBold" FontSize="16" VerticalAlignment="Center"/>
+                        <Button Content="&#xE711;" FontFamily="Segoe Fluent Icons" Background="Transparent" BorderThickness="0" HorizontalAlignment="Right" VerticalAlignment="Center" Click="CloseSearchResults_Click" Width="36" Height="36" ToolTipService.ToolTip="Close"/>
+                    </Grid>
+
+                    <!-- Results List (Added top/bottom borders to separate from header/footer) -->
+                    <ListView x:Name="SearchResultsList" Grid.Row="1" BorderBrush="LightGray" BorderThickness="0,1,0,1" SelectionMode="Single" RightTapped="SearchResultsList_RightTapped" DoubleTapped="SearchResultsList_DoubleTapped">
+                        <ListView.Header>
+                            <Grid Padding="15,5,10,5" BorderBrush="LightGray" BorderThickness="0,0,0,1">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="250" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="Name" FontWeight="SemiBold" Foreground="Gray"/>
+                                <TextBlock Grid.Column="1" Text="Location" FontWeight="SemiBold" Foreground="Gray"/>
+                            </Grid>
+                        </ListView.Header>
+                        <ListView.ItemTemplate>
+                            <DataTemplate>
+                                <Grid Padding="0,5" ColumnSpacing="10">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="250"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Orientation="Horizontal" Grid.Column="0">
+                                        <Grid Margin="0,0,10,0" Width="16" Height="16" VerticalAlignment="Center">
+                                            <FontIcon Glyph="{Binding Icon}" Foreground="{Binding IconColor}" Visibility="{Binding FontIconVisibility}" FontSize="16"/>
+                                            <Image Source="{Binding ImageIcon}" Visibility="{Binding ImageIconVisibility}" Width="16" Height="16"/>
+                                        </Grid>
+                                        <TextBlock Text="{Binding Name}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                    </StackPanel>
+                                    <!-- Full Path Display -->
+                                    <TextBlock Grid.Column="1" Text="{Binding FullPath}" VerticalAlignment="Center" Foreground="Gray" TextTrimming="CharacterEllipsis"/>
+                                </Grid>
+                            </DataTemplate>
+                        </ListView.ItemTemplate>
+                    </ListView>
+
+                    <!-- Footer with Close Button -->
+                    <Grid Grid.Row="2" Background="#F0F0F0" Padding="15,10" CornerRadius="0,0,8,8">
+                        <Button Content="Close" HorizontalAlignment="Right" Width="100" Click="CloseSearchResults_Click" />
+                    </Grid>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!-- Loading Overlay for File Transfers and Searches -->
         <Grid x:Name="ProgressOverlay" Background="#80000000" Visibility="Collapsed" Canvas.ZIndex="100">
             <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Background="{ThemeResource ApplicationPageBackgroundThemeBrush}" Padding="30" CornerRadius="8">
                 <ProgressRing IsActive="True" Width="50" Height="50" Margin="0,0,0,10"/>
-                <TextBlock x:Name="ProgressText" Text="Transferring..." HorizontalAlignment="Center" FontWeight="SemiBold"/>
+                <TextBlock x:Name="ProgressText" Text="Transferring..." HorizontalAlignment="Center" FontWeight="SemiBold" Margin="0,0,0,15"/>
+                <Button x:Name="CancelProgressButton" Content="Cancel" HorizontalAlignment="Center" Click="CancelProgress_Click" Visibility="Collapsed"/>
             </StackPanel>
-        </Grid>
+        </Grid>    
     </Grid>
 </Window>

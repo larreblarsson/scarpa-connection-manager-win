@@ -90,4 +90,24 @@ public sealed class SftpService : IDisposable
         _client?.Dispose();
         _client = null;
     }
+    public void ResumeUpload(string localPath, string remotePath, long remoteSize)
+    {
+        using var localStream = new System.IO.FileStream(localPath, System.IO.FileMode.Open, System.IO.FileAccess.Read);
+        localStream.Seek(remoteSize, System.IO.SeekOrigin.Begin);
+
+        // Open the remote file in Append mode and stream the remaining bytes
+        using var remoteStream = _client.Open(remotePath, System.IO.FileMode.Append, System.IO.FileAccess.Write);
+        localStream.CopyTo(remoteStream);
+    }
+
+    public void ResumeDownload(string remotePath, string localPath, long localSize)
+    {
+        using var localStream = new System.IO.FileStream(localPath, System.IO.FileMode.Append, System.IO.FileAccess.Write);
+
+        // Open the remote file in Read mode, but jump to the local file's current size
+        using var remoteStream = _client.OpenRead(remotePath);
+        remoteStream.Seek(localSize, System.IO.SeekOrigin.Begin);
+
+        remoteStream.CopyTo(localStream);
+    }
 }

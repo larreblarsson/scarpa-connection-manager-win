@@ -15,6 +15,8 @@ public sealed class SftpService : IDisposable
 {
     private SftpClient? _client;
 
+    private volatile bool _isDisposing = false;
+
     public bool IsConnected => _client?.IsConnected == true;
 
     // Update the method signature to accept DispatcherQueue and XamlRoot
@@ -57,19 +59,7 @@ public sealed class SftpService : IDisposable
         (_client ?? throw new InvalidOperationException("Not connected"))
         .ListDirectory(path)
         .Where(f => f.Name != ".");
-
-    public void Download(string remote, string local, Action<ulong>? progress = null)
-    {
-        using var fs = File.Create(local);
-        _client!.DownloadFile(remote, fs, progress);
-    }
-
-    public void Upload(string local, string remote, Action<ulong>? progress = null)
-    {
-        using var fs = File.OpenRead(local);
-        _client!.UploadFile(fs, remote, true, progress);
-    }
-
+        
     public void CreateDirectory(string remote) => _client!.CreateDirectory(remote);
     public void Rename(string from, string to) => _client!.RenameFile(from, to);
 
@@ -86,28 +76,84 @@ public sealed class SftpService : IDisposable
 
     public void Dispose()
     {
+        _isDisposing = true; // Tell all active transfers that we are shutting down
         try { if (_client?.IsConnected == true) _client.Disconnect(); } catch { }
-        _client?.Dispose();
+        try { _client?.Dispose(); } catch { }
         _client = null;
     }
+
+    public void Download(string remote, string local, Action<ulong>? progress = null)
+    {
+        var client = _client;
+        if (client == null || _isDisposing) return;
+
+        try
+        {
+            using var fs = File.Create(local);
+            client.DownloadFile(remote, fs, progress);
+        }
+        catch (Exception)
+        {
+            // SSH.NET throws internal NullReferenceExceptions if the socket is killed mid-transfer.
+            // If we are disposing OR the client lost connection due to app shutdown, swallow it cleanly.
+            try { if (_isDisposing || !client.IsConnected) return; } catch { return; }
+            throw; // Re-throw only if it's a genuine error while the app is fully alive
+        }
+    }
+
+    public void Upload(string local, string remote, Action<ulong>? progress = null)
+    {
+        var client = _client;
+        if (client == null || _isDisposing) return;
+
+        try
+        {
+            using var fs = File.OpenRead(local);
+            client.UploadFile(fs, remote, true, progress);
+        }
+        catch (Exception)
+        {
+            try { if (_isDisposing || !client.IsConnected) return; } catch { return; }
+            throw;
+        }
+    }
+
     public void ResumeUpload(string localPath, string remotePath, long remoteSize)
     {
-        using var localStream = new System.IO.FileStream(localPath, System.IO.FileMode.Open, System.IO.FileAccess.Read);
-        localStream.Seek(remoteSize, System.IO.SeekOrigin.Begin);
+        var client = _client;
+        if (client == null || _isDisposing) return;
 
-        // Open the remote file in Append mode and stream the remaining bytes
-        using var remoteStream = _client.Open(remotePath, System.IO.FileMode.Append, System.IO.FileAccess.Write);
-        localStream.CopyTo(remoteStream);
+        try
+        {
+            using var localStream = new System.IO.FileStream(localPath, System.IO.FileMode.Open, System.IO.FileAccess.Read);
+            localStream.Seek(remoteSize, System.IO.SeekOrigin.Begin);
+
+            using var remoteStream = client.Open(remotePath, System.IO.FileMode.Append, System.IO.FileAccess.Write);
+            localStream.CopyTo(remoteStream);
+        }
+        catch (Exception)
+        {
+            try { if (_isDisposing || !client.IsConnected) return; } catch { return; }
+            throw;
+        }
     }
 
     public void ResumeDownload(string remotePath, string localPath, long localSize)
     {
-        using var localStream = new System.IO.FileStream(localPath, System.IO.FileMode.Append, System.IO.FileAccess.Write);
+        var client = _client;
+        if (client == null || _isDisposing) return;
 
-        // Open the remote file in Read mode, but jump to the local file's current size
-        using var remoteStream = _client.OpenRead(remotePath);
-        remoteStream.Seek(localSize, System.IO.SeekOrigin.Begin);
-
-        remoteStream.CopyTo(localStream);
+        try
+        {
+            using var localStream = new System.IO.FileStream(localPath, System.IO.FileMode.Append, System.IO.FileAccess.Write);
+            using var remoteStream = client.OpenRead(remotePath);
+            remoteStream.Seek(localSize, System.IO.SeekOrigin.Begin);
+            remoteStream.CopyTo(localStream);
+        }
+        catch (Exception)
+        {
+            try { if (_isDisposing || !client.IsConnected) return; } catch { return; }
+            throw;
+        }
     }
 }

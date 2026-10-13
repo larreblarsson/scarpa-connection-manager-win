@@ -873,6 +873,44 @@ public sealed partial class MainWindow : Window
         }
     }
 
+    private async void Rdp_Click(object sender, RoutedEventArgs e)
+    {
+        if (_selectedNodes.Count == 0 || !_nodeTags.TryGetValue(_selectedNodes[0], out var tag) || !(tag is ServerConfig server))
+            return;
+
+        if (!server.RdpEnabled)
+        {
+            await ShowAlertAsync("RDP Disabled", "Remote Desktop is not enabled for this server. Please tick the checkbox in the server's RDP settings first.");
+            return;
+        }
+
+        // Fetch or ask for the password if it is missing/set to ask
+        string? pwd = server.Password;
+        if (server.AuthMethod == "ask" || string.IsNullOrEmpty(pwd))
+        {
+            var pwdDlg = new Dialogs.PassphraseDialog($"Password for {server.Name ?? "Server"}", "Enter the user password for this server:")
+            {
+                XamlRoot = this.Content.XamlRoot
+            };
+            await pwdDlg.ShowAsync();
+            if (!pwdDlg.IsSuccess) return;
+            pwd = pwdDlg.Passphrase;
+        }
+
+        Log($"Launching Remote Desktop session to {server.Name}...");
+
+        try
+        {
+            // FIX: Removed 'Services.' prefix. The compiler now correctly maps this using your top-level using statements.
+            await RdpService.LaunchAsync(server, pwd);
+        }
+        catch (Exception ex)
+        {
+            Log($"RDP Launch Failed: {ex.Message}");
+            await ShowAlertAsync("RDP Error", $"Failed to establish tunnel or launch Remote Desktop:\n\n{ex.Message}");
+        }
+    }
+
     public IEnumerable<string> AllFolders() =>
     _servers.Select(s => s.Folder ?? "")
         .Concat(_settings.Folders)

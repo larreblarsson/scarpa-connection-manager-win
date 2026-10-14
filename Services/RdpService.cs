@@ -75,8 +75,21 @@ public static class RdpService
 
         if (config.RdpRedirectDrive && !string.IsNullOrWhiteSpace(config.RdpDrivePath))
         {
-            string drive = config.RdpDrivePath.Replace(":\\", "").Replace(":", "");
-            rdpLines.Add($"drivestoredirect:s:{drive}:");
+            string rawDriveStr = config.RdpDrivePath.Trim();
+
+            if (rawDriveStr == "*")
+            {
+                // Natively tells the RDP client to map all local drives
+                rdpLines.Add("drivestoredirect:s:*");
+            }
+            else
+            {
+                // Supports inputs like "C:\", "C:\, D:\", or "C:;D:"
+                var drives = rawDriveStr.Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries)
+                    .Select(d => d.Replace(":\\", "").Replace("\\", "").Replace(":", "").Trim() + ":");
+
+                rdpLines.Add($"drivestoredirect:s:{string.Join(";", drives)}");
+            }
         }
 
         string rdpFilePath = Path.Combine(Path.GetTempPath(), $"scarpa_{targetHost.Replace(".", "_")}_{targetPort}.rdp");

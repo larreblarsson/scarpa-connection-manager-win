@@ -367,14 +367,14 @@
                             </StackPanel>
 
                             <StackPanel Spacing="8" Margin="0,12,0,0">
-                                <CheckBox x:Name="RdpDriveCheck" Content="Redirect local drive to remote session" MinWidth="0" />
+                                <CheckBox x:Name="RdpDriveCheck" Content="Local Drive to Remote" MinWidth="0" />
                                 <Grid ColumnSpacing="8" Margin="24,0,0,0">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="Auto" />
                                     </Grid.ColumnDefinitions>
                                     <TextBox x:Name="RdpDrivePathBox" PlaceholderText="C:\" Grid.Column="0" IsEnabled="{Binding IsChecked, ElementName=RdpDriveCheck}" />
-                                    <Button Content="Browse" Grid.Column="1" IsEnabled="{Binding IsChecked, ElementName=RdpDriveCheck}" />
+                                    <Button Content="Browse" Click="BrowseRdpDrive_Click" Grid.Column="1" IsEnabled="{Binding IsChecked, ElementName=RdpDriveCheck}" />
                                 </Grid>
                             </StackPanel>
                             <!-- Jump Hosts Section -->

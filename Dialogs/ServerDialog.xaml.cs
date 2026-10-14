@@ -5,6 +5,7 @@ using ScarpaConnectionManager.Models;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.Linq;
 using System.Threading.Tasks;
 
 namespace scarpa_connection_manager_win.Dialogs;
@@ -292,6 +293,69 @@ public sealed partial class ServerDialog : Microsoft.UI.Xaml.Window
 
         var file = await picker.PickSingleFileAsync();
         if (file != null) StartupCmdPathBox.Text = file.Path;
+    }
+
+    private async void BrowseRdpDrive_Click(object sender, RoutedEventArgs e)
+    {
+        // 1. Get all ready drives on the user's physical machine (e.g., "C:", "D:")
+        var availableDrives = System.IO.DriveInfo.GetDrives()
+            .Where(d => d.IsReady)
+            .Select(d => d.Name.Replace("\\", ""))
+            .ToList();
+
+        // 2. Parse what is currently in the textbox so we can pre-check the boxes
+        var currentSelection = RdpDrivePathBox.Text
+            .Split(new[] { ';', ',' }, StringSplitOptions.RemoveEmptyEntries)
+            .Select(d => d.Trim())
+            .ToList();
+
+        // 3. Build a StackPanel of CheckBoxes for the dialog
+        var stackPanel = new StackPanel { Spacing = 10 };
+        var checkBoxes = new List<CheckBox>();
+
+        foreach (var drive in availableDrives)
+        {
+            var cb = new CheckBox
+            {
+                Content = drive,
+                // Check it if it's already in the textbox, or if "*" (all drives) is used
+                IsChecked = currentSelection.Contains(drive) || currentSelection.Contains("*")
+            };
+            checkBoxes.Add(cb);
+            stackPanel.Children.Add(cb);
+        }
+
+        // Put the checkboxes in a ScrollViewer in case the user has many drives
+        var scrollViewer = new ScrollViewer
+        {
+            Content = stackPanel,
+            MaxHeight = 250,
+            Margin = new Thickness(0, 10, 0, 0)
+        };
+
+        // 4. Create and show the ContentDialog
+        var dialog = new ContentDialog
+        {
+            Title = "Select Drives to Redirect",
+            Content = scrollViewer,
+            PrimaryButtonText = "OK",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Primary,
+            XamlRoot = this.Content.XamlRoot
+        };
+
+        var result = await dialog.ShowAsync();
+
+        // 5. If the user clicks OK, gather the checked drives and update the textbox
+        if (result == ContentDialogResult.Primary)
+        {
+            var selectedDrives = checkBoxes
+                .Where(cb => cb.IsChecked == true)
+                .Select(cb => cb.Content?.ToString())
+                .ToList();
+
+            RdpDrivePathBox.Text = string.Join(";", selectedDrives);
+        }
     }
 
     private void Save_Click(object sender, RoutedEventArgs e)

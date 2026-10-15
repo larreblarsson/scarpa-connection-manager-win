@@ -51,16 +51,22 @@ public static class RdpService
             targetPort = (int)previousFwd!.BoundPort;
         }
 
-        // 2. GENERATE THE .RDP FILE
+        // 2. SPOOF THE SYSTEM'S DEFAULT.RDP TEMPLATE
         var rdpLines = new List<string>
         {
-            $"full address:s:{targetHost}:{targetPort}",
+            $"full address:s:{targetHost}" + (targetPort == 3389 ? "" : $":{targetPort}"),
             $"username:s:{(string.IsNullOrEmpty(config.User) ? "" : config.User)}",
             $"redirectclipboard:i:{(config.RdpClipboard ? 1 : 0)}",
             $"audiomode:i:{(config.RdpAudio ? 0 : 2)}",
-            $"authentication level:i:{(config.RdpIgnoreCert ? 0 : 2)}"
+            $"authentication level:i:{(config.RdpIgnoreCert ? 0 : 2)}",
+            
+            // Explicitly disable unused devices to minimize security footprint
+            "redirectprinters:i:0",
+            "redirectsmartcards:i:0",
+            "redirectwebauthn:i:0"
         };
 
+        // Screen Resolution
         if (config.RdpResolution == "Full Screen") rdpLines.Add("screen mode id:i:2");
         else if (!string.IsNullOrWhiteSpace(config.RdpResolution) && config.RdpResolution.Contains("x"))
         {
@@ -73,27 +79,40 @@ public static class RdpService
             }
         }
 
+        // Drive Mapping
         if (config.RdpRedirectDrive && !string.IsNullOrWhiteSpace(config.RdpDrivePath))
         {
             string rawDriveStr = config.RdpDrivePath.Trim();
-
-            if (rawDriveStr == "*")
-            {
-                // Natively tells the RDP client to map all local drives
-                rdpLines.Add("drivestoredirect:s:*");
-            }
+            if (rawDriveStr == "*") rdpLines.Add("drivestoredirect:s:*");
             else
             {
-                // Supports inputs like "C:\", "C:\, D:\", or "C:;D:"
                 var drives = rawDriveStr.Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries)
                     .Select(d => d.Replace(":\\", "").Replace("\\", "").Replace(":", "").Trim() + ":");
-
                 rdpLines.Add($"drivestoredirect:s:{string.Join(";", drives)}");
             }
         }
 
-        string rdpFilePath = Path.Combine(Path.GetTempPath(), $"scarpa_{targetHost.Replace(".", "_")}_{targetPort}.rdp");
-        await File.WriteAllLinesAsync(rdpFilePath, rdpLines);
+        // Setup paths for the Default.rdp spoofing
+        string docsFolder = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+        string defaultRdpPath = Path.Combine(docsFolder, "Default.rdp");
+        string backupRdpPath = Path.Combine(docsFolder, "Default_backup.rdp");
+
+        // PREVENT ACCESS DENIED: Clear hidden/readonly attributes before touching the file
+        if (File.Exists(defaultRdpPath))
+        {
+            try
+            {
+                File.SetAttributes(defaultRdpPath, FileAttributes.Normal);
+                File.Copy(defaultRdpPath, backupRdpPath, true);
+            }
+            catch { }
+        }
+
+        // Now it is safe to write our spoofed template
+        await File.WriteAllLinesAsync(defaultRdpPath, rdpLines);
+
+        // Re-hide the file as Windows expects
+        try { File.SetAttributes(defaultRdpPath, File.GetAttributes(defaultRdpPath) | FileAttributes.Hidden); } catch { }
 
         // 3. SECURELY INJECT CREDENTIALS FOR AUTO-LOGIN
         string? autoLogonPass = password ?? config.Password;
@@ -111,13 +130,13 @@ public static class RdpService
         // 3.5 SUPPRESS "UNKNOWN PUBLISHER" WARNING POPUPS
         try
         {
-            // 1. Classic Bypass: Approves Clipboard/Drive redirection
+            // 1. Classic Bypass: Approves ALL redirection by using -1 (0xFFFFFFFF DWORD bitmask)
             using (var devKey = Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Terminal Server Client\LocalDevices"))
             {
                 if (devKey != null)
                 {
-                    devKey.SetValue(targetHost, 127, RegistryValueKind.DWord);
-                    devKey.SetValue($"{targetHost}:{targetPort}", 127, RegistryValueKind.DWord);
+                    devKey.SetValue(targetHost, -1, RegistryValueKind.DWord);
+                    devKey.SetValue($"{targetHost}:{targetPort}", -1, RegistryValueKind.DWord);
                 }
             }
 
@@ -134,60 +153,17 @@ public static class RdpService
         }
         catch { }
 
-        // 4. LAUNCH RDP CLIENT
-        Process? rdpProcess = null;
-        bool isModernApp = false;
-
-        string sys32 = Environment.GetFolderPath(Environment.SpecialFolder.System);
-        string winDir = Environment.GetFolderPath(Environment.SpecialFolder.Windows);
-
-        string[] executablesToTry =
+        // 4. LAUNCH RDP CLIENT NATIVELY
+        // By using /v instead of passing a file, Windows treats this as a trusted manual 
+        // connection and quietly absorbs the drive mappings from our Default.rdp template
+        Process? rdpProcess = Process.Start(new ProcessStartInfo
         {
-            Path.Combine(sys32, "mstsc.exe"),
-            Path.Combine(winDir, "Sysnative", "mstsc.exe"),
-            Path.Combine(winDir, "System32", "mstsc.exe")
-        };
+            FileName = "mstsc.exe",
+            Arguments = $"/v:{targetHost}" + (targetPort == 3389 ? "" : $":{targetPort}"),
+            UseShellExecute = false
+        });
 
-        // ATTEMPT 1: Direct File Execution for Classic RDP (mstsc.exe)
-        foreach (var exe in executablesToTry)
-        {
-            if (File.Exists(exe))
-            {
-                rdpProcess = Process.Start(new ProcessStartInfo
-                {
-                    FileName = exe,
-                    Arguments = $"\"{rdpFilePath}\"",
-                    UseShellExecute = false
-                });
-                break;
-            }
-        }
-
-        // ATTEMPT 2: App Execution Alias for the new "Windows App"
-        if (rdpProcess == null)
-        {
-            try
-            {
-                rdpProcess = Process.Start(new ProcessStartInfo
-                {
-                    FileName = "windowsapp.exe",
-                    Arguments = $"\"{rdpFilePath}\"",
-                    UseShellExecute = true
-                });
-
-                isModernApp = true;
-            }
-            catch { }
-        }
-
-        // ATTEMPT 3: Neither exists. Tell the user to install it.
-        if (rdpProcess == null)
-        {
-            try { if (File.Exists(rdpFilePath)) File.Delete(rdpFilePath); } catch { }
-            throw new Exception("No RDP application is installed on the Windows OS.\n\nPlease download and install the Windows App using this link:\nhttps://go.microsoft.com/fwlink/?linkid=2247659");
-        }
-
-        // 5. BACKGROUND CLEANUP
+        // 5. BACKGROUND CLEANUP & RESTORE
         _ = Task.Run(async () =>
         {
             if (rdpProcess != null)
@@ -195,16 +171,36 @@ public static class RdpService
                 try { rdpProcess.WaitForExit(); } catch { }
             }
 
-            if (isModernApp) await Task.Delay(15000);
-            else await Task.Delay(3000);
+            // Give MSTSC a moment to fully close before reverting files
+            await Task.Delay(3000);
 
-            try { if (File.Exists(rdpFilePath)) File.Delete(rdpFilePath); } catch { }
+            // Restore the user's original Default.rdp
+            try
+            {
+                if (File.Exists(backupRdpPath))
+                {
+                    // Remove hidden attribute so we can overwrite/delete safely
+                    File.SetAttributes(defaultRdpPath, FileAttributes.Normal);
+                    File.Copy(backupRdpPath, defaultRdpPath, true);
+                    File.Delete(backupRdpPath);
+                    // Re-hide the restored default.rdp
+                    File.SetAttributes(defaultRdpPath, File.GetAttributes(defaultRdpPath) | FileAttributes.Hidden);
+                }
+                else
+                {
+                    File.SetAttributes(defaultRdpPath, FileAttributes.Normal);
+                    File.Delete(defaultRdpPath);
+                }
+            }
+            catch { }
 
+            // Delete credentials
             if (!string.IsNullOrEmpty(autoLogonPass))
             {
                 try { Process.Start(new ProcessStartInfo { FileName = "cmdkey", Arguments = $"/delete:TERMSRV/{targetHost}", UseShellExecute = false, CreateNoWindow = true })?.WaitForExit(); } catch { }
             }
 
+            // Kill SSH Tunnels
             for (int i = activeForwards.Count - 1; i >= 0; i--) { try { activeForwards[i].Stop(); } catch { } }
             for (int i = activeClients.Count - 1; i >= 0; i--) { try { activeClients[i].Dispose(); } catch { } }
         });

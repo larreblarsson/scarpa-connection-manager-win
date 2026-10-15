@@ -297,11 +297,50 @@ public sealed partial class ServerDialog : Microsoft.UI.Xaml.Window
 
     private async void BrowseRdpDrive_Click(object sender, RoutedEventArgs e)
     {
-        // 1. Get all ready drives on the user's physical machine (e.g., "C:", "D:")
-        var availableDrives = System.IO.DriveInfo.GetDrives()
-            .Where(d => d.IsReady)
-            .Select(d => d.Name.Replace("\\", ""))
-            .ToList();
+        // 1. Build a descriptive list of all drives (Key = "C:", Value = "Windows (C:)")
+        var driveOptions = new Dictionary<string, string>();
+
+        foreach (var d in System.IO.DriveInfo.GetDrives())
+        {
+            try
+            {
+                string letter = d.Name.Replace("\\", "");
+                string label = "Local Disk";
+                if (d.IsReady && !string.IsNullOrWhiteSpace(d.VolumeLabel)) label = d.VolumeLabel;
+
+                if (d.DriveType != System.IO.DriveType.Network) driveOptions[letter] = $"{label} ({letter})";
+            }
+            catch { }
+        }
+
+        try
+        {
+            using (var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey("Network"))
+            {
+                if (key != null)
+                {
+                    foreach (var subKeyName in key.GetSubKeyNames())
+                    {
+                        using (var subKey = key.OpenSubKey(subKeyName))
+                        {
+                            string remotePath = subKey?.GetValue("RemotePath")?.ToString() ?? "";
+                            if (!string.IsNullOrEmpty(remotePath))
+                            {
+                                string letter = $"{subKeyName.ToUpper()}:";
+                                driveOptions[letter] = $"{remotePath} ({letter})";
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        catch { }
+
+        foreach (var root in Environment.GetLogicalDrives())
+        {
+            string letter = root.Replace("\\", "");
+            if (!driveOptions.ContainsKey(letter)) driveOptions[letter] = $"Mapped Drive ({letter})";
+        }
 
         // 2. Parse what is currently in the textbox so we can pre-check the boxes
         var currentSelection = RdpDrivePathBox.Text
@@ -309,34 +348,53 @@ public sealed partial class ServerDialog : Microsoft.UI.Xaml.Window
             .Select(d => d.Trim())
             .ToList();
 
-        // 3. Build a StackPanel of CheckBoxes for the dialog
-        var stackPanel = new StackPanel { Spacing = 10 };
-        var checkBoxes = new List<CheckBox>();
-
-        foreach (var drive in availableDrives)
+        // 3. Build a native WinUI TreeView to mimic the mstsc.exe layout
+        var treeView = new TreeView
         {
-            var cb = new CheckBox
+            SelectionMode = TreeViewSelectionMode.Multiple,
+            CanDragItems = false
+        };
+
+        // Create the Parent "Drives" Node
+        var drivesRoot = new TreeViewNode { Content = "Drives", IsExpanded = true };
+        treeView.RootNodes.Add(drivesRoot);
+
+        // We use a dictionary to remember which tree node corresponds to which drive letter
+        var nodeMapping = new Dictionary<TreeViewNode, string>();
+
+        foreach (var kvp in driveOptions.OrderBy(k => k.Key))
+        {
+            var node = new TreeViewNode { Content = kvp.Value };
+            nodeMapping[node] = kvp.Key;
+            drivesRoot.Children.Add(node);
+
+            if (currentSelection.Contains(kvp.Key) || currentSelection.Contains("*"))
             {
-                Content = drive,
-                // Check it if it's already in the textbox, or if "*" (all drives) is used
-                IsChecked = currentSelection.Contains(drive) || currentSelection.Contains("*")
-            };
-            checkBoxes.Add(cb);
-            stackPanel.Children.Add(cb);
+                treeView.SelectedNodes.Add(node);
+            }
         }
 
-        // Put the checkboxes in a ScrollViewer in case the user has many drives
+        // Add the "Drives that I plug in later" node
+        var plugInLaterNode = new TreeViewNode { Content = "Drives that I plug in later" };
+        nodeMapping[plugInLaterNode] = "*";
+        drivesRoot.Children.Add(plugInLaterNode);
+
+        if (currentSelection.Contains("*"))
+        {
+            treeView.SelectedNodes.Add(plugInLaterNode);
+        }
+
         var scrollViewer = new ScrollViewer
         {
-            Content = stackPanel,
-            MaxHeight = 250,
+            Content = treeView,
+            MaxHeight = 350,
             Margin = new Thickness(0, 10, 0, 0)
         };
 
         // 4. Create and show the ContentDialog
         var dialog = new ContentDialog
         {
-            Title = "Select Drives to Redirect",
+            Title = "Local devices and resources",
             Content = scrollViewer,
             PrimaryButtonText = "OK",
             CloseButtonText = "Cancel",
@@ -346,15 +404,23 @@ public sealed partial class ServerDialog : Microsoft.UI.Xaml.Window
 
         var result = await dialog.ShowAsync();
 
-        // 5. If the user clicks OK, gather the checked drives and update the textbox
+        // 5. If the user clicks OK, gather the checked child nodes
         if (result == ContentDialogResult.Primary)
         {
-            var selectedDrives = checkBoxes
-                .Where(cb => cb.IsChecked == true)
-                .Select(cb => cb.Content?.ToString())
-                .ToList();
+            var selectedDrives = new List<string>();
 
-            RdpDrivePathBox.Text = string.Join(";", selectedDrives);
+            // When a parent node (like "Drives") is fully checked, WinUI includes it in SelectedNodes. 
+            // We only care about the child nodes that map to our drive letters.
+            foreach (var selectedNode in treeView.SelectedNodes)
+            {
+                if (nodeMapping.TryGetValue(selectedNode, out string driveValue))
+                {
+                    selectedDrives.Add(driveValue);
+                }
+            }
+
+            // Remove duplicates and combine to string
+            RdpDrivePathBox.Text = string.Join(";", selectedDrives.Distinct());
         }
     }
 

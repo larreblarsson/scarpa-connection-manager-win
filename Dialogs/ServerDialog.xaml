@@ -33,11 +33,6 @@
                         <FontIcon Glyph="&#xE8D7;"/>
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
-                <NavigationViewItem Tag="PortForwarding" Content="Port Forwarding">
-                    <NavigationViewItem.Icon>
-                        <FontIcon Glyph="&#xE8F1;"/>
-                    </NavigationViewItem.Icon>
-                </NavigationViewItem>
                 <NavigationViewItem Tag="Appearance" Content="Appearance">
                     <NavigationViewItem.Icon>
                         <FontIcon Glyph="&#xE790;"/>
@@ -46,6 +41,12 @@
                 <NavigationViewItem Tag="RDP" Content="RDP">
                     <NavigationViewItem.Icon>
                         <FontIcon Glyph="&#xE836;"/>
+                    </NavigationViewItem.Icon>
+                </NavigationViewItem>
+                <!-- COMBINED NETWORK TAB -->
+                <NavigationViewItem Tag="Network" Content="Network">
+                    <NavigationViewItem.Icon>
+                        <FontIcon Glyph="&#xE968;"/>
                     </NavigationViewItem.Icon>
                 </NavigationViewItem>
             </NavigationView.MenuItems>
@@ -210,26 +211,7 @@
                             </StackPanel>
                         </StackPanel>
 
-                        <!-- 4. PORT FORWARDING PAGE -->
-                        <StackPanel x:Name="PortForwardingPage" Visibility="Collapsed" Padding="16" Spacing="12">
-                            <TextBlock Text="Port Forwarding Rules" Style="{StaticResource SubtitleTextBlockStyle}" />
-
-                            <ListView x:Name="PortForwardList" Height="200" BorderBrush="Gray" BorderThickness="1" CornerRadius="4">
-                                <ListView.ItemTemplate>
-                                    <DataTemplate>
-                                        <TextBlock Text="{Binding DisplayText}" VerticalAlignment="Center" />
-                                    </DataTemplate>
-                                </ListView.ItemTemplate>
-                            </ListView>
-
-                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                <Button Content="Add" Click="PortForward_Add_Click" />
-                                <Button Content="Edit" Click="PortForward_Edit_Click" />
-                                <Button Content="Delete" Click="PortForward_Delete_Click" />
-                            </StackPanel>
-                        </StackPanel>
-
-                        <!-- 5. APPEARANCE PAGE -->
+                        <!-- 4. APPEARANCE PAGE -->
                         <StackPanel x:Name="AppearancePage" Spacing="16" Visibility="Collapsed">
                             <Grid RowSpacing="16" ColumnSpacing="12">
                                 <Grid.ColumnDefinitions>
@@ -343,7 +325,7 @@
                             </Grid>
                         </StackPanel>
 
-                        <!-- 6. RDP PAGE -->
+                        <!-- 5. RDP PAGE -->
                         <StackPanel x:Name="RdpPage" Spacing="16" Visibility="Collapsed">
                             <ToggleSwitch x:Name="RdpEnabledSwitch" Header="Enable Remote Desktop (RDP)" />
 
@@ -377,47 +359,79 @@
                                     <Button Content="Browse" Click="BrowseRdpDrive_Click" Grid.Column="1" IsEnabled="{Binding IsChecked, ElementName=RdpDriveCheck}" />
                                 </Grid>
                             </StackPanel>
-                            <!-- Jump Hosts Section -->
-                            <TextBlock Text="SSH Jump Hosts (Order: Top to Bottom)" FontWeight="SemiBold" Margin="0,16,0,4" />
+                        </StackPanel>
 
-                            <ListView x:Name="JumpHostsList" Height="150" BorderBrush="Gray" BorderThickness="1" CornerRadius="4" SelectionMode="Single">
-                                <ListView.Header>
-                                    <Grid Padding="12,8" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,0,0,1" Background="Transparent">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="2*"/>
-                                            <ColumnDefinition Width="1*"/>
-                                            <ColumnDefinition Width="2*"/>
-                                            <ColumnDefinition Width="2*"/>
-                                        </Grid.ColumnDefinitions>
-                                        <TextBlock Text="Host" FontWeight="SemiBold" Foreground="Gray" Grid.Column="0"/>
-                                        <TextBlock Text="Port" FontWeight="SemiBold" Foreground="Gray" Grid.Column="1"/>
-                                        <TextBlock Text="User" FontWeight="SemiBold" Foreground="Gray" Grid.Column="2"/>
-                                        <TextBlock Text="Password" FontWeight="SemiBold" Foreground="Gray" Grid.Column="3"/>
-                                    </Grid>
-                                </ListView.Header>
-                                <ListView.ItemTemplate>
-                                    <DataTemplate>
-                                        <Grid Padding="0,8">
+                        <!-- 6. NETWORK & ROUTING PAGE (Merged Port Forwarding & Jump Hosts) -->
+                        <StackPanel x:Name="NetworkPage" Visibility="Collapsed" Padding="16" Spacing="16">
+                            <TextBlock Text="Network &amp; Routing" Style="{StaticResource SubtitleTextBlockStyle}" />
+
+                            <!-- Port Forwarding Section -->
+                            <StackPanel Spacing="8">
+                                <TextBlock Text="Port Forwarding Rules" FontWeight="SemiBold" />
+                                <ListView x:Name="PortForwardList" Height="150" BorderBrush="Gray" BorderThickness="1" CornerRadius="4">
+                                    <ListView.ItemTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding DisplayText}" VerticalAlignment="Center" Padding="4" />
+                                        </DataTemplate>
+                                    </ListView.ItemTemplate>
+                                </ListView>
+
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <Button Content="Add" Click="PortForward_Add_Click" Width="70" />
+                                    <Button Content="Edit" Click="PortForward_Edit_Click" Width="70" />
+                                    <Button Content="Delete" Click="PortForward_Delete_Click" Width="70" />
+                                </StackPanel>
+                            </StackPanel>
+
+                            <!-- Visual Divider -->
+                            <Border Height="1" Background="{ThemeResource DividerStrokeColorDefaultBrush}" Margin="0,8" />
+
+                            <!-- Jump Hosts Section -->
+                            <StackPanel Spacing="8">
+                                <StackPanel Spacing="2">
+                                    <TextBlock Text="SSH Jump Hosts / Tunnels (Order: Top to Bottom)" FontWeight="SemiBold" />
+                                    <TextBlock Text="Routes your connection through these servers before reaching the destination." Foreground="Gray" FontSize="12" />
+                                </StackPanel>
+
+                                <ListView x:Name="JumpHostsList" Height="150" BorderBrush="Gray" BorderThickness="1" CornerRadius="4" SelectionMode="Single">
+                                    <ListView.Header>
+                                        <Grid Padding="12,8" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,0,0,1" Background="Transparent">
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="2*"/>
                                                 <ColumnDefinition Width="1*"/>
                                                 <ColumnDefinition Width="2*"/>
                                                 <ColumnDefinition Width="2*"/>
                                             </Grid.ColumnDefinitions>
-                                            <TextBlock Text="{Binding Host}" Grid.Column="0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Padding="0,0,10,0"/>
-                                            <TextBlock Text="{Binding Port}" Grid.Column="1" VerticalAlignment="Center"/>
-                                            <TextBlock Text="{Binding User}" Grid.Column="2" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Padding="0,0,10,0"/>
-                                            <TextBlock Text="••••••••" Grid.Column="3" VerticalAlignment="Center" Foreground="Gray"/>
+                                            <TextBlock Text="Host" FontWeight="SemiBold" Foreground="Gray" Grid.Column="0"/>
+                                            <TextBlock Text="Port" FontWeight="SemiBold" Foreground="Gray" Grid.Column="1"/>
+                                            <TextBlock Text="User" FontWeight="SemiBold" Foreground="Gray" Grid.Column="2"/>
+                                            <TextBlock Text="Password" FontWeight="SemiBold" Foreground="Gray" Grid.Column="3"/>
                                         </Grid>
-                                    </DataTemplate>
-                                </ListView.ItemTemplate>
-                            </ListView>
-                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                <Button Content="Add" Click="BtnAddJumpHost_Click" Width="70"/>
-                                <Button Content="Edit" Click="BtnEditJumpHost_Click" Width="70"/>
-                                <Button Content="Delete" Click="BtnDeleteJumpHost_Click" Width="70"/>
-                                <Button Content="&#xE70E;" FontFamily="Segoe Fluent Icons" Click="BtnMoveJumpHostUp_Click" ToolTipService.ToolTip="Move Up" Width="40"/>
-                                <Button Content="&#xE70D;" FontFamily="Segoe Fluent Icons" Click="BtnMoveJumpHostDown_Click" ToolTipService.ToolTip="Move Down" Width="40"/>
+                                    </ListView.Header>
+                                    <ListView.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid Padding="0,8">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="2*"/>
+                                                    <ColumnDefinition Width="1*"/>
+                                                    <ColumnDefinition Width="2*"/>
+                                                    <ColumnDefinition Width="2*"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="{Binding Host}" Grid.Column="0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Padding="0,0,10,0"/>
+                                                <TextBlock Text="{Binding Port}" Grid.Column="1" VerticalAlignment="Center"/>
+                                                <TextBlock Text="{Binding User}" Grid.Column="2" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Padding="0,0,10,0"/>
+                                                <TextBlock Text="••••••••" Grid.Column="3" VerticalAlignment="Center" Foreground="Gray"/>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ListView.ItemTemplate>
+                                </ListView>
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <Button Content="Add" Click="BtnAddJumpHost_Click" Width="70"/>
+                                    <Button Content="Edit" Click="BtnEditJumpHost_Click" Width="70"/>
+                                    <Button Content="Delete" Click="BtnDeleteJumpHost_Click" Width="70"/>
+                                    <Button Content="&#xE70E;" FontFamily="Segoe Fluent Icons" Click="BtnMoveJumpHostUp_Click" ToolTipService.ToolTip="Move Up" Width="40"/>
+                                    <Button Content="&#xE70D;" FontFamily="Segoe Fluent Icons" Click="BtnMoveJumpHostDown_Click" ToolTipService.ToolTip="Move Down" Width="40"/>
+                                </StackPanel>
                             </StackPanel>
                         </StackPanel>
 

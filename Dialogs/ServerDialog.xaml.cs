@@ -243,9 +243,9 @@ public sealed partial class ServerDialog : Microsoft.UI.Xaml.Window
             GeneralPage.Visibility = tag == "General" ? Visibility.Visible : Visibility.Collapsed;
             TerminalPage.Visibility = tag == "Terminal" ? Visibility.Visible : Visibility.Collapsed;
             LoginActionPage.Visibility = tag == "LoginAction" ? Visibility.Visible : Visibility.Collapsed;
-            PortForwardingPage.Visibility = tag == "PortForwarding" ? Visibility.Visible : Visibility.Collapsed;
             AppearancePage.Visibility = tag == "Appearance" ? Visibility.Visible : Visibility.Collapsed;
             RdpPage.Visibility = tag == "RDP" ? Visibility.Visible : Visibility.Collapsed;
+            NetworkPage.Visibility = tag == "Network" ? Visibility.Visible : Visibility.Collapsed;
         }
     }
 

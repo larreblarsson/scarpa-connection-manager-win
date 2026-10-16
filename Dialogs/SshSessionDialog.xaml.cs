@@ -1,17 +1,24 @@
 using Microsoft.UI.Xaml;
-using ScarpaConnectionManager.Models;
 using scarpa_connection_manager_win.Controls;
+using ScarpaConnectionManager.Models;
+using ScarpaConnectionManager.Services;
+using System;
 
 namespace scarpa_connection_manager_win.Dialogs;
 
 public sealed partial class SshSessionWindow : Window
 {
     private TerminalControl _termControl;
+    private readonly IDisposable? _jumpTunnel;
 
-    public SshSessionWindow(ServerConfig cfg, string? logPath)
+    // Added the jumpTunnel parameter here so it can accept 3 arguments
+    public SshSessionWindow(ServerConfig cfg, string? logPath, IDisposable? jumpTunnel = null)
     {
         this.InitializeComponent();
         this.Title = $"{cfg.Name} - SSH Terminal";
+
+        // This will now successfully store the tunnel passed from MainWindow
+        _jumpTunnel = jumpTunnel;
 
         // Set a nice default size for the terminal window
         var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
@@ -35,5 +42,6 @@ public sealed partial class SshSessionWindow : Window
     private void SshSessionWindow_Closed(object sender, WindowEventArgs args)
     {
         _termControl.CloseSession();
+        _jumpTunnel?.Dispose();
     }
 }

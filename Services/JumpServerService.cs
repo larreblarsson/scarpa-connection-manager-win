@@ -2,6 +2,7 @@
 using ScarpaConnectionManager.Models;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
 
@@ -46,19 +47,22 @@ public static class JumpServerService
     {
         if (string.IsNullOrWhiteSpace(target.JumpServerId)) return null;
 
-        return allServers.FirstOrDefault(s =>
+        var match = allServers.FirstOrDefault(s =>
             string.Equals(s.Id, target.JumpServerId, StringComparison.OrdinalIgnoreCase) ||
             string.Equals(s.Name, target.JumpServerId, StringComparison.OrdinalIgnoreCase));
+
+        if (match != null)
+        {
+            Debug.WriteLine($"[JumpServerService] Resolved referenced jump server ID: {match.Name}");
+        }
+        return match;
     }
 
-    /// <summary>
-    /// Connects to the Jump Host and establishes a local SSH port forward to the target destination host/port.
-    /// </summary>
     public static async Task<JumpTunnel> EstablishTunnelAsync(ServerConfig jumpServer, string targetHost, int targetPort, string? jumpPassword = null)
     {
         return await Task.Run(() =>
         {
-            System.Diagnostics.Debug.WriteLine($"[JumpServerService] Authenticating to jump server {jumpServer.Host}:{jumpServer.Port} as {jumpServer.Username}...");
+            Debug.WriteLine($"[JumpServerService] Connecting to Jump Host {jumpServer.Host}:{jumpServer.Port} as '{jumpServer.Username}'...");
 
             AuthenticationMethod auth;
             if (!string.IsNullOrEmpty(jumpServer.KeyPath) && System.IO.File.Exists(jumpServer.KeyPath))
@@ -86,27 +90,24 @@ public static class JumpServerService
             var client = new SshClient(connectionInfo);
             client.Connect();
 
-            System.Diagnostics.Debug.WriteLine($"[JumpServerService] Successfully connected to jump server.");
+            Debug.WriteLine($"[JumpServerService] Jump Host connected! Creating port forward to {targetHost}:{targetPort}...");
 
-            // Bind to an OS-assigned available local port (0)
-            System.Diagnostics.Debug.WriteLine($"[JumpServerService] Creating port forward to target {targetHost}:{targetPort}...");
             var localPort = new ForwardedPortLocal("127.0.0.1", 0, targetHost, (uint)targetPort);
 
-            // --- NEW DEBUG HOOKS ---
             localPort.Exception += (sender, e) =>
             {
-                System.Diagnostics.Debug.WriteLine($"[JumpTunnel ERROR] Tunnel threw an exception: {e.Exception.Message}");
+                Debug.WriteLine($"[JumpTunnel ERROR] {e.Exception.Message}");
             };
+
             localPort.RequestReceived += (sender, e) =>
             {
-                System.Diagnostics.Debug.WriteLine($"[JumpTunnel] Incoming connection received on local port {localPort.BoundPort} from {e.OriginatorHost}:{e.OriginatorPort}");
+                Debug.WriteLine($"[JumpTunnel] Forwarding traffic from local port {localPort.BoundPort} to target.");
             };
-            // -----------------------
 
             client.AddForwardedPort(localPort);
             localPort.Start();
 
-            System.Diagnostics.Debug.WriteLine($"[JumpServerService] Tunnel established! Listening locally on 127.0.0.1:{localPort.BoundPort}");
+            Debug.WriteLine($"[JumpServerService] Tunnel active on 127.0.0.1:{localPort.BoundPort}");
 
             return new JumpTunnel(client, localPort, "127.0.0.1");
         });
@@ -114,30 +115,26 @@ public static class JumpServerService
 
     public static async Task<(ServerConfig TargetConfig, IDisposable? Tunnel)> PrepareConnectionAsync(ServerConfig cfg, IEnumerable<ServerConfig> allServers)
     {
-        if (string.IsNullOrEmpty(cfg.JumpServerId))
-        {
-            return (cfg, null);
-        }
+        Debug.WriteLine($"[JumpServerService] PrepareConnectionAsync called for server: '{cfg.Name}' ({cfg.Host})");
 
         var jumpServer = ResolveJumpServer(cfg, allServers);
         if (jumpServer == null)
         {
-            System.Diagnostics.Debug.WriteLine($"[JumpServerService] Warning: Jump server ID '{cfg.JumpServerId}' not found. Falling back to direct connection.");
+            Debug.WriteLine($"[JumpServerService] No jump host configured or resolved for '{cfg.Name}'. Connecting directly.");
             return (cfg, null);
         }
-
-        System.Diagnostics.Debug.WriteLine($"[JumpServerService] Preparing jump connection for {cfg.Name} (Target: {cfg.Host}:{cfg.Port})...");
 
         int targetPort = cfg.Port > 0 ? cfg.Port : 22;
         var tunnel = await EstablishTunnelAsync(jumpServer, cfg.Host, targetPort);
 
         var targetConfig = cfg.Clone();
 
+        // Force explicit IPv4 instead of tunnel.LocalHost 
         targetConfig.Host = "127.0.0.1";
         targetConfig.Port = (int)tunnel.LocalPort;
-        targetConfig.JumpServerId = null;
+        targetConfig.JumpServerId = null; // Wipe ID so it doesn't try to double-tunnel
 
-        System.Diagnostics.Debug.WriteLine($"[JumpServerService] Connection prepared. Terminal should now connect to {targetConfig.Host}:{targetConfig.Port}");
+        Debug.WriteLine($"[JumpServerService] Target redirected to 127.0.0.1:{targetConfig.Port}");
 
         return (targetConfig, tunnel);
     }

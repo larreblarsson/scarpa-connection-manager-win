@@ -223,7 +223,7 @@ public sealed partial class ServerDialog : Microsoft.UI.Xaml.Window
             RdpClipboardCheck.IsChecked = true;
             RdpCertCheck.IsChecked = true;
         }
-        _jumpHosts = new ObservableCollection<JumpHost>(Config.RdpJumpHosts ?? new());
+        _jumpHosts = new ObservableCollection<JumpHost>(Config.JumpHosts ?? new());
         JumpHostsList.ItemsSource = _jumpHosts;
     }
 
@@ -485,7 +485,7 @@ public sealed partial class ServerDialog : Microsoft.UI.Xaml.Window
         Config.RdpIgnoreCert = RdpCertCheck.IsChecked == true;
         Config.RdpRedirectDrive = RdpDriveCheck.IsChecked == true;
         Config.RdpDrivePath = RdpDrivePathBox.Text;
-        Config.RdpJumpHosts = new List<JumpHost>(_jumpHosts);
+        Config.JumpHosts = new List<JumpHost>(_jumpHosts);
 
         Saved = true;
         _tcs?.TrySetResult(true);

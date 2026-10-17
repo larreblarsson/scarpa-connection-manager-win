@@ -94,8 +94,6 @@ public sealed class SftpService : IDisposable
         }
         catch (Exception)
         {
-            // SSH.NET throws internal NullReferenceExceptions if the socket is killed mid-transfer.
-            // If we are disposing OR the client lost connection due to app shutdown, swallow it cleanly.
             try { if (_isDisposing || !client.IsConnected) return; } catch { return; }
             throw; // Re-throw only if it's a genuine error while the app is fully alive
         }
@@ -118,7 +116,37 @@ public sealed class SftpService : IDisposable
         }
     }
 
-    public void ResumeUpload(string localPath, string remotePath, long remoteSize)
+    public void ResumeDownload(string remotePath, string localPath, long localSize, Action<ulong>? progress = null)
+    {
+        var client = _client;
+        if (client == null || _isDisposing) return;
+
+        try
+        {
+            using var localStream = new System.IO.FileStream(localPath, System.IO.FileMode.Append, System.IO.FileAccess.Write);
+            using var remoteStream = client.OpenRead(remotePath);
+            remoteStream.Seek(localSize, System.IO.SeekOrigin.Begin);
+
+            // Read the stream in 80KB chunks so we can report progress to the UI
+            byte[] buffer = new byte[81920];
+            int read;
+            ulong totalRead = 0;
+
+            while ((read = remoteStream.Read(buffer, 0, buffer.Length)) > 0)
+            {
+                localStream.Write(buffer, 0, read);
+                totalRead += (ulong)read;
+                progress?.Invoke(totalRead); // Fire the callback
+            }
+        }
+        catch (Exception)
+        {
+            try { if (_isDisposing || !client.IsConnected) return; } catch { return; }
+            throw;
+        }
+    }
+
+    public void ResumeUpload(string localPath, string remotePath, long remoteSize, Action<ulong>? progress = null)
     {
         var client = _client;
         if (client == null || _isDisposing) return;
@@ -129,26 +157,17 @@ public sealed class SftpService : IDisposable
             localStream.Seek(remoteSize, System.IO.SeekOrigin.Begin);
 
             using var remoteStream = client.Open(remotePath, System.IO.FileMode.Append, System.IO.FileAccess.Write);
-            localStream.CopyTo(remoteStream);
-        }
-        catch (Exception)
-        {
-            try { if (_isDisposing || !client.IsConnected) return; } catch { return; }
-            throw;
-        }
-    }
 
-    public void ResumeDownload(string remotePath, string localPath, long localSize)
-    {
-        var client = _client;
-        if (client == null || _isDisposing) return;
+            byte[] buffer = new byte[81920];
+            int read;
+            ulong totalRead = 0;
 
-        try
-        {
-            using var localStream = new System.IO.FileStream(localPath, System.IO.FileMode.Append, System.IO.FileAccess.Write);
-            using var remoteStream = client.OpenRead(remotePath);
-            remoteStream.Seek(localSize, System.IO.SeekOrigin.Begin);
-            remoteStream.CopyTo(localStream);
+            while ((read = localStream.Read(buffer, 0, buffer.Length)) > 0)
+            {
+                remoteStream.Write(buffer, 0, read);
+                totalRead += (ulong)read;
+                progress?.Invoke(totalRead); // Fire the callback
+            }
         }
         catch (Exception)
         {

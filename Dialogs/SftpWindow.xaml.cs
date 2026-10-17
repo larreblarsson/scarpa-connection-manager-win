@@ -122,9 +122,8 @@ public class FileItem : System.ComponentModel.INotifyPropertyChanged
     private bool _showSize = true;
     public bool ShowSize { get => _showSize; set { _showSize = value; PropertyChanged?.Invoke(this, new(nameof(SizeVisibility))); } }
     public Visibility SizeVisibility => _showSize ? Visibility.Visible : Visibility.Collapsed;
-
-
-    public bool IsEditing
+        
+    public bool IsEditing
     {
         get => _isEditing;
         set
@@ -579,56 +578,136 @@ public sealed partial class SftpWindow : Window, System.ComponentModel.INotifyPr
 
     // --- Toolbar Actions ---
     private async void Upload_Click(object sender, RoutedEventArgs e)
-    {
-        var selected = LocalFileList.SelectedItems.OfType<FileItem>().Where(x => x.Name != "..").ToList();
-        if (selected.Count == 0 || !_sftpService.IsConnected) return;
+    {
+        var selected = LocalFileList.SelectedItems.OfType<FileItem>().Where(x => x.Name != "..").ToList();
+        if (selected.Count == 0 || !_sftpService.IsConnected) return;
 
-        string targetDir = _currentRemotePath == "/" ? "" : _currentRemotePath;
-        await PerformTransferAsync($"Uploading {selected.Count} item(s)...", async () =>
-        {
-            string listPath = string.IsNullOrEmpty(targetDir) ? "/" : targetDir;
-            var existingRemote = _sftpService.List(listPath).ToList();
+        string targetDir = _currentRemotePath == "/" ? "" : _currentRemotePath;
+        await PerformTransferAsync($"Uploading {selected.Count} item(s)...", async () =>
+        {
+            string listPath = string.IsNullOrEmpty(targetDir) ? "/" : targetDir;
+            var existingRemote = _sftpService.List(listPath).ToList();
 
-            foreach (var item in selected)
-            {
-                var conflict = existingRemote.FirstOrDefault(x => x.Name == item.Name);
-                if (conflict != null)
-                {
-                    if (!await ConfirmOverwriteAsync(item.Name)) continue;
-                    _sftpService.Delete($"{targetDir}/{item.Name}", conflict.IsDirectory);
-                }
-                UploadRecursive(item.FullPath, $"{targetDir}/{item.Name}");
-            }
-        });
+            long totalBytes = selected.Sum(x => x.Size > 0 ? x.Size : 0);
+            long bytesCompleted = 0;
+            DateTime lastUIUpdate = DateTime.MinValue;
 
-        LoadRemoteDirectory(_currentRemotePath);
-    }
+            foreach (var item in selected)
+            {
+                // Stop processing next files if canceled
+                if (_cancellationTokenSource?.Token.IsCancellationRequested == true) break;
 
-    private async void Download_Click(object sender, RoutedEventArgs e)
-    {
-        var selected = RemoteFileList.SelectedItems.OfType<FileItem>().Where(x => x.Name != "..").ToList();
-        if (selected.Count == 0 || !_sftpService.IsConnected) return;
+                var conflict = existingRemote.FirstOrDefault(x => x.Name == item.Name);
+                if (conflict != null)
+                {
+                    if (!await ConfirmOverwriteAsync(item.Name)) continue;
+                    _sftpService.Delete($"{targetDir}/{item.Name}", conflict.IsDirectory);
+                }
 
-        string targetDir = _currentLocalPath;
-        await PerformTransferAsync($"Downloading {selected.Count} item(s)...", async () =>
-        {
-            foreach (var item in selected)
-            {
-                string target = Path.Combine(targetDir, item.Name);
-                if (File.Exists(target) || Directory.Exists(target))
-                {
-                    if (!await ConfirmOverwriteAsync(item.Name)) continue;
-                    if (Directory.Exists(target)) Directory.Delete(target, true);
-                    else File.Delete(target);
-                }
-                DownloadRecursive(item.FullPath, target, item.IsDirectory);
-            }
-        });
+                if (!item.IsDirectory)
+                {
+                    _sftpService.Upload(item.FullPath, $"{targetDir}/{item.Name}", (transferredBytes) =>
+                    {
+                        // 1. Physically pause the network stream by trapping the thread in a loop
+                        while (_isPaused)
+                        {
+                            System.Threading.Thread.Sleep(100);
+                            if (_cancellationTokenSource?.Token.IsCancellationRequested == true)
+                                throw new OperationCanceledException("Transfer canceled by user.");
+                        }
 
-        LoadLocalDirectory(_currentLocalPath);
-    }
+                        // 2. Sever the connection instantly if Cancel is clicked during transfer
+                        if (_cancellationTokenSource?.Token.IsCancellationRequested == true)
+                            throw new OperationCanceledException("Transfer canceled by user.");
 
-    private void UploadRecursive(string localPath, string remotePath)
+                        // 3. Throttle UI updates to 10 frames per second
+                        if ((DateTime.Now - lastUIUpdate).TotalMilliseconds < 100 && transferredBytes < (ulong)item.Size) return;
+                        lastUIUpdate = DateTime.Now;
+
+                        long currentTransferred = (long)transferredBytes;
+                        double percent = totalBytes > 0 ? ((bytesCompleted + currentTransferred) / (double)totalBytes) * 100 : 0;
+                        double mbTransferred = currentTransferred / 1048576.0;
+                        double mbTotal = item.Size / 1048576.0;
+                        UpdateProgress(percent, $"Uploading '{item.Name}' ({mbTransferred:F1} MB / {mbTotal:F1} MB)");
+                    });
+
+                    bytesCompleted += item.Size;
+                }
+                else
+                {
+                    UploadRecursive(item.FullPath, $"{targetDir}/{item.Name}");
+                }
+            }
+        });
+
+        LoadRemoteDirectory(_currentRemotePath);
+    }
+
+    private async void Download_Click(object sender, RoutedEventArgs e)
+    {
+        var selected = RemoteFileList.SelectedItems.OfType<FileItem>().Where(x => x.Name != "..").ToList();
+        if (selected.Count == 0 || !_sftpService.IsConnected) return;
+
+        string targetDir = _currentLocalPath;
+        await PerformTransferAsync($"Downloading {selected.Count} item(s)...", async () =>
+        {
+            long totalBytes = selected.Sum(x => x.Size > 0 ? x.Size : 0);
+            long bytesCompleted = 0;
+            DateTime lastUIUpdate = DateTime.MinValue;
+
+            foreach (var item in selected)
+            {
+                // Stop processing next files if canceled
+                if (_cancellationTokenSource?.Token.IsCancellationRequested == true) break;
+
+                string target = Path.Combine(targetDir, item.Name);
+                if (File.Exists(target) || Directory.Exists(target))
+                {
+                    if (!await ConfirmOverwriteAsync(item.Name)) continue;
+                    if (Directory.Exists(target)) Directory.Delete(target, true);
+                    else File.Delete(target);
+                }
+
+                if (!item.IsDirectory)
+                {
+                    _sftpService.Download(item.FullPath, target, (transferredBytes) =>
+                    {
+                        // 1. Physically pause the network stream by trapping the thread in a loop
+                        while (_isPaused)
+                        {
+                            System.Threading.Thread.Sleep(100);
+                            if (_cancellationTokenSource?.Token.IsCancellationRequested == true)
+                                throw new OperationCanceledException("Transfer canceled by user.");
+                        }
+
+                        // 2. Sever the connection instantly if Cancel is clicked during transfer
+                        if (_cancellationTokenSource?.Token.IsCancellationRequested == true)
+                            throw new OperationCanceledException("Transfer canceled by user.");
+
+                        // 3. Throttle UI updates to 10 frames per second
+                        if ((DateTime.Now - lastUIUpdate).TotalMilliseconds < 100 && transferredBytes < (ulong)item.Size) return;
+                        lastUIUpdate = DateTime.Now;
+
+                        long currentTransferred = (long)transferredBytes;
+                        double percent = totalBytes > 0 ? ((bytesCompleted + currentTransferred) / (double)totalBytes) * 100 : 0;
+                        double mbTransferred = currentTransferred / 1048576.0;
+                        double mbTotal = item.Size / 1048576.0;
+                        UpdateProgress(percent, $"Downloading '{item.Name}' ({mbTransferred:F1} MB / {mbTotal:F1} MB)");
+                    });
+
+                    bytesCompleted += item.Size;
+                }
+                else
+                {
+                    DownloadRecursive(item.FullPath, target, item.IsDirectory);
+                }
+            }
+        });
+
+        LoadLocalDirectory(_currentLocalPath);
+    }
+
+    private void UploadRecursive(string localPath, string remotePath)
     {
         if (Directory.Exists(localPath))
         {
@@ -689,56 +768,86 @@ public sealed partial class SftpWindow : Window, System.ComponentModel.INotifyPr
         TriggerRename(targetListView, newFolder);
     }
 
-    private async void Delete_Click(object sender, RoutedEventArgs e)
-    {
-        var activeList = _isLocalFocused ? LocalFileList : RemoteFileList;
-        var selected = activeList.SelectedItems.OfType<FileItem>().Where(x => x.Name != "..").ToList();
+    private async void Delete_Click(object sender, RoutedEventArgs e)
+    {
+        var activeList = _isLocalFocused ? LocalFileList : RemoteFileList;
+        var selected = activeList.SelectedItems.OfType<FileItem>().Where(x => x.Name != "..").ToList();
 
-        if (selected.Count == 0 || this.Content?.XamlRoot == null) return;
+        if (selected.Count == 0 || this.Content?.XamlRoot == null) return;
 
-        var confirmDialog = new ContentDialog
-        {
-            Title = "Confirm Delete",
-            Content = $"Are you sure you want to permanently delete {selected.Count} item(s)?",
-            PrimaryButtonText = "Delete",
-            CloseButtonText = "Cancel",
-            DefaultButton = ContentDialogButton.Close,
-            XamlRoot = this.Content.XamlRoot
-        };
+        var confirmDialog = new ContentDialog
+        {
+            Title = "Confirm Delete",
+            Content = $"Are you sure you want to permanently delete {selected.Count} item(s)?",
+            PrimaryButtonText = "Delete",
+            CloseButtonText = "Cancel",
+            DefaultButton = ContentDialogButton.Close,
+            XamlRoot = this.Content.XamlRoot
+        };
 
-        if (await confirmDialog.ShowAsync() != ContentDialogResult.Primary) return;
+        if (await confirmDialog.ShowAsync() != ContentDialogResult.Primary) return;
 
-        if (_isLocalFocused)
-        {
-            await PerformTransferAsync("Deleting local item(s)...", () =>
-            {
-                foreach (var item in selected)
-                {
-                    if (item.IsDirectory) Directory.Delete(item.FullPath, true);
-                    else File.Delete(item.FullPath);
-                }
-            });
-            LoadLocalDirectory(_currentLocalPath);
-        }
-        else if (_sftpService.IsConnected)
-        {
-            await PerformTransferAsync("Deleting remote item(s)...", () =>
-            {
-                foreach (var item in selected)
-                    _sftpService.Delete(item.FullPath, item.IsDirectory);
-            });
-            LoadRemoteDirectory(_currentRemotePath);
-        }
-    }
+        if (_isLocalFocused)
+        {
+            await PerformTransferAsync("Deleting local item(s)...", () =>
+            {
+                foreach (var item in selected)
+                {
+                    SafeDeleteLocal(item.FullPath, item.IsDirectory); // <--- Use safe delete here
+                }
+            });
+            LoadLocalDirectory(_currentLocalPath);
+        }
+        else if (_sftpService.IsConnected)
+        {
+            await PerformTransferAsync("Deleting remote item(s)...", () =>
+            {
+                foreach (var item in selected)
+                    _sftpService.Delete(item.FullPath, item.IsDirectory);
+            });
+            LoadRemoteDirectory(_currentRemotePath);
+        }
+    }
 
-    private void Refresh_Click(object sender, RoutedEventArgs e)
+    private void SafeDeleteLocal(string path, bool isDirectory)
+    {
+        int retries = 5;
+        while (retries > 0)
+        {
+            try
+            {
+                if (isDirectory)
+                {
+                    if (Directory.Exists(path)) Directory.Delete(path, true);
+                }
+                else
+                {
+                    if (File.Exists(path)) File.Delete(path);
+                }
+                return;
+            }
+            catch (IOException)
+            {
+                retries--;
+                if (retries == 0) throw;
+                System.Threading.Thread.Sleep(150); // Wait 150ms and retry
+            }
+            catch (UnauthorizedAccessException)
+            {
+                retries--;
+                if (retries == 0) throw;
+                System.Threading.Thread.Sleep(150);
+            }
+        }
+    }
+
+    private void Refresh_Click(object sender, RoutedEventArgs e)
     {
         LoadLocalDirectory(_currentLocalPath);
         if (_sftpService.IsConnected) Task.Run(() => LoadRemoteDirectory(_currentRemotePath));
     }
 
     // --- Focus & UI State ---
-
     private void SetActivePane(bool isLocal)
     {
         _isLocalFocused = isLocal;
@@ -969,134 +1078,238 @@ public sealed partial class SftpWindow : Window, System.ComponentModel.INotifyPr
     // --- Cancellation & Progress Handlers ---
 
     private System.Threading.CancellationTokenSource? _cancellationTokenSource;
+    private bool _isPaused = false;
 
-    private void CancelProgress_Click(object sender, RoutedEventArgs e)
-    {
-        _cancellationTokenSource?.Cancel();
-        CancelProgressButton.IsEnabled = false;
-        CancelProgressButton.Content = "Cancelling...";
-    }
+    private void CancelProgress_Click(object sender, RoutedEventArgs e)
+    {
+        _cancellationTokenSource?.Cancel();
+        CancelProgressButton.IsEnabled = false;
+        CancelProgressButton.Content = "Cancelling...";
+    }
+        
+    private async Task PerformCancellableTaskAsync(string message, Func<System.Threading.CancellationToken, Task> work)
+    {
+        ProgressText.Text = message;
 
-    private async Task PerformCancellableTaskAsync(string message, Func<System.Threading.CancellationToken, Task> work)
-    {
-        ProgressText.Text = message;
-        CancelProgressButton.Visibility = Visibility.Visible;
-        CancelProgressButton.IsEnabled = true;
-        CancelProgressButton.Content = "Cancel";
+        // Reset UI State for the new progress bar
+        TransferProgressBar.IsIndeterminate = true;
+        TransferProgressBar.Value = 0;
+        _isPaused = false;
 
-        using (_cancellationTokenSource = new System.Threading.CancellationTokenSource())
-        {
-            var token = _cancellationTokenSource.Token;
-            var workTask = Task.Run(() => work(token), token);
-            var delayTask = Task.Delay(500, token);
+        CloseProgressButton.Visibility = Visibility.Visible; 
+        CloseProgressButton.IsEnabled = false;               
+        PauseProgressButton.Content = "Pause";
+        PauseProgressButton.Visibility = Visibility.Visible;
+        CancelProgressButton.Visibility = Visibility.Visible;
+        CancelProgressButton.IsEnabled = true;
+        CancelProgressButton.Content = "Cancel";
 
-            if (await Task.WhenAny(workTask, delayTask) == delayTask)
-            {
-                ProgressOverlay.Visibility = Visibility.Visible;
-            }
+        using (_cancellationTokenSource = new System.Threading.CancellationTokenSource())
+        {
+            var token = _cancellationTokenSource.Token;
+            var workTask = Task.Run(() => work(token), token);
+            var delayTask = Task.Delay(500, token);
 
-            try
-            {
-                await workTask;
-            }
-            catch (OperationCanceledException)
-            {
-                // Silently swallow the cancel exception so the UI just closes the popup
-            }
-            catch (Exception ex)
-            {
-                if (this.Content?.XamlRoot != null)
-                {
-                    var dialog = new ContentDialog
-                    {
-                        Title = "Error",
-                        Content = ex.Message,
-                        CloseButtonText = "OK",
-                        XamlRoot = this.Content.XamlRoot
-                    };
-                    await dialog.ShowAsync();
-                }
-            }
-            finally
-            {
-                ProgressOverlay.Visibility = Visibility.Collapsed;
-                CancelProgressButton.Visibility = Visibility.Collapsed; // Hide it again for normal transfers
-                _cancellationTokenSource = null;
-            }
-        }
-    }
+            if (await Task.WhenAny(workTask, delayTask) == delayTask)
+            {
+                ProgressOverlay.Visibility = Visibility.Visible;
+            }
 
-    private async Task PerformTransferAsync(string message, Func<Task> work)
-    {
-        ProgressText.Text = message;
-        var workTask = Task.Run(work);
-        var delayTask = Task.Delay(500);
+            try
+            {
+                await workTask;
+            }
+            catch (OperationCanceledException)
+            {
+                // Silently swallow the cancel exception so the UI just closes the popup
+            }
+            catch (Exception ex)
+            {
+                if (this.Content?.XamlRoot != null)
+                {
+                    var dialog = new ContentDialog
+                    {
+                        Title = "Error",
+                        Content = ex.Message,
+                        CloseButtonText = "OK",
+                        XamlRoot = this.Content.XamlRoot
+                    };
+                    await dialog.ShowAsync();
+                }
+            }
+            finally
+            {
+                ProgressOverlay.Visibility = Visibility.Collapsed;
+                CancelProgressButton.Visibility = Visibility.Collapsed;
+                PauseProgressButton.Visibility = Visibility.Collapsed;
+                _cancellationTokenSource = null;
+            }
+        }
+    }
 
-        if (await Task.WhenAny(workTask, delayTask) == delayTask)
-        {
-            ProgressOverlay.Visibility = Visibility.Visible;
-        }
+    // --- Add this helper method to update the percentage ---
+    public void UpdateProgress(double percentage, string details = "")
+    {
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            TransferProgressBar.IsIndeterminate = false;
+            TransferProgressBar.Value = percentage;
 
-        try
-        {
-            await workTask;
-        }
-        catch (Exception ex)
-        {
-            if (this.Content?.XamlRoot != null)
-            {
-                var dialog = new ContentDialog
-                {
-                    Title = "Transfer Error",
-                    Content = ex.Message,
-                    CloseButtonText = "OK",
-                    XamlRoot = this.Content.XamlRoot
-                };
-                await dialog.ShowAsync();
-            }
-        }
-        finally
-        {
-            ProgressOverlay.Visibility = Visibility.Collapsed;
-        }
-    }
+            ProgressDetailsText.Visibility = Visibility.Visible;
+            if (!string.IsNullOrEmpty(details))
+            {
+                ProgressDetailsText.Text = details;
+            }
+            else
+            {
+                ProgressDetailsText.Text = $"{percentage:F0}% Complete";
+            }
+        });
+    }
 
-    private async Task PerformTransferAsync(string message, Action work)
-    {
-        ProgressText.Text = message;
-        var workTask = Task.Run(work);
-        var delayTask = Task.Delay(500);
+    private void PauseProgress_Click(object sender, RoutedEventArgs e)
+    {
+        _isPaused = !_isPaused;
+        PauseProgressButton.Content = _isPaused ? "Resume" : "Pause";
 
-        if (await Task.WhenAny(workTask, delayTask) == delayTask)
-        {
-            ProgressOverlay.Visibility = Visibility.Visible;
-        }
+        if (_isPaused)
+        {
+            TransferProgressBar.IsIndeterminate = false;
+            ProgressDetailsText.Text = "Transfer paused...";
 
-        try
-        {
-            await workTask;
-        }
-        catch (Exception ex)
-        {
-            if (this.Content?.XamlRoot != null)
-            {
-                var dialog = new ContentDialog
-                {
-                    Title = "Transfer Error",
-                    Content = ex.Message,
-                    CloseButtonText = "OK",
-                    XamlRoot = this.Content.XamlRoot
-                };
-                await dialog.ShowAsync();
-            }
-        }
-        finally
-        {
-            ProgressOverlay.Visibility = Visibility.Collapsed;
-        }
-    }
+            // Enable the Close button when paused
+            CloseProgressButton.IsEnabled = true;
+        }
+        else
+        {
+            // Resume indeterminate animation if we don't have a specific percentage
+            if (TransferProgressBar.Value == 0) TransferProgressBar.IsIndeterminate = true;
+            ProgressDetailsText.Text = "Transferring...";
 
-    private void SftpWindow_Closed(object sender, WindowEventArgs args)
+            // Gray out the Close button again
+            CloseProgressButton.IsEnabled = false;
+        }
+    }
+
+    private void CloseProgress_Click(object sender, RoutedEventArgs e)
+    {
+        // Simply hides the UI overlay
+        ProgressOverlay.Visibility = Visibility.Collapsed;
+    }
+
+    private async Task PerformTransferAsync(string message, Func<Task> work)
+    {
+        ProgressText.Text = message;
+
+        // Reset UI State for the progress bar
+        TransferProgressBar.IsIndeterminate = true;
+        TransferProgressBar.Value = 0;
+        _isPaused = false;
+
+        // Make buttons visible
+        PauseProgressButton.Content = "Pause";
+        CloseProgressButton.Visibility = Visibility.Visible;
+        CloseProgressButton.IsEnabled = false;
+        PauseProgressButton.Visibility = Visibility.Visible;
+        CancelProgressButton.Visibility = Visibility.Visible;
+        CancelProgressButton.IsEnabled = true;
+        CancelProgressButton.Content = "Cancel";
+
+        using (_cancellationTokenSource = new System.Threading.CancellationTokenSource())
+        {
+            var workTask = Task.Run(work);
+            var delayTask = Task.Delay(500);
+
+            if (await Task.WhenAny(workTask, delayTask) == delayTask)
+            {
+                ProgressOverlay.Visibility = Visibility.Visible;
+            }
+
+            try
+            {
+                await workTask;
+            }
+            catch (Exception ex)
+            {
+                if (this.Content?.XamlRoot != null)
+                {
+                    var dialog = new ContentDialog
+                    {
+                        Title = "Transfer Error",
+                        Content = ex.Message,
+                        CloseButtonText = "OK",
+                        XamlRoot = this.Content.XamlRoot
+                    };
+                    await dialog.ShowAsync();
+                }
+            }
+            finally
+            {
+                ProgressOverlay.Visibility = Visibility.Collapsed;
+                CancelProgressButton.Visibility = Visibility.Collapsed;
+                PauseProgressButton.Visibility = Visibility.Collapsed;
+                _cancellationTokenSource = null;
+            }
+        }
+    }
+
+    private async Task PerformTransferAsync(string message, Action work)
+    {
+        ProgressText.Text = message;
+
+        // Reset UI State for the progress bar
+        TransferProgressBar.IsIndeterminate = true;
+        TransferProgressBar.Value = 0;
+        _isPaused = false;
+
+        // Make buttons visible
+        CloseProgressButton.Visibility = Visibility.Visible;
+        CloseProgressButton.IsEnabled = false;
+        PauseProgressButton.Content = "Pause";
+        PauseProgressButton.Visibility = Visibility.Visible;
+        CancelProgressButton.Visibility = Visibility.Visible;
+        CancelProgressButton.IsEnabled = true;
+        CancelProgressButton.Content = "Cancel";
+
+        using (_cancellationTokenSource = new System.Threading.CancellationTokenSource())
+        {
+            var workTask = Task.Run(work);
+            var delayTask = Task.Delay(500);
+
+            if (await Task.WhenAny(workTask, delayTask) == delayTask)
+            {
+                ProgressOverlay.Visibility = Visibility.Visible;
+            }
+
+            try
+            {
+                await workTask;
+            }
+            catch (Exception ex)
+            {
+                if (this.Content?.XamlRoot != null)
+                {
+                    var dialog = new ContentDialog
+                    {
+                        Title = "Transfer Error",
+                        Content = ex.Message,
+                        CloseButtonText = "OK",
+                        XamlRoot = this.Content.XamlRoot
+                    };
+                    await dialog.ShowAsync();
+                }
+            }
+            finally
+            {
+                ProgressOverlay.Visibility = Visibility.Collapsed;
+                CancelProgressButton.Visibility = Visibility.Collapsed;
+                PauseProgressButton.Visibility = Visibility.Collapsed;
+                _cancellationTokenSource = null;
+            }
+        }
+    }
+
+    private void SftpWindow_Closed(object sender, WindowEventArgs args)
     {
         _sftpService.Dispose();
         _activeJumpTunnel?.Dispose();
@@ -2026,67 +2239,124 @@ public sealed partial class SftpWindow : Window, System.ComponentModel.INotifyPr
         Resume_Click(sender, e);
     }
 
-    private async void Resume_Click(object sender, RoutedEventArgs e)
-    {
-        var activeList = _isLocalFocused ? LocalFileList : RemoteFileList;
+    private async void Resume_Click(object sender, RoutedEventArgs e)
+    {
+        var activeList = _isLocalFocused ? LocalFileList : RemoteFileList;
 
-        var selected = activeList.SelectedItems.OfType<FileItem>()
-                                 .Where(x => !x.IsDirectory && x.Name != "..").ToList();
+        var selected = activeList.SelectedItems.OfType<FileItem>()
+                                 .Where(x => !x.IsDirectory && x.Name != "..").ToList();
 
-        if (selected.Count == 0 || !_sftpService.IsConnected) return;
+        if (selected.Count == 0 || !_sftpService.IsConnected) return;
 
-        if (_isLocalFocused)
-        {
-            string targetDir = _currentRemotePath == "/" ? "" : _currentRemotePath;
-            await PerformTransferAsync($"Resuming upload for {selected.Count} file(s)...", () =>
-            {
-                string listPath = string.IsNullOrEmpty(targetDir) ? "/" : targetDir;
-                var existingRemote = _sftpService.List(listPath).ToList();
+        if (_isLocalFocused)
+        {
+            string targetDir = _currentRemotePath == "/" ? "" : _currentRemotePath;
+            await PerformTransferAsync($"Resuming upload for {selected.Count} file(s)...", () =>
+            {
+                string listPath = string.IsNullOrEmpty(targetDir) ? "/" : targetDir;
+                var existingRemote = _sftpService.List(listPath).ToList();
 
-                foreach (var item in selected)
-                {
-                    var conflict = existingRemote.FirstOrDefault(x => x.Name == item.Name);
+                long totalBytes = selected.Sum(x => x.Size > 0 ? x.Size : 0);
+                long bytesCompleted = 0;
+                DateTime lastUIUpdate = DateTime.MinValue;
 
-                    if (conflict != null && conflict.Length < item.Size)
-                    {
-                        _sftpService.ResumeUpload(item.FullPath, $"{targetDir}/{item.Name}", conflict.Length);
-                    }
-                    else if (conflict == null)
-                    {
-                        _sftpService.Upload(item.FullPath, $"{targetDir}/{item.Name}");
-                    }
-                }
-            });
-            LoadRemoteDirectory(_currentRemotePath);
-        }
-        else
-        {
-            string targetDir = _currentLocalPath;
-            await PerformTransferAsync($"Resuming download for {selected.Count} file(s)...", () =>
-            {
-                foreach (var item in selected)
-                {
-                    string target = Path.Combine(targetDir, item.Name);
+                foreach (var item in selected)
+                {
+                    if (_cancellationTokenSource?.Token.IsCancellationRequested == true) break;
 
-                    if (File.Exists(target))
-                    {
-                        long localSize = new FileInfo(target).Length;
-                        if (localSize < item.Size)
-                        {
-                            _sftpService.ResumeDownload(item.FullPath, target, localSize);
-                        }
-                    }
-                    else
-                    {
-                        _sftpService.Download(item.FullPath, target);
-                    }
-                }
-            });
-            LoadLocalDirectory(_currentLocalPath);
-        }
-    }
+                    var conflict = existingRemote.FirstOrDefault(x => x.Name == item.Name);
+
+                    // Centralized callback for both standard and resumed uploads
+                    Action<ulong> progressCallback = (transferredBytes) =>
+                    {
+                        while (_isPaused)
+                        {
+                            System.Threading.Thread.Sleep(100);
+                            if (_cancellationTokenSource?.Token.IsCancellationRequested == true) throw new OperationCanceledException();
+                        }
+                        if (_cancellationTokenSource?.Token.IsCancellationRequested == true) throw new OperationCanceledException();
+
+                        long remainingToTransfer = item.Size - (conflict?.Length ?? 0);
+                        if ((DateTime.Now - lastUIUpdate).TotalMilliseconds < 100 && transferredBytes < (ulong)remainingToTransfer) return;
+                        lastUIUpdate = DateTime.Now;
+
+                        long currentTransferred = (long)transferredBytes;
+                        double percent = totalBytes > 0 ? ((bytesCompleted + currentTransferred) / (double)totalBytes) * 100 : 0;
+                        double mbTransferred = currentTransferred / 1048576.0;
+                        double mbTotal = item.Size / 1048576.0;
+                        UpdateProgress(percent, $"Resuming '{item.Name}' (+{mbTransferred:F1} MB)");
+                    };
+
+                    if (conflict != null && conflict.Length < item.Size)
+                    {
+                        bytesCompleted += conflict.Length; // Offset the progress bar for the bytes we already have
+                        _sftpService.ResumeUpload(item.FullPath, $"{targetDir}/{item.Name}", conflict.Length, progressCallback);
+                        bytesCompleted += (item.Size - conflict.Length);
+                    }
+                    else if (conflict == null)
+                    {
+                        _sftpService.Upload(item.FullPath, $"{targetDir}/{item.Name}", progressCallback);
+                        bytesCompleted += item.Size;
+                    }
+                }
+            });
+            LoadRemoteDirectory(_currentRemotePath);
+        }
+        else
+        {
+            string targetDir = _currentLocalPath;
+            await PerformTransferAsync($"Resuming download for {selected.Count} file(s)...", () =>
+            {
+                long totalBytes = selected.Sum(x => x.Size > 0 ? x.Size : 0);
+                long bytesCompleted = 0;
+                DateTime lastUIUpdate = DateTime.MinValue;
+
+                foreach (var item in selected)
+                {
+                    if (_cancellationTokenSource?.Token.IsCancellationRequested == true) break;
+
+                    string target = Path.Combine(targetDir, item.Name);
+                    long localSize = File.Exists(target) ? new FileInfo(target).Length : 0;
+
+                    // Centralized callback for both standard and resumed downloads
+                    Action<ulong> progressCallback = (transferredBytes) =>
+                    {
+                        while (_isPaused)
+                        {
+                            System.Threading.Thread.Sleep(100);
+                            if (_cancellationTokenSource?.Token.IsCancellationRequested == true) throw new OperationCanceledException();
+                        }
+                        if (_cancellationTokenSource?.Token.IsCancellationRequested == true) throw new OperationCanceledException();
+
+                        long remainingToTransfer = item.Size - localSize;
+                        if ((DateTime.Now - lastUIUpdate).TotalMilliseconds < 100 && transferredBytes < (ulong)remainingToTransfer) return;
+                        lastUIUpdate = DateTime.Now;
+
+                        long currentTransferred = (long)transferredBytes;
+                        double percent = totalBytes > 0 ? ((bytesCompleted + currentTransferred) / (double)totalBytes) * 100 : 0;
+                        double mbTransferred = currentTransferred / 1048576.0;
+                        double mbTotal = item.Size / 1048576.0;
+                        UpdateProgress(percent, $"Resuming '{item.Name}' (+{mbTransferred:F1} MB)");
+                    };
+
+                    if (File.Exists(target) && localSize < item.Size)
+                    {
+                        bytesCompleted += localSize; // Offset the progress bar for the bytes we already have
+                        _sftpService.ResumeDownload(item.FullPath, target, localSize, progressCallback);
+                        bytesCompleted += (item.Size - localSize);
+                    }
+                    else if (!File.Exists(target))
+                    {
+                        _sftpService.Download(item.FullPath, target, progressCallback);
+                        bytesCompleted += item.Size;
+                    }
+                }
+            });
+            LoadLocalDirectory(_currentLocalPath);
+        }
+    }
+
     // --- Search Logic ---
-
     private async void Search_Click(object sender, RoutedEventArgs e)
     {
         if (this.Content?.XamlRoot == null) return;

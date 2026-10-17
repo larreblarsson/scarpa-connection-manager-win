@@ -39,17 +39,17 @@
             </MenuFlyout>
 
             <MenuFlyout x:Name="SearchResultsContextMenu">
-                    <MenuFlyoutItem Text="Open" Click="SearchResultOpen_Click">
-                        <MenuFlyoutItem.Icon>
-                            <FontIcon Glyph="&#xE8E5;" />
-                        </MenuFlyoutItem.Icon>
-                    </MenuFlyoutItem>
-                    <MenuFlyoutItem Text="Go to location" Click="SearchResultGoToLocation_Click">
-                        <MenuFlyoutItem.Icon>
-                            <FontIcon Glyph="&#xE8A0;" />
-                        </MenuFlyoutItem.Icon>
-                    </MenuFlyoutItem>
-                </MenuFlyout>
+                <MenuFlyoutItem Text="Open" Click="SearchResultOpen_Click">
+                    <MenuFlyoutItem.Icon>
+                        <FontIcon Glyph="&#xE8E5;" />
+                    </MenuFlyoutItem.Icon>
+                </MenuFlyoutItem>
+                <MenuFlyoutItem Text="Go to location" Click="SearchResultGoToLocation_Click">
+                    <MenuFlyoutItem.Icon>
+                        <FontIcon Glyph="&#xE8A0;" />
+                    </MenuFlyoutItem.Icon>
+                </MenuFlyoutItem>
+            </MenuFlyout>
         </Grid.Resources>
 
         <!-- Tightened outer padding to reduce the side/top white space -->
@@ -81,8 +81,14 @@
                 <Grid Grid.Column="0">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
+                        <!-- Address Bar -->
+                        <RowDefinition Height="Auto" />
+                        <!-- Sticky Header -->
                         <RowDefinition Height="*" />
+                        <!-- File List -->
                     </Grid.RowDefinitions>
+
+                    <!-- Row 0: Address Bar -->
                     <Grid Grid.Row="0" Margin="0,0,0,10" Background="#F8F8F8" Padding="6" CornerRadius="6">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
@@ -97,7 +103,47 @@
                         </Border>
                     </Grid>
 
-                    <ListView x:Name="LocalFileList" Grid.Row="1" BorderBrush="Gray" BorderThickness="1" 
+                    <!-- Row 1: STICKY HEADER -->
+                    <Grid Grid.Row="1" Padding="5,5,0,5" BorderBrush="LightGray" BorderThickness="0,0,0,1" Background="Transparent" RightTapped="Header_RightTapped">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="{Binding ElementName=RootWindow, Path=LocalNameColGridLength, Mode=OneWay}" />
+                            <ColumnDefinition Width="{Binding ElementName=RootWindow, Path=LocalDateColGridLength, Mode=OneWay}" />
+                            <ColumnDefinition Width="{Binding ElementName=RootWindow, Path=LocalTypeColGridLength, Mode=OneWay}" />
+                            <ColumnDefinition Width="{Binding ElementName=RootWindow, Path=LocalSizeColGridLength, Mode=OneWay}" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Grid Grid.Column="0">
+                            <TextBlock Text="Name" FontWeight="SemiBold" Foreground="Gray" VerticalAlignment="Center"/>
+                            <local:SplitterContainer Width="12" HorizontalAlignment="Right" Margin="0,0,-6,0" Canvas.ZIndex="10" Background="Transparent" DoubleTapped="ColumnSplitter_DoubleTapped" Tag="LocalName">
+                                <Border Width="1" Background="#DDDDDD" HorizontalAlignment="Center" VerticalAlignment="Stretch" Margin="0,4,0,4"/>
+                                <Thumb HorizontalAlignment="Stretch" DragDelta="ColumnSplitter_DragDelta" Tag="LocalName" Opacity="0" />
+                            </local:SplitterContainer>
+                        </Grid>
+                        <Grid Grid.Column="1" x:Name="LocalHeaderDate">
+                            <TextBlock Text="Date modified" FontWeight="SemiBold" Foreground="Gray" Margin="10,0,0,0" VerticalAlignment="Center"/>
+                            <local:SplitterContainer Width="12" HorizontalAlignment="Right" Margin="0,0,-6,0" Canvas.ZIndex="10" Background="Transparent" DoubleTapped="ColumnSplitter_DoubleTapped" Tag="LocalDate">
+                                <Border Width="1" Background="#DDDDDD" HorizontalAlignment="Center" VerticalAlignment="Stretch" Margin="0,4,0,4"/>
+                                <Thumb HorizontalAlignment="Stretch" DragDelta="ColumnSplitter_DragDelta" Tag="LocalDate" Opacity="0" />
+                            </local:SplitterContainer>
+                        </Grid>
+                        <Grid Grid.Column="2" x:Name="LocalHeaderType">
+                            <TextBlock Text="Type" FontWeight="SemiBold" Foreground="Gray" Margin="10,0,0,0" VerticalAlignment="Center"/>
+                            <local:SplitterContainer Width="12" HorizontalAlignment="Right" Margin="0,0,-6,0" Canvas.ZIndex="10" Background="Transparent" DoubleTapped="ColumnSplitter_DoubleTapped" Tag="LocalType">
+                                <Border Width="1" Background="#DDDDDD" HorizontalAlignment="Center" VerticalAlignment="Stretch" Margin="0,4,0,4"/>
+                                <Thumb HorizontalAlignment="Stretch" DragDelta="ColumnSplitter_DragDelta" Tag="LocalType" Opacity="0" />
+                            </local:SplitterContainer>
+                        </Grid>
+                        <Grid Grid.Column="3" x:Name="LocalHeaderSize">
+                            <TextBlock Text="Size" FontWeight="SemiBold" Foreground="Gray" Margin="10,0,0,0" VerticalAlignment="Center"/>
+                            <local:SplitterContainer Width="12" HorizontalAlignment="Right" Margin="0,0,-6,0" Canvas.ZIndex="10" Background="Transparent" DoubleTapped="ColumnSplitter_DoubleTapped" Tag="LocalSize">
+                                <Border Width="1" Background="#DDDDDD" HorizontalAlignment="Center" VerticalAlignment="Stretch" Margin="0,4,0,4"/>
+                                <Thumb HorizontalAlignment="Stretch" DragDelta="ColumnSplitter_DragDelta" Tag="LocalSize" Opacity="0" />
+                            </local:SplitterContainer>
+                        </Grid>
+                    </Grid>
+
+                    <!-- Row 2: LISTVIEW (Header removed from inside) -->
+                    <ListView x:Name="LocalFileList" Grid.Row="2" BorderBrush="Gray" BorderThickness="1" 
                         SelectionChanged="FileList_SelectionChanged"
                         DoubleTapped="LocalFileList_DoubleTapped" SelectionMode="Extended"
                         GotFocus="LocalFileList_GotFocus" PointerPressed="LocalFileList_PointerPressed"
@@ -111,46 +157,6 @@
                                 <Setter Property="HorizontalContentAlignment" Value="Stretch" />
                             </Style>
                         </ListView.ItemContainerStyle>
-
-                        <ListView.Header>
-                            <Grid Padding="5,5,0,5" BorderBrush="LightGray" BorderThickness="0,0,0,1" Background="Transparent" RightTapped="Header_RightTapped">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="{Binding ElementName=RootWindow, Path=LocalNameColGridLength, Mode=OneWay}" />
-                                    <ColumnDefinition Width="{Binding ElementName=RootWindow, Path=LocalDateColGridLength, Mode=OneWay}" />
-                                    <ColumnDefinition Width="{Binding ElementName=RootWindow, Path=LocalTypeColGridLength, Mode=OneWay}" />
-                                    <ColumnDefinition Width="{Binding ElementName=RootWindow, Path=LocalSizeColGridLength, Mode=OneWay}" />
-                                    <ColumnDefinition Width="*" />
-                                </Grid.ColumnDefinitions>
-                                <Grid Grid.Column="0">
-                                    <TextBlock Text="Name" FontWeight="SemiBold" Foreground="Gray" VerticalAlignment="Center"/>
-                                    <local:SplitterContainer Width="12" HorizontalAlignment="Right" Margin="0,0,-6,0" Canvas.ZIndex="10" Background="Transparent" DoubleTapped="ColumnSplitter_DoubleTapped" Tag="LocalName">
-                                        <Border Width="1" Background="#DDDDDD" HorizontalAlignment="Center" VerticalAlignment="Stretch" Margin="0,4,0,4"/>
-                                        <Thumb HorizontalAlignment="Stretch" DragDelta="ColumnSplitter_DragDelta" Tag="LocalName" Opacity="0" />
-                                    </local:SplitterContainer>
-                                </Grid>
-                                <Grid Grid.Column="1" x:Name="LocalHeaderDate">
-                                    <TextBlock Text="Date modified" FontWeight="SemiBold" Foreground="Gray" Margin="10,0,0,0" VerticalAlignment="Center"/>
-                                    <local:SplitterContainer Width="12" HorizontalAlignment="Right" Margin="0,0,-6,0" Canvas.ZIndex="10" Background="Transparent" DoubleTapped="ColumnSplitter_DoubleTapped" Tag="LocalDate">
-                                        <Border Width="1" Background="#DDDDDD" HorizontalAlignment="Center" VerticalAlignment="Stretch" Margin="0,4,0,4"/>
-                                        <Thumb HorizontalAlignment="Stretch" DragDelta="ColumnSplitter_DragDelta" Tag="LocalDate" Opacity="0" />
-                                    </local:SplitterContainer>
-                                </Grid>
-                                <Grid Grid.Column="2" x:Name="LocalHeaderType">
-                                    <TextBlock Text="Type" FontWeight="SemiBold" Foreground="Gray" Margin="10,0,0,0" VerticalAlignment="Center"/>
-                                    <local:SplitterContainer Width="12" HorizontalAlignment="Right" Margin="0,0,-6,0" Canvas.ZIndex="10" Background="Transparent" DoubleTapped="ColumnSplitter_DoubleTapped" Tag="LocalType">
-                                        <Border Width="1" Background="#DDDDDD" HorizontalAlignment="Center" VerticalAlignment="Stretch" Margin="0,4,0,4"/>
-                                        <Thumb HorizontalAlignment="Stretch" DragDelta="ColumnSplitter_DragDelta" Tag="LocalType" Opacity="0" />
-                                    </local:SplitterContainer>
-                                </Grid>
-                                <Grid Grid.Column="3" x:Name="LocalHeaderSize">
-                                    <TextBlock Text="Size" FontWeight="SemiBold" Foreground="Gray" Margin="10,0,0,0" VerticalAlignment="Center"/>
-                                    <local:SplitterContainer Width="12" HorizontalAlignment="Right" Margin="0,0,-6,0" Canvas.ZIndex="10" Background="Transparent" DoubleTapped="ColumnSplitter_DoubleTapped" Tag="LocalSize">
-                                        <Border Width="1" Background="#DDDDDD" HorizontalAlignment="Center" VerticalAlignment="Stretch" Margin="0,4,0,4"/>
-                                        <Thumb HorizontalAlignment="Stretch" DragDelta="ColumnSplitter_DragDelta" Tag="LocalSize" Opacity="0" />
-                                    </local:SplitterContainer>
-                                </Grid>
-                            </Grid>
-                        </ListView.Header>
 
                         <ListView.ItemTemplate>
                             <DataTemplate>
@@ -189,8 +195,14 @@
                 <Grid Grid.Column="2">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
+                        <!-- Address Bar -->
+                        <RowDefinition Height="Auto" />
+                        <!-- Sticky Header -->
                         <RowDefinition Height="*" />
+                        <!-- File List -->
                     </Grid.RowDefinitions>
+
+                    <!-- Row 0: Address Bar -->
                     <Grid Grid.Row="0" Margin="0,0,0,10" Background="#F8F8F8" Padding="6" CornerRadius="6">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" />
@@ -205,7 +217,47 @@
                         </Border>
                     </Grid>
 
-                    <ListView x:Name="RemoteFileList" Grid.Row="1" BorderBrush="Gray" BorderThickness="1" 
+                    <!-- Row 1: STICKY HEADER -->
+                    <Grid Grid.Row="1" Padding="5,5,0,5" BorderBrush="LightGray" BorderThickness="0,0,0,1" Background="Transparent" RightTapped="Header_RightTapped">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="{Binding ElementName=RootWindow, Path=RemoteNameColGridLength, Mode=OneWay}" />
+                            <ColumnDefinition Width="{Binding ElementName=RootWindow, Path=RemoteDateColGridLength, Mode=OneWay}" />
+                            <ColumnDefinition Width="{Binding ElementName=RootWindow, Path=RemoteTypeColGridLength, Mode=OneWay}" />
+                            <ColumnDefinition Width="{Binding ElementName=RootWindow, Path=RemoteSizeColGridLength, Mode=OneWay}" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Grid Grid.Column="0">
+                            <TextBlock Text="Name" FontWeight="SemiBold" Foreground="Gray" VerticalAlignment="Center"/>
+                            <local:SplitterContainer Width="12" HorizontalAlignment="Right" Margin="0,0,-6,0" Canvas.ZIndex="10" Background="Transparent" DoubleTapped="ColumnSplitter_DoubleTapped" Tag="RemoteName">
+                                <Border Width="1" Background="#DDDDDD" HorizontalAlignment="Center" VerticalAlignment="Stretch" Margin="0,4,0,4"/>
+                                <Thumb HorizontalAlignment="Stretch" DragDelta="ColumnSplitter_DragDelta" Tag="RemoteName" Opacity="0" />
+                            </local:SplitterContainer>
+                        </Grid>
+                        <Grid Grid.Column="1" x:Name="RemoteHeaderDate">
+                            <TextBlock Text="Date modified" FontWeight="SemiBold" Foreground="Gray" Margin="10,0,0,0" VerticalAlignment="Center"/>
+                            <local:SplitterContainer Width="12" HorizontalAlignment="Right" Margin="0,0,-6,0" Canvas.ZIndex="10" Background="Transparent" DoubleTapped="ColumnSplitter_DoubleTapped" Tag="RemoteDate">
+                                <Border Width="1" Background="#DDDDDD" HorizontalAlignment="Center" VerticalAlignment="Stretch" Margin="0,4,0,4"/>
+                                <Thumb HorizontalAlignment="Stretch" DragDelta="ColumnSplitter_DragDelta" Tag="RemoteDate" Opacity="0" />
+                            </local:SplitterContainer>
+                        </Grid>
+                        <Grid Grid.Column="2" x:Name="RemoteHeaderType">
+                            <TextBlock Text="Type" FontWeight="SemiBold" Foreground="Gray" Margin="10,0,0,0" VerticalAlignment="Center"/>
+                            <local:SplitterContainer Width="12" HorizontalAlignment="Right" Margin="0,0,-6,0" Canvas.ZIndex="10" Background="Transparent" DoubleTapped="ColumnSplitter_DoubleTapped" Tag="RemoteType">
+                                <Border Width="1" Background="#DDDDDD" HorizontalAlignment="Center" VerticalAlignment="Stretch" Margin="0,4,0,4"/>
+                                <Thumb HorizontalAlignment="Stretch" DragDelta="ColumnSplitter_DragDelta" Tag="RemoteType" Opacity="0" />
+                            </local:SplitterContainer>
+                        </Grid>
+                        <Grid Grid.Column="3" x:Name="RemoteHeaderSize">
+                            <TextBlock Text="Size" FontWeight="SemiBold" Foreground="Gray" Margin="10,0,0,0" VerticalAlignment="Center"/>
+                            <local:SplitterContainer Width="12" HorizontalAlignment="Right" Margin="0,0,-6,0" Canvas.ZIndex="10" Background="Transparent" DoubleTapped="ColumnSplitter_DoubleTapped" Tag="RemoteSize">
+                                <Border Width="1" Background="#DDDDDD" HorizontalAlignment="Center" VerticalAlignment="Stretch" Margin="0,4,0,4"/>
+                                <Thumb HorizontalAlignment="Stretch" DragDelta="ColumnSplitter_DragDelta" Tag="RemoteSize" Opacity="0" />
+                            </local:SplitterContainer>
+                        </Grid>
+                    </Grid>
+
+                    <!-- Row 2: LISTVIEW (Header removed from inside) -->
+                    <ListView x:Name="RemoteFileList" Grid.Row="2" BorderBrush="Gray" BorderThickness="1" 
                         SelectionChanged="FileList_SelectionChanged"
                         DoubleTapped="RemoteFileList_DoubleTapped" SelectionMode="Extended"
                         GotFocus="RemoteFileList_GotFocus" PointerPressed="RemoteFileList_PointerPressed"
@@ -219,46 +271,6 @@
                                 <Setter Property="HorizontalContentAlignment" Value="Stretch" />
                             </Style>
                         </ListView.ItemContainerStyle>
-
-                        <ListView.Header>
-                            <Grid Padding="5,5,0,5" BorderBrush="LightGray" BorderThickness="0,0,0,1" Background="Transparent" RightTapped="Header_RightTapped">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="{Binding ElementName=RootWindow, Path=RemoteNameColGridLength, Mode=OneWay}" />
-                                    <ColumnDefinition Width="{Binding ElementName=RootWindow, Path=RemoteDateColGridLength, Mode=OneWay}" />
-                                    <ColumnDefinition Width="{Binding ElementName=RootWindow, Path=RemoteTypeColGridLength, Mode=OneWay}" />
-                                    <ColumnDefinition Width="{Binding ElementName=RootWindow, Path=RemoteSizeColGridLength, Mode=OneWay}" />
-                                    <ColumnDefinition Width="*" />
-                                </Grid.ColumnDefinitions>
-                                <Grid Grid.Column="0">
-                                    <TextBlock Text="Name" FontWeight="SemiBold" Foreground="Gray" VerticalAlignment="Center"/>
-                                    <local:SplitterContainer Width="12" HorizontalAlignment="Right" Margin="0,0,-6,0" Canvas.ZIndex="10" Background="Transparent" DoubleTapped="ColumnSplitter_DoubleTapped" Tag="RemoteName">
-                                        <Border Width="1" Background="#DDDDDD" HorizontalAlignment="Center" VerticalAlignment="Stretch" Margin="0,4,0,4"/>
-                                        <Thumb HorizontalAlignment="Stretch" DragDelta="ColumnSplitter_DragDelta" Tag="RemoteName" Opacity="0" />
-                                    </local:SplitterContainer>
-                                </Grid>
-                                <Grid Grid.Column="1" x:Name="RemoteHeaderDate">
-                                    <TextBlock Text="Date modified" FontWeight="SemiBold" Foreground="Gray" Margin="10,0,0,0" VerticalAlignment="Center"/>
-                                    <local:SplitterContainer Width="12" HorizontalAlignment="Right" Margin="0,0,-6,0" Canvas.ZIndex="10" Background="Transparent" DoubleTapped="ColumnSplitter_DoubleTapped" Tag="RemoteDate">
-                                        <Border Width="1" Background="#DDDDDD" HorizontalAlignment="Center" VerticalAlignment="Stretch" Margin="0,4,0,4"/>
-                                        <Thumb HorizontalAlignment="Stretch" DragDelta="ColumnSplitter_DragDelta" Tag="RemoteDate" Opacity="0" />
-                                    </local:SplitterContainer>
-                                </Grid>
-                                <Grid Grid.Column="2" x:Name="RemoteHeaderType">
-                                    <TextBlock Text="Type" FontWeight="SemiBold" Foreground="Gray" Margin="10,0,0,0" VerticalAlignment="Center"/>
-                                    <local:SplitterContainer Width="12" HorizontalAlignment="Right" Margin="0,0,-6,0" Canvas.ZIndex="10" Background="Transparent" DoubleTapped="ColumnSplitter_DoubleTapped" Tag="RemoteType">
-                                        <Border Width="1" Background="#DDDDDD" HorizontalAlignment="Center" VerticalAlignment="Stretch" Margin="0,4,0,4"/>
-                                        <Thumb HorizontalAlignment="Stretch" DragDelta="ColumnSplitter_DragDelta" Tag="RemoteType" Opacity="0" />
-                                    </local:SplitterContainer>
-                                </Grid>
-                                <Grid Grid.Column="3" x:Name="RemoteHeaderSize">
-                                    <TextBlock Text="Size" FontWeight="SemiBold" Foreground="Gray" Margin="10,0,0,0" VerticalAlignment="Center"/>
-                                    <local:SplitterContainer Width="12" HorizontalAlignment="Right" Margin="0,0,-6,0" Canvas.ZIndex="10" Background="Transparent" DoubleTapped="ColumnSplitter_DoubleTapped" Tag="RemoteSize">
-                                        <Border Width="1" Background="#DDDDDD" HorizontalAlignment="Center" VerticalAlignment="Stretch" Margin="0,4,0,4"/>
-                                        <Thumb HorizontalAlignment="Stretch" DragDelta="ColumnSplitter_DragDelta" Tag="RemoteSize" Opacity="0" />
-                                    </local:SplitterContainer>
-                                </Grid>
-                            </Grid>
-                        </ListView.Header>
 
                         <ListView.ItemTemplate>
                             <DataTemplate>
@@ -353,11 +365,20 @@
 
         <!-- Loading Overlay for File Transfers and Searches -->
         <Grid x:Name="ProgressOverlay" Background="#80000000" Visibility="Collapsed" Canvas.ZIndex="100">
-            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Background="{ThemeResource ApplicationPageBackgroundThemeBrush}" Padding="30" CornerRadius="8">
-                <ProgressRing IsActive="True" Width="50" Height="50" Margin="0,0,0,10"/>
-                <TextBlock x:Name="ProgressText" Text="Transferring..." HorizontalAlignment="Center" FontWeight="SemiBold" Margin="0,0,0,15"/>
-                <Button x:Name="CancelProgressButton" Content="Cancel" HorizontalAlignment="Center" Click="CancelProgress_Click" Visibility="Collapsed"/>
+            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Background="{ThemeResource ApplicationPageBackgroundThemeBrush}" Padding="30" CornerRadius="8" Width="400">
+                <TextBlock x:Name="ProgressText" Text="Transferring..." FontWeight="SemiBold" Margin="0,0,0,10" TextWrapping="Wrap"/>
+
+                <!-- Modern Progress Bar -->
+                <ProgressBar x:Name="TransferProgressBar" IsIndeterminate="True" Minimum="0" Maximum="100" Value="0" Height="4" Margin="0,0,0,15"/>
+
+                <TextBlock x:Name="ProgressDetailsText" Text="" FontSize="12" Foreground="Gray" Margin="0,0,0,20" Visibility="Collapsed"/>
+
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10">
+                    <Button x:Name="CloseProgressButton" Content="Close" Click="CloseProgress_Click" Visibility="Collapsed" IsEnabled="False" />
+                    <Button x:Name="PauseProgressButton" Content="Pause" Click="PauseProgress_Click" Visibility="Collapsed"/>
+                    <Button x:Name="CancelProgressButton" Content="Cancel" Click="CancelProgress_Click" Visibility="Collapsed" Style="{ThemeResource AccentButtonStyle}"/>
+                </StackPanel>
             </StackPanel>
-        </Grid>    
+        </Grid>
     </Grid>
 </Window>

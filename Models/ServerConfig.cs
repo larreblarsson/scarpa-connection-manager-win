@@ -89,22 +89,24 @@ public sealed class ServerConfig
     // Port Forwarding
     public List<PortForwardRule> PortForwardRules { get; set; } = new();
 
-    // SFTP 
-    [JsonPropertyName("sftp_port")] public int SftpPort { get; set; } = 22;
-    [JsonPropertyName("sftp_jump_hosts")] public List<JumpHost> SftpJumpHosts { get; set; } = new();
+    // SFTP 
+    [JsonPropertyName("sftp_port")] public int SftpPort { get; set; } = 22;
 
-    // RDP
-    [JsonPropertyName("rdp_enabled")] public bool RdpEnabled { get; set; }
-    [JsonPropertyName("rdp_port")] public int RdpPort { get; set; } = 3389;
-    [JsonPropertyName("rdp_res")] public string RdpResolution { get; set; } = "Full Screen";
-    [JsonPropertyName("rdp_audio")] public bool RdpAudio { get; set; } = true;
-    [JsonPropertyName("rdp_clipboard")] public bool RdpClipboard { get; set; } = true;
-    [JsonPropertyName("rdp_cert_ignore")] public bool RdpIgnoreCert { get; set; } = true;
-    [JsonPropertyName("rdp_drive")] public bool RdpRedirectDrive { get; set; }
-    [JsonPropertyName("rdp_drive_path")] public string? RdpDrivePath { get; set; }
-    [JsonPropertyName("rdp_jump_hosts")] public List<JumpHost> RdpJumpHosts { get; set; } = new();
+    // RDP
+    [JsonPropertyName("rdp_enabled")] public bool RdpEnabled { get; set; }
+    [JsonPropertyName("rdp_port")] public int RdpPort { get; set; } = 3389;
+    [JsonPropertyName("rdp_res")] public string RdpResolution { get; set; } = "Full Screen";
+    [JsonPropertyName("rdp_audio")] public bool RdpAudio { get; set; } = true;
+    [JsonPropertyName("rdp_clipboard")] public bool RdpClipboard { get; set; } = true;
+    [JsonPropertyName("rdp_cert_ignore")] public bool RdpIgnoreCert { get; set; } = true;
+    [JsonPropertyName("rdp_drive")] public bool RdpRedirectDrive { get; set; }
+    [JsonPropertyName("rdp_drive_path")] public string? RdpDrivePath { get; set; }
 
-    public string Id { get; set; } = Guid.NewGuid().ToString();
+    // CENTRALIZED NETWORK JUMP HOSTS
+    [JsonPropertyName("jump_hosts")] public List<JumpHost> JumpHosts { get; set; } = new();
+
+
+    public string Id { get; set; } = Guid.NewGuid().ToString();
     public string? JumpServerId { get; set; }
     public string? Username { get; set; }
     public string? KeyPath { get; set; }
@@ -125,39 +127,22 @@ public sealed class ServerConfig
             }
         }
 
-        // Deep copy RDP Jump Hosts
-        if (this.RdpJumpHosts != null)
-        {
-            clone.RdpJumpHosts = new List<JumpHost>();
-            foreach (var host in this.RdpJumpHosts)
-            {
-                clone.RdpJumpHosts.Add(new JumpHost
-                {
-                    Host = host.Host,
-                    Port = host.Port,
-                    User = host.User,
-                    Password = host.Password
-                });
-            }
-        }
-
-        // Deep copy SFTP Jump Hosts
-        if (this.SftpJumpHosts != null)
-        {
-            clone.SftpJumpHosts = new List<JumpHost>();
-            foreach (var host in this.SftpJumpHosts)
-            {
-                clone.SftpJumpHosts.Add(new JumpHost
-                {
-                    Host = host.Host,
-                    Port = host.Port,
-                    User = host.User,
-                    Password = host.Password
-                });
-            }
-        }
-
-        return clone;
+        // Deep copy Unified Jump Hosts
+        if (this.JumpHosts != null)
+        {
+            clone.JumpHosts = new List<JumpHost>();
+            foreach (var host in this.JumpHosts)
+            {
+                clone.JumpHosts.Add(new JumpHost
+                {
+                    Host = host.Host,
+                    Port = host.Port,
+                    User = host.User,
+                    Password = host.Password
+                });
+            }
+        }
+        return clone;
     }
 }
 

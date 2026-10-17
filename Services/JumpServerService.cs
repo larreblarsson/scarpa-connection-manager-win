@@ -40,22 +40,70 @@ public class JumpTunnel : IDisposable
 
 public static class JumpServerService
 {
-    /// <summary>
-    /// Resolves whether a target server has a valid Jump Server assigned.
-    /// </summary>
     public static ServerConfig? ResolveJumpServer(ServerConfig target, IEnumerable<ServerConfig> allServers)
     {
-        if (string.IsNullOrWhiteSpace(target.JumpServerId)) return null;
-
-        var match = allServers.FirstOrDefault(s =>
-            string.Equals(s.Id, target.JumpServerId, StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(s.Name, target.JumpServerId, StringComparison.OrdinalIgnoreCase));
-
-        if (match != null)
+        // 1. Check for the inline JumpHosts list entry first (From the Network Tab)
+        if (target.JumpHosts != null && target.JumpHosts.Count > 0)
         {
-            Debug.WriteLine($"[JumpServerService] Resolved referenced jump server ID: {match.Name}");
+            var inlineJump = target.JumpHosts[0];
+            Debug.WriteLine($"[JumpServerService] Resolved inline jump host: {inlineJump.Host}:{inlineJump.Port}");
+
+            return new ServerConfig
+            {
+                Name = $"JumpHost-{inlineJump.Host}",
+                Host = inlineJump.Host,
+                Port = inlineJump.Port > 0 ? inlineJump.Port : 22,
+                Username = inlineJump.User,
+                Password = inlineJump.Password
+            };
         }
-        return match;
+
+        // 2. Fallback check for referenced JumpServerId in allServers
+        if (!string.IsNullOrWhiteSpace(target.JumpServerId))
+        {
+            var match = allServers.FirstOrDefault(s =>
+                string.Equals(s.Id, target.JumpServerId, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(s.Name, target.JumpServerId, StringComparison.OrdinalIgnoreCase));
+
+            if (match != null)
+            {
+                Debug.WriteLine($"[JumpServerService] Resolved referenced jump server ID: {match.Name}");
+            }
+            return match;
+        }
+
+        return null;
+    }
+
+    public static async Task<(ServerConfig TargetConfig, IDisposable? Tunnel)> PrepareConnectionAsync(ServerConfig cfg, IEnumerable<ServerConfig> allServers)
+    {
+        Debug.WriteLine($"[JumpServerService] PrepareConnectionAsync called for server: '{cfg.Name}' ({cfg.Host})");
+
+        var jumpServer = ResolveJumpServer(cfg, allServers);
+        if (jumpServer == null)
+        {
+            Debug.WriteLine($"[JumpServerService] No jump host configured or resolved for '{cfg.Name}'. Connecting directly.");
+            return (cfg, null);
+        }
+
+        int targetPort = cfg.Port > 0 ? cfg.Port : 22;
+        var tunnel = await EstablishTunnelAsync(jumpServer, cfg.Host, targetPort);
+
+        var targetConfig = cfg.Clone();
+
+        targetConfig.Host = "127.0.0.1";
+        targetConfig.Port = (int)tunnel.LocalPort;
+
+        // Wipe jump data from the clone so TerminalControl doesn't try to double-tunnel
+        targetConfig.JumpServerId = null;
+        if (targetConfig.JumpHosts != null)
+        {
+            targetConfig.JumpHosts.Clear();
+        }
+
+        Debug.WriteLine($"[JumpServerService] Target redirected to 127.0.0.1:{targetConfig.Port}");
+
+        return (targetConfig, tunnel);
     }
 
     public static async Task<JumpTunnel> EstablishTunnelAsync(ServerConfig jumpServer, string targetHost, int targetPort, string? jumpPassword = null)
@@ -111,31 +159,5 @@ public static class JumpServerService
 
             return new JumpTunnel(client, localPort, "127.0.0.1");
         });
-    }
-
-    public static async Task<(ServerConfig TargetConfig, IDisposable? Tunnel)> PrepareConnectionAsync(ServerConfig cfg, IEnumerable<ServerConfig> allServers)
-    {
-        Debug.WriteLine($"[JumpServerService] PrepareConnectionAsync called for server: '{cfg.Name}' ({cfg.Host})");
-
-        var jumpServer = ResolveJumpServer(cfg, allServers);
-        if (jumpServer == null)
-        {
-            Debug.WriteLine($"[JumpServerService] No jump host configured or resolved for '{cfg.Name}'. Connecting directly.");
-            return (cfg, null);
-        }
-
-        int targetPort = cfg.Port > 0 ? cfg.Port : 22;
-        var tunnel = await EstablishTunnelAsync(jumpServer, cfg.Host, targetPort);
-
-        var targetConfig = cfg.Clone();
-
-        // Force explicit IPv4 instead of tunnel.LocalHost 
-        targetConfig.Host = "127.0.0.1";
-        targetConfig.Port = (int)tunnel.LocalPort;
-        targetConfig.JumpServerId = null; // Wipe ID so it doesn't try to double-tunnel
-
-        Debug.WriteLine($"[JumpServerService] Target redirected to 127.0.0.1:{targetConfig.Port}");
-
-        return (targetConfig, tunnel);
     }
 }

@@ -21,11 +21,11 @@ public static class RdpService
         var activeForwards = new List<ForwardedPortLocal>();
 
         // 1. NESTED SSH TUNNELS FOR JUMP HOSTS
-        if (config.RdpJumpHosts != null && config.RdpJumpHosts.Any())
+        if (config.JumpHosts != null && config.JumpHosts.Any())
         {
             ForwardedPortLocal? previousFwd = null;
 
-            foreach (var jump in config.RdpJumpHosts)
+            foreach (var jump in config.JumpHosts)
             {
                 string connectHost = previousFwd == null ? jump.Host : "127.0.0.1";
                 int connectPort = previousFwd == null ? (jump.Port > 0 ? jump.Port : 22) : (int)previousFwd.BoundPort;
@@ -34,10 +34,10 @@ public static class RdpService
                 client.Connect();
                 activeClients.Add(client);
 
-                bool isLastJump = jump == config.RdpJumpHosts.Last();
+                bool isLastJump = jump == config.JumpHosts.Last();
 
-                string fwdDestHost = isLastJump ? config.Host : config.RdpJumpHosts[config.RdpJumpHosts.IndexOf(jump) + 1].Host;
-                int fwdDestPort = isLastJump ? (config.RdpPort > 0 ? config.RdpPort : 3389) : config.RdpJumpHosts[config.RdpJumpHosts.IndexOf(jump) + 1].Port;
+                string fwdDestHost = isLastJump ? config.Host : config.JumpHosts[config.JumpHosts.IndexOf(jump) + 1].Host;
+                int fwdDestPort = isLastJump ? (config.RdpPort > 0 ? config.RdpPort : 3389) : config.JumpHosts[config.JumpHosts.IndexOf(jump) + 1].Port;
 
                 var fwd = new ForwardedPortLocal("127.0.0.1", 0, fwdDestHost, (uint)fwdDestPort);
                 client.AddForwardedPort(fwd);

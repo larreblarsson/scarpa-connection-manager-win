@@ -35,8 +35,6 @@ public static class RdpService
             "redirectwebauthn:i:0"
         };
 
-
-
         if (config.RdpResolution == "Full Screen") rdpLines.Add("screen mode id:i:2");
         else if (!string.IsNullOrWhiteSpace(config.RdpResolution) && config.RdpResolution.Contains("x"))
         {

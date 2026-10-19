@@ -3,9 +3,9 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Net.NetworkInformation;
 using System.Threading.Tasks;
 using Microsoft.Win32;
-using Renci.SshNet;
 using ScarpaConnectionManager.Models;
 
 namespace ScarpaConnectionManager.Services;
@@ -14,59 +14,29 @@ public static class RdpService
 {
     public static async Task LaunchAsync(ServerConfig config, string? password)
     {
+        // targetHost and targetPort are now perfectly provided by JumpServerService (e.g. 127.0.0.1:61210)
         string targetHost = config.Host;
         int targetPort = config.RdpPort > 0 ? config.RdpPort : 3389;
 
-        var activeClients = new List<SshClient>();
-        var activeForwards = new List<ForwardedPortLocal>();
+        Debug.WriteLine($"[RdpService] Initiating RDP Launch sequence for {targetHost}:{targetPort}...");
 
-        // 1. NESTED SSH TUNNELS FOR JUMP HOSTS
-        if (config.JumpHosts != null && config.JumpHosts.Any())
-        {
-            ForwardedPortLocal? previousFwd = null;
-
-            foreach (var jump in config.JumpHosts)
-            {
-                string connectHost = previousFwd == null ? jump.Host : "127.0.0.1";
-                int connectPort = previousFwd == null ? (jump.Port > 0 ? jump.Port : 22) : (int)previousFwd.BoundPort;
-
-                var client = new SshClient(connectHost, connectPort, jump.User, jump.Password);
-                client.Connect();
-                activeClients.Add(client);
-
-                bool isLastJump = jump == config.JumpHosts.Last();
-
-                string fwdDestHost = isLastJump ? config.Host : config.JumpHosts[config.JumpHosts.IndexOf(jump) + 1].Host;
-                int fwdDestPort = isLastJump ? (config.RdpPort > 0 ? config.RdpPort : 3389) : config.JumpHosts[config.JumpHosts.IndexOf(jump) + 1].Port;
-
-                var fwd = new ForwardedPortLocal("127.0.0.1", 0, fwdDestHost, (uint)fwdDestPort);
-                client.AddForwardedPort(fwd);
-                fwd.Start();
-                activeForwards.Add(fwd);
-
-                previousFwd = fwd;
-            }
-
-            targetHost = "127.0.0.1";
-            targetPort = (int)previousFwd!.BoundPort;
-        }
-
-        // 2. SPOOF THE SYSTEM'S DEFAULT.RDP TEMPLATE
+        // 1. SPOOF THE SYSTEM'S DEFAULT.RDP TEMPLATE
+        Debug.WriteLine($"[RdpService] Generating Default.rdp...");
         var rdpLines = new List<string>
         {
             $"full address:s:{targetHost}" + (targetPort == 3389 ? "" : $":{targetPort}"),
             $"username:s:{(string.IsNullOrEmpty(config.User) ? "" : config.User)}",
             $"redirectclipboard:i:{(config.RdpClipboard ? 1 : 0)}",
             $"audiomode:i:{(config.RdpAudio ? 0 : 2)}",
+            "transport type:i:1",
             $"authentication level:i:{(config.RdpIgnoreCert ? 0 : 2)}",
-            
-            // Explicitly disable unused devices to minimize security footprint
             "redirectprinters:i:0",
             "redirectsmartcards:i:0",
             "redirectwebauthn:i:0"
         };
 
-        // Screen Resolution
+
+
         if (config.RdpResolution == "Full Screen") rdpLines.Add("screen mode id:i:2");
         else if (!string.IsNullOrWhiteSpace(config.RdpResolution) && config.RdpResolution.Contains("x"))
         {
@@ -79,7 +49,6 @@ public static class RdpService
             }
         }
 
-        // Drive Mapping
         if (config.RdpRedirectDrive && !string.IsNullOrWhiteSpace(config.RdpDrivePath))
         {
             string rawDriveStr = config.RdpDrivePath.Trim();
@@ -92,12 +61,10 @@ public static class RdpService
             }
         }
 
-        // Setup paths for the Default.rdp spoofing
         string docsFolder = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
         string defaultRdpPath = Path.Combine(docsFolder, "Default.rdp");
         string backupRdpPath = Path.Combine(docsFolder, "Default_backup.rdp");
 
-        // PREVENT ACCESS DENIED: Clear hidden/readonly attributes before touching the file
         if (File.Exists(defaultRdpPath))
         {
             try
@@ -108,13 +75,10 @@ public static class RdpService
             catch { }
         }
 
-        // Now it is safe to write our spoofed template
         await File.WriteAllLinesAsync(defaultRdpPath, rdpLines);
-
-        // Re-hide the file as Windows expects
         try { File.SetAttributes(defaultRdpPath, File.GetAttributes(defaultRdpPath) | FileAttributes.Hidden); } catch { }
 
-        // 3. SECURELY INJECT CREDENTIALS FOR AUTO-LOGIN
+        // 2. SECURELY INJECT CREDENTIALS
         string? autoLogonPass = password ?? config.Password;
         if (!string.IsNullOrEmpty(autoLogonPass))
         {
@@ -127,10 +91,9 @@ public static class RdpService
             })?.WaitForExit();
         }
 
-        // 3.5 SUPPRESS "UNKNOWN PUBLISHER" WARNING POPUPS
+        // 3. SUPPRESS POPUPS
         try
         {
-            // 1. Classic Bypass: Approves ALL redirection by using -1 (0xFFFFFFFF DWORD bitmask)
             using (var devKey = Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Terminal Server Client\LocalDevices"))
             {
                 if (devKey != null)
@@ -139,13 +102,10 @@ public static class RdpService
                     devKey.SetValue($"{targetHost}:{targetPort}", -1, RegistryValueKind.DWord);
                 }
             }
-
-            // 2. April 2026 Update Bypass: Reverts the new strict RDP security dialog to the classic behavior
             using (var consentKey = Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Terminal Server Client"))
             {
                 consentKey?.SetValue("RdpLaunchConsentAccepted", 1, RegistryValueKind.DWord);
             }
-
             using (var policyKey = Registry.CurrentUser.CreateSubKey(@"Software\Policies\Microsoft\Windows NT\Terminal Services\Client"))
             {
                 policyKey?.SetValue("RedirectionWarningDialogVersion", 1, RegistryValueKind.DWord);
@@ -153,56 +113,80 @@ public static class RdpService
         }
         catch { }
 
-        // 4. LAUNCH RDP CLIENT NATIVELY
-        // By using /v instead of passing a file, Windows treats this as a trusted manual 
-        // connection and quietly absorbs the drive mappings from our Default.rdp template
-        Process? rdpProcess = Process.Start(new ProcessStartInfo
+        // 4. LAUNCH RDP
+        Debug.WriteLine($"[RdpService] Launching mstsc.exe /v:{targetHost}:{targetPort}...");
+        Process.Start(new ProcessStartInfo
         {
             FileName = "mstsc.exe",
             Arguments = $"/v:{targetHost}" + (targetPort == 3389 ? "" : $":{targetPort}"),
             UseShellExecute = false
         });
 
-        // 5. BACKGROUND CLEANUP & RESTORE
-        _ = Task.Run(async () =>
+        // 5. WAIT FOR RDP SESSION TO CLOSE
+        Debug.WriteLine($"[RdpService] Waiting for MSTSC to establish a TCP connection on port {targetPort}...");
+        bool isConnected = false;
+
+        for (int i = 0; i < 30; i++)
         {
-            if (rdpProcess != null)
+            await Task.Delay(2000);
+            if (IsTunnelActive(targetPort))
             {
-                try { rdpProcess.WaitForExit(); } catch { }
+                Debug.WriteLine("[RdpService] TCP Connection successfully established! Holding method open...");
+                isConnected = true;
+                break;
             }
+        }
 
-            // Give MSTSC a moment to fully close before reverting files
-            await Task.Delay(3000);
+        if (!isConnected)
+        {
+            Debug.WriteLine("[RdpService] TIMEOUT: mstsc.exe never established a TCP connection.");
+        }
 
-            // Restore the user's original Default.rdp
-            try
+        if (isConnected)
+        {
+            while (IsTunnelActive(targetPort))
             {
-                if (File.Exists(backupRdpPath))
-                {
-                    // Remove hidden attribute so we can overwrite/delete safely
-                    File.SetAttributes(defaultRdpPath, FileAttributes.Normal);
-                    File.Copy(backupRdpPath, defaultRdpPath, true);
-                    File.Delete(backupRdpPath);
-                    // Re-hide the restored default.rdp
-                    File.SetAttributes(defaultRdpPath, File.GetAttributes(defaultRdpPath) | FileAttributes.Hidden);
-                }
-                else
-                {
-                    File.SetAttributes(defaultRdpPath, FileAttributes.Normal);
-                    File.Delete(defaultRdpPath);
-                }
+                await Task.Delay(3000);
             }
-            catch { }
+            Debug.WriteLine("[RdpService] TCP Connection closed by user. Initiating cleanup...");
+            await Task.Delay(2000);
+        }
 
-            // Delete credentials
-            if (!string.IsNullOrEmpty(autoLogonPass))
+        // 6. CLEANUP
+        try
+        {
+            if (File.Exists(backupRdpPath))
             {
-                try { Process.Start(new ProcessStartInfo { FileName = "cmdkey", Arguments = $"/delete:TERMSRV/{targetHost}", UseShellExecute = false, CreateNoWindow = true })?.WaitForExit(); } catch { }
+                File.SetAttributes(defaultRdpPath, FileAttributes.Normal);
+                File.Copy(backupRdpPath, defaultRdpPath, true);
+                File.Delete(backupRdpPath);
+                File.SetAttributes(defaultRdpPath, File.GetAttributes(defaultRdpPath) | FileAttributes.Hidden);
             }
+            else
+            {
+                File.SetAttributes(defaultRdpPath, FileAttributes.Normal);
+                File.Delete(defaultRdpPath);
+            }
+        }
+        catch { }
 
-            // Kill SSH Tunnels
-            for (int i = activeForwards.Count - 1; i >= 0; i--) { try { activeForwards[i].Stop(); } catch { } }
-            for (int i = activeClients.Count - 1; i >= 0; i--) { try { activeClients[i].Dispose(); } catch { } }
-        });
+        if (!string.IsNullOrEmpty(autoLogonPass))
+        {
+            try { Process.Start(new ProcessStartInfo { FileName = "cmdkey", Arguments = $"/delete:TERMSRV/{targetHost}", UseShellExecute = false, CreateNoWindow = true })?.WaitForExit(); } catch { }
+        }
+
+        Debug.WriteLine("[RdpService] RDP Launch sequence and cleanup complete.");
+    }
+
+    private static bool IsTunnelActive(int port)
+    {
+        try
+        {
+            var properties = IPGlobalProperties.GetIPGlobalProperties();
+            var connections = properties.GetActiveTcpConnections();
+            return connections.Any(c => c.LocalEndPoint.Port == port &&
+                                        c.State == TcpState.Established);
+        }
+        catch { return false; }
     }
 }

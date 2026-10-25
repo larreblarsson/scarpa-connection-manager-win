@@ -10,6 +10,7 @@ using System.Collections.Generic;
 using Renci.SshNet;
 using ScarpaConnectionManager.Models;
 using ScarpaConnectionManager.Services;
+using Microsoft.Web.WebView2.Core; // Added for the WebView2 cache fix
 
 namespace scarpa_connection_manager_win.Controls;
 
@@ -112,7 +113,16 @@ public sealed partial class TerminalControl : UserControl
 
     private async Task InitializeTerminalAsync(ServerConfig cfg)
     {
+        // --- START WEBVIEW2 CACHE FIX (WinUI 3 Specific) ---
+        string appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        string cacheFolder = Path.Combine(appData, "ScarpaConnectionManager", "WebView2Cache");
+
+        // Tell WinUI 3 exactly where to build the WebView2 cache before initializing it
+        Environment.SetEnvironmentVariable("WEBVIEW2_USER_DATA_FOLDER", cacheFolder);
+
         await TerminalView.EnsureCoreWebView2Async();
+        // --- END WEBVIEW2 CACHE FIX ---
+
         TerminalView.CoreWebView2.SetVirtualHostNameToFolderMapping("terminal.local", AppContext.BaseDirectory, Microsoft.Web.WebView2.Core.CoreWebView2HostResourceAccessKind.Allow);
 
         TerminalView.WebMessageReceived += (s, e) =>
@@ -364,8 +374,6 @@ public sealed partial class TerminalControl : UserControl
 
                 // Wait slightly before looking for the NEXT string so the server has time to receive the command
                 await Task.Delay(250);
-
-                // DELETED the old _loginBuffer.Clear() that was causing the race condition!
             }
 
             _currentExpect = null;

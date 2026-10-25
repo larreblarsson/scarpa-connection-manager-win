@@ -28,7 +28,6 @@ public sealed partial class SshSessionWindow : Window
         string iconPath = System.IO.Path.Combine(System.AppContext.BaseDirectory, "Assets\\scarpa_icon.ico");
         appWindow.SetIcon(iconPath);
 
-
         // Create the terminal control programmatically
         _termControl = new TerminalControl(cfg, logPath);
 

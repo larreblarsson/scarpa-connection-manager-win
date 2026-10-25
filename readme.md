@@ -6,7 +6,7 @@ Built on .NET 8 as a completely self-contained deployment, Scarpa requires no ex
 
 ---
 
-## 🛡️ Security & Data Protection
+## Security & Data Protection
 
 Security is handled entirely locally; Scarpa never transmits configuration data to external servers.
 
@@ -18,7 +18,7 @@ Security is handled entirely locally; Scarpa never transmits configuration data 
 
 ---
 
-## 🖥️ Advanced Terminal & Rendering
+## Advanced Terminal & Rendering
 
 Scarpa abandons the legacy Windows Console in favor of a modern, web-standard rendering pipeline.
 
@@ -32,7 +32,7 @@ Scarpa abandons the legacy Windows Console in favor of a modern, web-standard re
 
 ---
 
-## ⚙️ Session Automation & Scripting
+## Session Automation & Scripting
 
 Scarpa is designed to eliminate repetitive administrative tasks through deep connection automation.
 
@@ -42,7 +42,7 @@ Scarpa is designed to eliminate repetitive administrative tasks through deep con
 
 ---
 
-## 📡 Advanced Networking & Routing
+## Advanced Networking & Routing
 
 Complex infrastructure requires complex routing. Scarpa handles complex SSH tunneling seamlessly.
 
@@ -54,7 +54,7 @@ Complex infrastructure requires complex routing. Scarpa handles complex SSH tunn
 
 ---
 
-## 📝 Auditing & Connection Resilience
+## Auditing & Connection Resilience
 
 *   **Anti-Idle (Keep-Alive):** Keep long-running sessions alive behind strict corporate firewalls or aggressive NAT routers. Configure custom payload strings (e.g., a null byte or whitespace) and exact transmission intervals (in seconds) to prevent premature session termination.
 *   **Intelligent Logging Engine:** 
@@ -66,7 +66,7 @@ Complex infrastructure requires complex routing. Scarpa handles complex SSH tunn
 
 ---
 
-## 🪟 Windows Remote Desktop (RDP) Integration
+## Windows Remote Desktop (RDP) Integration
 
 *   **Dynamic Configuration:** Scarpa does not reinvent the RDP wheel; it generates highly optimized, temporary `.rdp` files on-the-fly and hands them off to the native Windows `mstsc.exe` client for maximum stability and performance.
 *   **Session Tuning:** 

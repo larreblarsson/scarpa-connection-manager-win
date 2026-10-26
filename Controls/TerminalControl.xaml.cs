@@ -10,7 +10,7 @@ using System.Collections.Generic;
 using Renci.SshNet;
 using ScarpaConnectionManager.Models;
 using ScarpaConnectionManager.Services;
-using Microsoft.Web.WebView2.Core; // Added for the WebView2 cache fix
+using Microsoft.Web.WebView2.Core;
 
 namespace scarpa_connection_manager_win.Controls;
 
@@ -113,15 +113,12 @@ public sealed partial class TerminalControl : UserControl
 
     private async Task InitializeTerminalAsync(ServerConfig cfg)
     {
-        // --- START WEBVIEW2 CACHE FIX (WinUI 3 Specific) ---
         string appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
         string cacheFolder = Path.Combine(appData, "ScarpaConnectionManager", "WebView2Cache");
 
-        // Tell WinUI 3 exactly where to build the WebView2 cache before initializing it
         Environment.SetEnvironmentVariable("WEBVIEW2_USER_DATA_FOLDER", cacheFolder);
 
         await TerminalView.EnsureCoreWebView2Async();
-        // --- END WEBVIEW2 CACHE FIX ---
 
         TerminalView.CoreWebView2.SetVirtualHostNameToFolderMapping("terminal.local", AppContext.BaseDirectory, Microsoft.Web.WebView2.Core.CoreWebView2HostResourceAccessKind.Allow);
 
@@ -152,6 +149,31 @@ public sealed partial class TerminalControl : UserControl
         TerminalView.CoreWebView2.Navigate("https://terminal.local/terminal.html");
     }
 
+    private bool IsLightColor(string hex)
+    {
+        if (string.IsNullOrWhiteSpace(hex)) return false;
+
+        hex = hex.TrimStart('#');
+
+        if (hex.Length == 3)
+            hex = new string(new char[] { hex[0], hex[0], hex[1], hex[1], hex[2], hex[2] });
+
+        if (hex.Length >= 6)
+        {
+            try
+            {
+                int r = Convert.ToInt32(hex.Substring(0, 2), 16);
+                int g = Convert.ToInt32(hex.Substring(2, 2), 16);
+                int b = Convert.ToInt32(hex.Substring(4, 2), 16);
+
+                double brightness = (0.299 * r + 0.587 * g + 0.114 * b) / 255.0;
+                return brightness > 0.5;
+            }
+            catch { return false; }
+        }
+        return false;
+    }
+
     private async void TerminalView_NavigationCompleted(Microsoft.UI.Xaml.Controls.WebView2 sender, Microsoft.Web.WebView2.Core.CoreWebView2NavigationCompletedEventArgs args)
     {
         if (args.IsSuccess)
@@ -177,27 +199,42 @@ public sealed partial class TerminalControl : UserControl
             string bg = _config.TermBackground ?? "#101010";
             string palette = _config.TermPalette ?? "None";
             string ansiColors = "";
+            string selectionBg = "";
 
             if (palette == "Tango")
             {
                 ansiColors = "black: '#2e3436', red: '#cc0000', green: '#4e9a06', yellow: '#c4a000', blue: '#3465a4', magenta: '#75507b', cyan: '#06989a', white: '#d3d7cf', brightBlack: '#555753', brightRed: '#ef2929', brightGreen: '#8ae234', brightYellow: '#fce94f', brightBlue: '#729fcf', brightMagenta: '#ad7fa8', brightCyan: '#34e2e2', brightWhite: '#eeeeec', ";
+                selectionBg = "selectionBackground: 'rgba(255, 255, 255, 0.3)',";
             }
             else if (palette == "XTerm")
             {
                 ansiColors = "black: '#000000', red: '#cd0000', green: '#00cd00', yellow: '#cdcd00', blue: '#0000ee', magenta: '#cd00cd', cyan: '#00cdcd', white: '#e5e5e5', brightBlack: '#7f7f7f', brightRed: '#ff0000', brightGreen: '#00ff00', brightYellow: '#ffff00', brightBlue: '#5c5cff', brightMagenta: '#ff00ff', brightCyan: '#00ffff', brightWhite: '#ffffff', ";
+                selectionBg = "selectionBackground: 'rgba(255, 255, 255, 0.3)',";
             }
             else if (palette == "Rxvt")
             {
                 ansiColors = "black: '#000000', red: '#cd0000', green: '#00cd00', yellow: '#cdcd00', blue: '#0000cd', magenta: '#cd00cd', cyan: '#00cdcd', white: '#faebd7', brightBlack: '#404040', brightRed: '#ff0000', brightGreen: '#00ff00', brightYellow: '#ffff00', brightBlue: '#0000ff', brightMagenta: '#ff00ff', brightCyan: '#00ffff', brightWhite: '#ffffff', ";
+                selectionBg = "selectionBackground: 'rgba(255, 255, 255, 0.3)',";
+            }
+            else
+            {
+                if (IsLightColor(bg))
+                {
+                    selectionBg = "selectionBackground: 'rgba(0, 0, 0, 0.25)',";
+                }
+                else
+                {
+                    selectionBg = "selectionBackground: 'rgba(255, 255, 255, 0.25)',";
+                }
             }
 
             string script = $@"
             term.options.fontFamily = '{fontName}, Consolas, monospace';
             term.options.fontSize = {fontSize};
             
-            // Just update the colors! (The cursor shape and blink are already handled by the HTML)
             term.options.theme = {{ 
                 {ansiColors} 
+                {selectionBg}
                 background: '{bg}', 
                 foreground: '{fg}',
                 cursor: '{fg}',
@@ -207,7 +244,6 @@ public sealed partial class TerminalControl : UserControl
             document.body.style.backgroundColor = '{bg}';
             fitAddon.fit();
             
-            // Ensure focus events still force the terminal active
             window.addEventListener('focus', () => term.focus());
             document.addEventListener('click', () => term.focus());
             
@@ -216,9 +252,7 @@ public sealed partial class TerminalControl : UserControl
 
             await TerminalView.CoreWebView2.ExecuteScriptAsync(script);
 
-            // Pass hardware keyboard focus to WebView2
             TerminalView.Focus(Microsoft.UI.Xaml.FocusState.Programmatic);
-
         }
     }
 
@@ -230,7 +264,6 @@ public sealed partial class TerminalControl : UserControl
             {
                 var authMethods = new List<AuthenticationMethod>();
 
-                // 1. Key File Auth
                 if (cfg.AuthMethod == "key_file" && !string.IsNullOrWhiteSpace(cfg.KeyFile))
                 {
                     if (File.Exists(cfg.KeyFile))
@@ -243,9 +276,7 @@ public sealed partial class TerminalControl : UserControl
                 }
                 else
                 {
-                    // 2. Password & Keyboard Interactive Auth
                     string pass = cfg.Password ?? "";
-
                     authMethods.Add(new PasswordAuthenticationMethod(cfg.User, pass));
 
                     var kbdAuth = new KeyboardInteractiveAuthenticationMethod(cfg.User);
@@ -253,8 +284,6 @@ public sealed partial class TerminalControl : UserControl
                     {
                         foreach (var prompt in e.Prompts)
                         {
-                            // Feed the password to the prompt, regardless of whether 
-                            // the server asks in English, Swedish, or anything else!
                             prompt.Response = cfg.Password ?? "";
                         }
                     };
@@ -265,7 +294,6 @@ public sealed partial class TerminalControl : UserControl
                 _sshClient = new SshClient(connectionInfo);
                 _sshClient.Connect();
 
-                // === START PORT FORWARDING LOGIC ===
                 if (cfg.PortForwardRules != null)
                 {
                     foreach (var rule in cfg.PortForwardRules)
@@ -274,43 +302,36 @@ public sealed partial class TerminalControl : UserControl
                         {
                             if (rule.Type == "Local")
                             {
-                                // Listens on local machine (127.0.0.1:SourcePort) -> routes through SSH -> to DestinationHost:DestinationPort
                                 var port = new ForwardedPortLocal("127.0.0.1", (uint)rule.SourcePort, rule.DestinationHost, (uint)rule.DestinationPort);
                                 _sshClient.AddForwardedPort(port);
                                 port.Start();
                             }
                             else if (rule.Type == "Remote")
                             {
-                                // Server listens on its SourcePort -> routes back through SSH -> to your local DestinationHost:DestinationPort
                                 var port = new ForwardedPortRemote((uint)rule.SourcePort, rule.DestinationHost, (uint)rule.DestinationPort);
                                 _sshClient.AddForwardedPort(port);
                                 port.Start();
                             }
                             else if (rule.Type == "Dynamic")
                             {
-                                // Listens on local machine (127.0.0.1:SourcePort) and acts as a SOCKS5 proxy
                                 var port = new ForwardedPortDynamic("127.0.0.1", (uint)rule.SourcePort);
                                 _sshClient.AddForwardedPort(port);
                                 port.Start();
                             }
 
-                            // Optional: Print a success message to your terminal so you know the tunnel is active
                             SendToTerminal($"\r\n\x1b[32m[Port Forward] {rule.Type} forwarding established on port {rule.SourcePort}\x1b[0m\r\n");
                         }
                         catch (Exception ex)
                         {
-                            // If a port is already in use or the server denies it, catch it here so it doesn't crash the whole SSH session
                             SendToTerminal($"\r\n\x1b[33m[Warning] Failed to bind {rule.Type} port {rule.SourcePort}: {ex.Message}\x1b[0m\r\n");
                         }
                     }
                 }
-                // === END PORT FORWARDING LOGIC ===
 
                 _shellStream = _sshClient.CreateShellStream("xterm", 80, 24, 800, 600, 1024);
 
                 StartAntiIdle(cfg);
 
-                // Launch the reader and automation concurrently
                 _ = ReadStreamAsync();
                 _ = RunPostLoginAutomationAsync(cfg);
             }
@@ -323,7 +344,6 @@ public sealed partial class TerminalControl : UserControl
 
     private async Task RunPostLoginAutomationAsync(ServerConfig cfg)
     {
-        // 1. Execute Login Actions (Expect/Send) First
         if (cfg.LoginActions != null && cfg.LoginActions.Count > 0)
         {
             foreach (var step in cfg.LoginActions)
@@ -333,15 +353,13 @@ public sealed partial class TerminalControl : UserControl
                 _expectTcs = new TaskCompletionSource<bool>();
                 _currentExpect = step.Expect;
 
-                // Check if the prompt already arrived BEFORE we even started waiting
                 if (_loginBuffer.ToString().Contains(_currentExpect))
                 {
                     _currentExpect = null;
-                    _loginBuffer.Clear(); // <-- FIX: Wipe immediately
+                    _loginBuffer.Clear();
                     _expectTcs.TrySetResult(true);
                 }
 
-                // Wait for the string to appear OR the timeout to expire
                 var timeoutTask = Task.Delay(step.Timeout > 0 ? step.Timeout * 1000 : 5000);
                 var completedTask = await Task.WhenAny(_expectTcs.Task, timeoutTask);
 
@@ -350,9 +368,8 @@ public sealed partial class TerminalControl : UserControl
                     SendToTerminal($"\r\n\x1b[33m[Login Action] Timeout ({step.Timeout}s) waiting for '{step.Expect}'. Skipping step.\x1b[0m\r\n");
 
                     _currentExpect = null;
-                    _loginBuffer.Clear(); // <-- FIX: Clear stale data on timeout
+                    _loginBuffer.Clear();
 
-                    // Send a simulated "Enter" keypress (\r) to the server to force a fresh prompt line
                     if (_shellStream != null && _shellStream.CanWrite)
                     {
                         _shellStream.Write(new byte[] { 13 }, 0, 1);
@@ -361,9 +378,8 @@ public sealed partial class TerminalControl : UserControl
                     continue;
                 }
 
-                // Match found! Inject the Send command.
                 string toSend = (step.Send ?? "").Replace("\\n", "\n").Replace("\\r", "\r");
-                if (!toSend.EndsWith("\n") && !toSend.EndsWith("\r")) toSend += "\r"; // Auto-append enter
+                if (!toSend.EndsWith("\n") && !toSend.EndsWith("\r")) toSend += "\r";
 
                 if (_shellStream != null && _shellStream.CanWrite)
                 {
@@ -372,7 +388,6 @@ public sealed partial class TerminalControl : UserControl
                     _shellStream.Flush();
                 }
 
-                // Wait slightly before looking for the NEXT string so the server has time to receive the command
                 await Task.Delay(250);
             }
 
@@ -380,14 +395,12 @@ public sealed partial class TerminalControl : UserControl
             _loginBuffer.Clear();
         }
 
-        // 2. Execute Startup Command File AFTER the login sequence finishes
         if (cfg.StartupCmdEnabled && !string.IsNullOrWhiteSpace(cfg.StartupCmdPath))
         {
             try
             {
                 if (File.Exists(cfg.StartupCmdPath))
                 {
-                    // Give the shell a moment to initialize only if we skipped the login actions
                     if (cfg.LoginActions == null || cfg.LoginActions.Count == 0) await Task.Delay(1000);
 
                     string script = await File.ReadAllTextAsync(cfg.StartupCmdPath);
@@ -496,18 +509,16 @@ public sealed partial class TerminalControl : UserControl
                 WriteToLog(text);
                 SendToTerminal(text);
 
-                // ALWAYS strip invisible characters and accumulate into the rolling buffer
                 string cleanText = Regex.Replace(text, @"\x1B\[[0-?]*[ -/]*[@-~]|\x1B\][^\x07\x1B]*(?:\x07|\x1B\\)", "");
                 cleanText = Regex.Replace(cleanText, @"[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]", "");
 
                 _loginBuffer.Append(cleanText);
                 if (_loginBuffer.Length > 10000) _loginBuffer.Remove(0, 5000);
 
-                // Check if we matched the active expect string
                 if (_currentExpect != null && _loginBuffer.ToString().Contains(_currentExpect))
                 {
                     _currentExpect = null;
-                    _loginBuffer.Clear(); // <-- FIX: Wipe the matched text immediately so we don't double-match
+                    _loginBuffer.Clear();
                     _expectTcs?.TrySetResult(true);
                 }
             }

@@ -1775,8 +1775,13 @@ public sealed partial class MainWindow : Window
             node.Children.Add(child);
         }
     }
+    private void MirrorAndroidDevice_Click(object sender, RoutedEventArgs e)
+    {
+        var mirrorWindow = new Dialogs.AndroidMirrorWindow();
+        mirrorWindow.Activate();
+    }
 
-    private void MainWindow_Closed(object sender, WindowEventArgs args)
+    private void MainWindow_Closed(object sender, WindowEventArgs args)
     {
         // This instantly terminates the app process, instantly closing all SSH/SFTP windows and dialogs.
         Application.Current.Exit();

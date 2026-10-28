@@ -71,6 +71,7 @@
   
   <ItemGroup>
     <None Remove="Controls\TerminalControl.xaml" />
+    <None Remove="Dialogs\AndroidMirrorWindow.xaml" />
     <None Remove="Dialogs\GlobalDefaultsDialog.xaml" />
     <None Remove="Dialogs\PassphraseDialog.xaml" />
     <None Remove="Dialogs\ServerDialog.xaml" />
@@ -97,6 +98,12 @@
     <Content Update="Assets\snap_icon.ico">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+  </ItemGroup>
+  
+  <ItemGroup>
+    <Page Update="Dialogs\AndroidMirrorWindow.xaml">
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
   </ItemGroup>
   
   <ItemGroup>

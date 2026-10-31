@@ -1,95 +1,141 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
+using System.Runtime.InteropServices;
+using System.Security;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace ScarpaConnectionManager.Models;
 
+// --- SECURITY FIX: SECURE STRING HELPERS & CONVERTERS ---
+public static class SecureStringExtensions
+{
+    public static SecureString ToSecureString(this string? plainString)
+    {
+        var secureString = new SecureString();
+        if (string.IsNullOrEmpty(plainString)) return secureString;
+        foreach (char c in plainString) secureString.AppendChar(c);
+        secureString.MakeReadOnly();
+        return secureString;
+    }
+
+    public static string ToPlainString(this SecureString? secureString)
+    {
+        if (secureString == null || secureString.Length == 0) return string.Empty;
+        IntPtr valuePtr = IntPtr.Zero;
+        try
+        {
+            valuePtr = Marshal.SecureStringToGlobalAllocUnicode(secureString);
+            return Marshal.PtrToStringUni(valuePtr) ?? string.Empty;
+        }
+        finally
+        {
+            if (valuePtr != IntPtr.Zero)
+                Marshal.ZeroFreeGlobalAllocUnicode(valuePtr);
+        }
+    }
+}
+
+public class SecureStringJsonConverter : JsonConverter<SecureString>
+{
+    public override SecureString? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        return reader.GetString()?.ToSecureString();
+    }
+
+    public override void Write(Utf8JsonWriter writer, SecureString value, JsonSerializerOptions options)
+    {
+        writer.WriteStringValue(value.ToPlainString()); // Decrypts just in time for file encryption
+    }
+}
+// --------------------------------------------------------
+
 public class JumpHost
 {
-    [JsonPropertyName("host")] public string Host { get; set; } = "";
-    [JsonPropertyName("port")] public int Port { get; set; } = 22;
-    [JsonPropertyName("user")] public string User { get; set; } = "";
-    [JsonPropertyName("password")] public string Password { get; set; } = "";
+    [JsonPropertyName("host")] public string Host { get; set; } = "";
+    [JsonPropertyName("port")] public int Port { get; set; } = 22;
+    [JsonPropertyName("user")] public string User { get; set; } = "";
+
+    [JsonPropertyName("password")]
+    [JsonConverter(typeof(SecureStringJsonConverter))]
+    public SecureString? Password { get; set; }
 }
 
-/// <summary>Port forwarding rule (ssh -L / -R / -D).</summary>
 public sealed class PortForward
 {
-    [JsonPropertyName("type")] public string Type { get; set; } = "Local"; // Local | Remote | Dynamic
-    [JsonPropertyName("source_port")] public int SourcePort { get; set; }
-    [JsonPropertyName("dest_host")] public string DestHost { get; set; } = "";
-    [JsonPropertyName("dest_port")] public int DestPort { get; set; }
+    [JsonPropertyName("type")] public string Type { get; set; } = "Local";
+    [JsonPropertyName("source_port")] public int SourcePort { get; set; }
+    [JsonPropertyName("dest_host")] public string DestHost { get; set; } = "";
+    [JsonPropertyName("dest_port")] public int DestPort { get; set; }
 
-    public override string ToString() => Type == "Dynamic"
-        ? $"Dynamic  :{SourcePort}"
-        : $"{Type}  :{SourcePort} -> {DestHost}:{DestPort}";
+    public override string ToString() => Type == "Dynamic"
+        ? $"Dynamic  :{SourcePort}"
+        : $"{Type}  :{SourcePort} -> {DestHost}:{DestPort}";
 }
 
-/// <summary>One step of the post-login automation sequence (expect/send).</summary>
 public sealed class SequenceStep
 {
-    [JsonPropertyName("expect")] public string Expect { get; set; } = "";
-    [JsonPropertyName("send")] public string Send { get; set; } = "";
-    [JsonPropertyName("delay")] public double Delay { get; set; }
+    [JsonPropertyName("expect")] public string Expect { get; set; } = "";
+    [JsonPropertyName("send")] public string Send { get; set; } = "";
+    [JsonPropertyName("delay")] public double Delay { get; set; }
 
-    public override string ToString() => $"expect \"{Expect}\"  ->  send \"{Send}\"";
+    public override string ToString() => $"expect \"{Expect}\"  ->  send \"{Send}\"";
 }
 
-/// <summary>A saved connection. Field names match the Linux/GTK JSON format so files interoperate.</summary>
 public sealed class ServerConfig
 {
-    [JsonPropertyName("name")] public string Name { get; set; } = "";
-    [JsonPropertyName("host")] public string Host { get; set; } = "";
-    [JsonPropertyName("port")] public int Port { get; set; } = 22;
-    [JsonPropertyName("user")] public string User { get; set; } = "";
-    [JsonPropertyName("password")] public string? Password { get; set; }
-    [JsonPropertyName("auth_method")] public string AuthMethod { get; set; } = "password"; // password | key_file | ask
-    [JsonPropertyName("key_file")] public string? KeyFile { get; set; }
-    [JsonPropertyName("folder")] public string Folder { get; set; } = AppPaths.RootFolder;
+    [JsonPropertyName("name")] public string Name { get; set; } = "";
+    [JsonPropertyName("host")] public string Host { get; set; } = "";
+    [JsonPropertyName("port")] public int Port { get; set; } = 22;
+    [JsonPropertyName("user")] public string User { get; set; } = "";
 
-    [JsonPropertyName("port_forwards")] public List<PortForward> PortForwards { get; set; } = new();
-    [JsonPropertyName("auto_sequence")] public List<SequenceStep> AutoSequence { get; set; } = new();
+    [JsonPropertyName("password")]
+    [JsonConverter(typeof(SecureStringJsonConverter))]
+    public SecureString? Password { get; set; } // Now strictly held in encrypted RAM
 
-    // Terminal appearance
-    [JsonPropertyName("term_palette")] public string TermPalette { get; set; } = "None";
-    [JsonPropertyName("term_scheme")] public string TermScheme { get; set; } = "Default";
-    [JsonPropertyName("term_font")] public string TermFont { get; set; } = "Cascadia Mono 11";
-    [JsonPropertyName("term_fg")] public string TermForeground { get; set; } = "#D0D0D0";
-    [JsonPropertyName("term_bg")] public string TermBackground { get; set; } = "#101010";
-    [JsonPropertyName("term_scrollback")] public int TermScrollback { get; set; } = 10000;
+    [JsonPropertyName("auth_method")] public string AuthMethod { get; set; } = "password";
+    [JsonPropertyName("key_file")] public string? KeyFile { get; set; }
+    [JsonPropertyName("folder")] public string Folder { get; set; } = "Root";
 
-    // Session logging
-    [JsonPropertyName("logging_enabled")] public bool LoggingEnabled { get; set; }
-    [JsonPropertyName("log_path")] public string? LogPath { get; set; }
-    [JsonPropertyName("log_mode")] public string LogMode { get; set; } = "overwrite"; // overwrite | append
-    [JsonPropertyName("log_timestamps")] public bool LogTimestamps { get; set; }
+    [JsonPropertyName("port_forwards")] public List<PortForward> PortForwards { get; set; } = new();
+    [JsonPropertyName("auto_sequence")] public List<SequenceStep> AutoSequence { get; set; } = new();
 
-    // Append Data to Log settings
-    [JsonPropertyName("append_data_to_log")] public bool AppendDataToLog { get; set; }
-    [JsonPropertyName("log_connect_string")] public string? LogConnectString { get; set; }
-    [JsonPropertyName("log_disconnect_string")] public string? LogDisconnectString { get; set; }
-    [JsonPropertyName("log_each_line_string")] public string? LogEachLineString { get; set; }
+    // Terminal appearance
+    [JsonPropertyName("term_palette")] public string TermPalette { get; set; } = "None";
+    [JsonPropertyName("term_scheme")] public string TermScheme { get; set; } = "Default";
+    [JsonPropertyName("term_font")] public string TermFont { get; set; } = "Cascadia Mono 11";
+    [JsonPropertyName("term_fg")] public string TermForeground { get; set; } = "#D0D0D0";
+    [JsonPropertyName("term_bg")] public string TermBackground { get; set; } = "#101010";
+    [JsonPropertyName("term_scrollback")] public int TermScrollback { get; set; } = 10000;
 
-    // Keep-alive
-    [JsonPropertyName("anti_idle_enabled")] public bool AntiIdleEnabled { get; set; }
-    [JsonPropertyName("anti_idle_int")] public int AntiIdleInterval { get; set; } = 60;
-    [JsonPropertyName("anti_idle_str")] public string AntiIdleString { get; set; } = "\\n";
+    // Session logging
+    [JsonPropertyName("logging_enabled")] public bool LoggingEnabled { get; set; }
+    [JsonPropertyName("log_path")] public string? LogPath { get; set; }
+    [JsonPropertyName("log_mode")] public string LogMode { get; set; } = "overwrite";
+    [JsonPropertyName("log_timestamps")] public bool LogTimestamps { get; set; }
 
-    // Startup Command File
-    [JsonPropertyName("startup_cmd_enabled")] public bool StartupCmdEnabled { get; set; }
-    [JsonPropertyName("startup_cmd_path")] public string? StartupCmdPath { get; set; }
+    // Append Data to Log settings
+    [JsonPropertyName("append_data_to_log")] public bool AppendDataToLog { get; set; }
+    [JsonPropertyName("log_connect_string")] public string? LogConnectString { get; set; }
+    [JsonPropertyName("log_disconnect_string")] public string? LogDisconnectString { get; set; }
+    [JsonPropertyName("log_each_line_string")] public string? LogEachLineString { get; set; }
 
-    [JsonPropertyName("login_actions")]
-    public List<LoginActionStep> LoginActions { get; set; } = new();
+    // Keep-alive
+    [JsonPropertyName("anti_idle_enabled")] public bool AntiIdleEnabled { get; set; }
+    [JsonPropertyName("anti_idle_int")] public int AntiIdleInterval { get; set; } = 60;
+    [JsonPropertyName("anti_idle_str")] public string AntiIdleString { get; set; } = "\\n";
 
-    // Port Forwarding
-    public List<PortForwardRule> PortForwardRules { get; set; } = new();
+    // Startup Command File
+    [JsonPropertyName("startup_cmd_enabled")] public bool StartupCmdEnabled { get; set; }
+    [JsonPropertyName("startup_cmd_path")] public string? StartupCmdPath { get; set; }
 
-    // SFTP 
+    [JsonPropertyName("login_actions")]
+    public List<LoginActionStep> LoginActions { get; set; } = new();
+
+    // Port Forwarding
+    public List<PortForwardRule> PortForwardRules { get; set; } = new();
+
+    // SFTP 
     [JsonPropertyName("sftp_port")] public int SftpPort { get; set; } = 22;
 
     // RDP
@@ -105,29 +151,30 @@ public sealed class ServerConfig
     // CENTRALIZED NETWORK JUMP HOSTS
     [JsonPropertyName("jump_hosts")] public List<JumpHost> JumpHosts { get; set; } = new();
 
-
     public string Id { get; set; } = Guid.NewGuid().ToString();
-    public string? JumpServerId { get; set; }
-    public string? Username { get; set; }
-    public string? KeyPath { get; set; }
-    public string? KeyPassphrase { get; set; }
+    public string? JumpServerId { get; set; }
+    public string? Username { get; set; }
+    public string? KeyPath { get; set; }
+    public SecureString? KeyPassphrase { get; set; } // Secured this as well
+    public string? StartupCmdHash { get; set; }
 
-    public ServerConfig Clone()
-    {
-        // Automatically copies all basic properties (strings, ints, bools)
-        var clone = (ServerConfig)this.MemberwiseClone();
+    public ServerConfig Clone()
+    {
+        var clone = (ServerConfig)this.MemberwiseClone();
 
-        // Deep copy the lists so editing them doesn't affect the original until we hit Save
-        if (this.LoginActions != null)
-        {
-            clone.LoginActions = new List<LoginActionStep>();
-            foreach (var action in this.LoginActions)
-            {
-                clone.LoginActions.Add(new LoginActionStep { Expect = action.Expect, Send = action.Send, Timeout = action.Timeout });
-            }
-        }
+        // Safely copy encrypted memory strings
+        clone.Password = this.Password?.Copy();
+        clone.KeyPassphrase = this.KeyPassphrase?.Copy();
 
-        // Deep copy Unified Jump Hosts
+        if (this.LoginActions != null)
+        {
+            clone.LoginActions = new List<LoginActionStep>();
+            foreach (var action in this.LoginActions)
+            {
+                clone.LoginActions.Add(new LoginActionStep { Expect = action.Expect, Send = action.Send, Timeout = action.Timeout });
+            }
+        }
+
         if (this.JumpHosts != null)
         {
             clone.JumpHosts = new List<JumpHost>();
@@ -138,42 +185,36 @@ public sealed class ServerConfig
                     Host = host.Host,
                     Port = host.Port,
                     User = host.User,
-                    Password = host.Password
+                    Password = host.Password?.Copy() // Safe deep copy of encrypted RAM
                 });
             }
         }
         return clone;
-    }
+    }
 }
 
 public class ScarpaExportRoot
 {
-    public List<ServerConfig> Servers { get; set; } = new();
-    public List<string> Folders { get; set; } = new();
+    public List<ServerConfig> Servers { get; set; } = new();
+    public List<string> Folders { get; set; } = new();
 }
 
 public class LoginActionStep
 {
-    [JsonPropertyName("expect")]
-    public string Expect { get; set; } = "";
-
-    [JsonPropertyName("send")]
-    public string Send { get; set; } = "";
-
-    [JsonPropertyName("timeout")]
-    public int Timeout { get; set; } = 5;
+    [JsonPropertyName("expect")] public string Expect { get; set; } = "";
+    [JsonPropertyName("send")] public string Send { get; set; } = "";
+    [JsonPropertyName("timeout")] public int Timeout { get; set; } = 5;
 }
 
 public class PortForwardRule
 {
-    public string Name { get; set; } = "";
-    public string Type { get; set; } = "Local"; // "Local", "Remote", or "Dynamic"
-    public int SourcePort { get; set; }
-    public string DestinationHost { get; set; } = "localhost";
-    public int DestinationPort { get; set; }
+    public string Name { get; set; } = "";
+    public string Type { get; set; } = "Local";
+    public int SourcePort { get; set; }
+    public string DestinationHost { get; set; } = "localhost";
+    public int DestinationPort { get; set; }
 
-    // Helper to render nicely in the ListView with optional custom name support
-    public string DisplayText => string.IsNullOrWhiteSpace(Name)
-        ? (Type == "Dynamic" ? $"Dynamic (SOCKS) on Port {SourcePort}" : $"{Type}: {SourcePort} -> {DestinationHost}:{DestinationPort}")
-        : $"{Name}  —  ({(Type == "Dynamic" ? $"Dynamic (SOCKS) on Port {SourcePort}" : $"{Type}: {SourcePort} -> {DestinationHost}:{DestinationPort}")})";
+    public string DisplayText => string.IsNullOrWhiteSpace(Name)
+        ? (Type == "Dynamic" ? $"Dynamic (SOCKS) on Port {SourcePort}" : $"{Type}: {SourcePort} -> {DestinationHost}:{DestinationPort}")
+        : $"{Name}  —  ({(Type == "Dynamic" ? $"Dynamic (SOCKS) on Port {SourcePort}" : $"{Type}: {SourcePort} -> {DestinationHost}:{DestinationPort}")})";
 }

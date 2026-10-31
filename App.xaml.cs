@@ -16,9 +16,6 @@ using Windows.ApplicationModel.Activation;
 using Windows.Foundation;
 using Windows.Foundation.Collections;
 
-// To learn more about WinUI, the WinUI project structure,
-// and more about our project templates, see: http://aka.ms/winui-project-info.
-
 namespace scarpa_connection_manager_win
 {
     /// <summary>
@@ -28,6 +25,11 @@ namespace scarpa_connection_manager_win
     {
         // 1. Add this public static property so the rest of the app can find the window
         public static Window MainWindow { get; private set; } = null!;
+
+        // --- START SECURITY FIX: GLOBAL MASTER PASSWORD ---
+        // Store as SecureString to prevent memory scraping
+        public static System.Security.SecureString? ActiveMasterPassword { get; set; }
+        // --- END SECURITY FIX ---
 
         private Window m_window = null!;
 

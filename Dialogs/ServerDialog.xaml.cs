@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading.Tasks;
+using System.IO;
 
 namespace scarpa_connection_manager_win.Dialogs;
 
@@ -70,7 +71,7 @@ public sealed partial class ServerDialog : Microsoft.UI.Xaml.Window
                 FolderBox.Text = Config.Folder ?? "";
 
             UserBox.Text = Config.User ?? "";
-            PassBox.Password = Config.Password ?? "";
+            PassBox.Password = Config.Password.ToPlainString();
             KeyFileBox.Text = Config.KeyFile ?? "";
 
             foreach (ComboBoxItem item in AuthMethodBox.Items)
@@ -437,7 +438,7 @@ public sealed partial class ServerDialog : Microsoft.UI.Xaml.Window
 
         Config.Folder = FolderBox.SelectedItem?.ToString() ?? FolderBox.Text;
         Config.User = UserBox.Text;
-        Config.Password = PassBox.Password;
+        Config.Password = PassBox.Password.ToSecureString();
         Config.KeyFile = KeyFileBox.Text;
 
         if (AuthMethodBox.SelectedItem is ComboBoxItem item)
@@ -460,6 +461,25 @@ public sealed partial class ServerDialog : Microsoft.UI.Xaml.Window
         // Terminal Startup Command
         Config.StartupCmdEnabled = StartupCmdCheck.IsChecked == true;
         Config.StartupCmdPath = StartupCmdPathBox.Text;
+
+        if (Config.StartupCmdEnabled && !string.IsNullOrWhiteSpace(Config.StartupCmdPath) && File.Exists(Config.StartupCmdPath))
+        {
+            try
+            {
+                using var sha256 = System.Security.Cryptography.SHA256.Create();
+                using var stream = File.OpenRead(Config.StartupCmdPath);
+                Config.StartupCmdHash = Convert.ToBase64String(sha256.ComputeHash(stream));
+            }
+            catch
+            {
+                // If the file is temporarily locked by another program, fail gracefully
+                Config.StartupCmdHash = null;
+            }
+        }
+        else
+        {
+            Config.StartupCmdHash = null; // Clear hash if disabled or file removed
+        }
 
         // Login Actions
         Config.LoginActions = new List<LoginActionStep>(LoginActions);
@@ -933,7 +953,7 @@ public sealed partial class ServerDialog : Microsoft.UI.Xaml.Window
         var hostBox = new TextBox { Text = host.Host, Width = 250 };
         var portBox = new NumberBox { Value = host.Port, SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Inline, Width = 150 };
         var userBox = new TextBox { Text = host.User, Width = 250 };
-        var passBox = new PasswordBox { Password = host.Password, Width = 250 };
+        var passBox = new PasswordBox { Password = host.Password.ToPlainString(), Width = 250 };
 
         var grid = new Grid { ColumnSpacing = 15, RowSpacing = 15 };
         grid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -975,7 +995,7 @@ public sealed partial class ServerDialog : Microsoft.UI.Xaml.Window
             host.Host = hostBox.Text.Trim();
             host.Port = double.IsNaN(portBox.Value) ? 22 : (int)portBox.Value;
             host.User = userBox.Text.Trim();
-            host.Password = passBox.Password;
+            host.Password = passBox.Password.ToSecureString();
             return true;
         }
         return false;

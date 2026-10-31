@@ -115,14 +115,15 @@ public static class JumpServerService
             AuthenticationMethod auth;
             if (!string.IsNullOrEmpty(jumpServer.KeyPath) && System.IO.File.Exists(jumpServer.KeyPath))
             {
-                var keyFile = string.IsNullOrEmpty(jumpServer.KeyPassphrase)
+                var plainPassphrase = jumpServer.KeyPassphrase?.ToPlainString();
+                var keyFile = string.IsNullOrEmpty(plainPassphrase)
                     ? new PrivateKeyFile(jumpServer.KeyPath)
-                    : new PrivateKeyFile(jumpServer.KeyPath, jumpServer.KeyPassphrase);
+                    : new PrivateKeyFile(jumpServer.KeyPath, plainPassphrase);
                 auth = new PrivateKeyAuthenticationMethod(jumpServer.Username ?? "root", keyFile);
             }
             else
             {
-                auth = new PasswordAuthenticationMethod(jumpServer.Username ?? "root", jumpPassword ?? jumpServer.Password ?? "");
+                auth = new PasswordAuthenticationMethod(jumpServer.Username ?? "root", jumpPassword ?? jumpServer.Password.ToPlainString());
             }
 
             var connectionInfo = new ConnectionInfo(

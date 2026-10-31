@@ -72,13 +72,13 @@ public static class ConnectionLauncher
     {
         string args = BuildSftpArguments(cfg);
         string windowTitle = cfg.Name != null ? $"{cfg.Name} (SFTP)" : "SFTP Session";
-        bool usePassword = cfg.AuthMethod == "password" && !string.IsNullOrEmpty(cfg.Password);
+        bool usePassword = cfg.AuthMethod == "password" && !string.IsNullOrEmpty(cfg.Password.ToPlainString());
 
         // 1. Password Injection via temporary VBScript
         if (usePassword)
         {
             // Escape special characters for SendKeys (e.g., +, ^, %, ~, (, ))
-            var escapedChars = (cfg.Password ?? "").Select(c =>
+            var escapedChars = (cfg.Password.ToPlainString()).Select(c =>
             {
                 string s = c.ToString();
                 if ("{}+^%~()".Contains(s)) return $"\"{{{s}}}\"";

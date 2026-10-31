@@ -84,6 +84,7 @@ public sealed partial class TerminalControl : UserControl
         {
             string cleanText = Regex.Replace(rawText, @"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])", "");
             cleanText = Regex.Replace(cleanText, @"[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]", "");
+            cleanText = Regex.Replace(cleanText, @"(?i)(password|passphrase)(.*?:\s*)(.*)", "$1$2[REDACTED]");
 
             string customPrefix = (_config.AppendDataToLog && !string.IsNullOrEmpty(_config.LogEachLineString))
                 ? ApplyLogSubstitutions(_config.LogEachLineString) : "";
@@ -276,7 +277,7 @@ public sealed partial class TerminalControl : UserControl
                 }
                 else
                 {
-                    string pass = cfg.Password ?? "";
+                    string pass = cfg.Password.ToPlainString();
                     authMethods.Add(new PasswordAuthenticationMethod(cfg.User, pass));
 
                     var kbdAuth = new KeyboardInteractiveAuthenticationMethod(cfg.User);
@@ -284,7 +285,7 @@ public sealed partial class TerminalControl : UserControl
                     {
                         foreach (var prompt in e.Prompts)
                         {
-                            prompt.Response = cfg.Password ?? "";
+                            prompt.Response = cfg.Password.ToPlainString();
                         }
                     };
                     authMethods.Add(kbdAuth);
@@ -401,6 +402,18 @@ public sealed partial class TerminalControl : UserControl
             {
                 if (File.Exists(cfg.StartupCmdPath))
                 {
+                    using (var sha256 = System.Security.Cryptography.SHA256.Create())
+                    using (var stream = File.OpenRead(cfg.StartupCmdPath))
+                    {
+                        string currentHash = Convert.ToBase64String(sha256.ComputeHash(stream));
+
+                        if (!string.IsNullOrEmpty(cfg.StartupCmdHash) && currentHash != cfg.StartupCmdHash)
+                        {
+                            SendToTerminal("\r\n\x1b[31m[SECURITY ALERT] Startup script was modified outside the application. Execution aborted!\x1b[0m\r\n");
+                            return;
+                        }
+                    }
+
                     if (cfg.LoginActions == null || cfg.LoginActions.Count == 0) await Task.Delay(1000);
 
                     string script = await File.ReadAllTextAsync(cfg.StartupCmdPath);
@@ -456,9 +469,14 @@ public sealed partial class TerminalControl : UserControl
             try
             {
                 string args = ConnectionLauncher.BuildSftpArguments(cfg);
+                string bundledSftp = Path.Combine(AppContext.BaseDirectory, "Tools", "sftp.exe");
+                string systemSftp = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "OpenSSH", "sftp.exe");
+
+                string secureSftpPath = File.Exists(bundledSftp) ? bundledSftp : systemSftp;
+
                 var psi = new ProcessStartInfo
                 {
-                    FileName = "sftp",
+                    FileName = secureSftpPath,
                     Arguments = args,
                     UseShellExecute = false,
                     RedirectStandardOutput = true,
@@ -478,6 +496,8 @@ public sealed partial class TerminalControl : UserControl
             catch (Exception ex) { SendToTerminal($"\r\n\x1b[31mSFTP Launch failed: {ex.Message}\x1b[0m\r\n"); }
         });
     }
+
+
 
     private async Task ReadProcessStreamAsync(StreamReader reader)
     {

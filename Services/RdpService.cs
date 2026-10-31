@@ -77,7 +77,7 @@ public static class RdpService
         try { File.SetAttributes(defaultRdpPath, File.GetAttributes(defaultRdpPath) | FileAttributes.Hidden); } catch { }
 
         // 2. SECURELY INJECT CREDENTIALS
-        string? autoLogonPass = password ?? config.Password;
+        string? autoLogonPass = password;
         if (!string.IsNullOrEmpty(autoLogonPass))
         {
             Process.Start(new ProcessStartInfo

@@ -74,7 +74,6 @@ public sealed partial class MainWindow : Window
 {
     private AppSettings _settings = new();
     private List<ServerConfig> _servers = new();
-    private string _passphrase = "";
 
     private List<TreeViewNode> _selectedNodes = new();
     private List<object>? _clipboardData = null;
@@ -446,10 +445,12 @@ public sealed partial class MainWindow : Window
             }
 
             if (modified)
-            {
-                CryptoStore.Save(_servers, _passphrase);
-                RebuildTree();
-            }
+            {
+                CryptoStore.Save(_servers, App.ActiveMasterPassword.ToPlainString());
+                RebuildTree();
+            }
+
+
         });
     }
 
@@ -466,20 +467,24 @@ public sealed partial class MainWindow : Window
         if (!dlg.IsSuccess) return false;
 
         var salt = CryptoStore.GenerateSalt();
-        _settings.MasterSaltHex = Convert.ToHexString(salt);
-        _settings.MasterHashHex = CryptoStore.HashPassphrase(dlg.Passphrase, salt);
-        _settings.RememberMaster = dlg.RememberMe;
-        SettingsService.Save(_settings);
+        _settings.MasterHashHex = CryptoStore.HashPassphrase(dlg.Passphrase, salt);
+        _settings.RememberMaster = dlg.RememberMe;
+        SettingsService.Save(_settings);
 
-        _passphrase = dlg.Passphrase;
-        _servers = new List<ServerConfig>();
-        CryptoStore.Save(_servers, _passphrase);
+        // --- START SECURITY FIX ---
+        App.ActiveMasterPassword = dlg.Passphrase.ToSecureString(); // Lock it in RAM
+        _servers = new List<ServerConfig>();
 
-        if (dlg.RememberMe) CredentialVault.Set(_passphrase); else CredentialVault.Clear();
-        return true;
-    }
+        CryptoStore.Save(_servers, App.ActiveMasterPassword.ToPlainString());
 
-    private async Task<bool> UnlockVaultAsync()
+        if (dlg.RememberMe) CredentialVault.Set(App.ActiveMasterPassword.ToPlainString());
+        else CredentialVault.Clear();
+        // --- END SECURITY FIX ---
+
+        return true;
+    }
+
+    private async Task<bool> UnlockVaultAsync()
     {
         var salt = Convert.FromHexString(_settings.MasterSaltHex ?? "");
         var saved = _settings.RememberMaster ? (CredentialVault.Get() ?? "") : "";
@@ -495,28 +500,30 @@ public sealed partial class MainWindow : Window
             await dlg.ShowAsync();
             if (!dlg.IsSuccess) return false;
 
-            if (CryptoStore.HashPassphrase(dlg.Passphrase, salt) != _settings.MasterHashHex)
-            {
-                await ShowAlertAsync("Scarpa", "Incorrect master passphrase.");
-                saved = "";
-                continue;
-            }
+            if (CryptoStore.HashPassphrase(dlg.Passphrase, salt) != _settings.MasterHashHex)
+            {
+                await ShowAlertAsync("Scarpa", "Incorrect master passphrase.");
+                saved = "";
+                continue;
+            }
 
-            _passphrase = dlg.Passphrase;
-            _settings.RememberMaster = dlg.RememberMe;
+            // --- START SECURITY FIX ---
+            App.ActiveMasterPassword = dlg.Passphrase.ToSecureString(); // Lock it in RAM
+            _settings.RememberMaster = dlg.RememberMe;
 
-            if (dlg.RememberMe) CredentialVault.Set(_passphrase);
-            else CredentialVault.Clear();
+            if (dlg.RememberMe) CredentialVault.Set(App.ActiveMasterPassword.ToPlainString());
+            else CredentialVault.Clear();
 
-            SettingsService.Save(_settings);
+            SettingsService.Save(_settings);
 
-            try { _servers = CryptoStore.Load(_passphrase); return true; }
-            catch (Exception ex)
-            {
-                await ShowAlertAsync("Could not open vault", ex.Message);
-                return false;
-            }
-        }
+            try { _servers = CryptoStore.Load(App.ActiveMasterPassword.ToPlainString()); return true; }
+            catch (Exception ex)
+            // --- END SECURITY FIX ---
+            {
+                await ShowAlertAsync("Could not open vault", ex.Message);
+                return false;
+            }
+        }
         return false;
     }
 
@@ -888,8 +895,8 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        string? pwd = server.Password;
-        if (server.AuthMethod == "ask" || string.IsNullOrEmpty(pwd))
+        string? pwd = server.Password.ToPlainString();
+        if (server.AuthMethod == "ask" || string.IsNullOrEmpty(pwd))
         {
             var pwdDlg = new Dialogs.PassphraseDialog($"Password for {server.Name ?? "Server"}", "Enter the user password for this server:")
             {
@@ -936,13 +943,13 @@ public sealed partial class MainWindow : Window
         .Where(f => !string.IsNullOrWhiteSpace(f))
         .Distinct();
 
-    private void Persist()
-    {
-        try { CryptoStore.Save(_servers, _passphrase); }
-        catch (Exception ex) { Log($"ERROR saving vault: {ex.Message}"); }
-    }
+    private void Persist()
+    {
+        try { CryptoStore.Save(_servers, App.ActiveMasterPassword.ToPlainString()); }
+        catch (Exception ex) { Log($"ERROR saving vault: {ex.Message}"); }
+    }
 
-    private async void AddServer_Click(object sender, RoutedEventArgs e)
+    private async void AddServer_Click(object sender, RoutedEventArgs e)
     {
         string? target = null;
         if (_selectedNodes.Count == 1 && _nodeTags.TryGetValue(_selectedNodes[0], out var tag))
@@ -1247,26 +1254,26 @@ public sealed partial class MainWindow : Window
         if (!newDlg.IsSuccess) return;
 
         // 3. Generate new crypto material and apply the changes
-        var newSalt = CryptoStore.GenerateSalt();
-        _settings.MasterSaltHex = Convert.ToHexString(newSalt);
-        _settings.MasterHashHex = CryptoStore.HashPassphrase(newDlg.Passphrase, newSalt);
-        _settings.RememberMaster = newDlg.RememberMe;
+        var newSalt = CryptoStore.GenerateSalt();
+        _settings.MasterSaltHex = Convert.ToHexString(newSalt);
+        _settings.MasterHashHex = CryptoStore.HashPassphrase(newDlg.Passphrase, newSalt);
+        _settings.RememberMaster = newDlg.RememberMe;
 
-        _passphrase = newDlg.Passphrase;
+        App.ActiveMasterPassword = newDlg.Passphrase.ToSecureString(); // Lock it in RAM
 
-        // 4. Update Windows Credential Manager
-        if (newDlg.RememberMe) CredentialVault.Set(_passphrase);
-        else CredentialVault.Clear();
+        // 4. Update Windows Credential Manager
+        if (newDlg.RememberMe) CredentialVault.Set(App.ActiveMasterPassword.ToPlainString());
+        else CredentialVault.Clear();
 
-        // 5. Save settings and re-encrypt the actual vault file!
-        SettingsService.Save(_settings);
-        CryptoStore.Save(_servers, _passphrase);
+        // 5. Save settings and re-encrypt the actual vault file!
+        SettingsService.Save(_settings);
+        CryptoStore.Save(_servers, App.ActiveMasterPassword.ToPlainString());
+ 
+        Log("Master passphrase successfully changed and vault re-encrypted.");
+        await ShowAlertAsync("Success", "Master passphrase changed and vault re-encrypted successfully.");
+    }
 
-        Log("Master passphrase successfully changed and vault re-encrypted.");
-        await ShowAlertAsync("Success", "Master passphrase changed and vault re-encrypted successfully.");
-    }
-
-    private async void ForgetPassphrase_Click(object sender, RoutedEventArgs e)
+    private async void ForgetPassphrase_Click(object sender, RoutedEventArgs e)
     {
         _settings.RememberMaster = false;
         SettingsService.Save(_settings);

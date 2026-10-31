@@ -59,7 +59,7 @@ public static class Importers
                         Name = name,
                         Host = host!,
                         User = user,
-                        Password = password,
+                        Password = password.ToSecureString(),
                         Port = port,
                         AuthMethod = "password",
                         Folder = string.IsNullOrEmpty(folderPath) ? AppPaths.RootFolder : folderPath

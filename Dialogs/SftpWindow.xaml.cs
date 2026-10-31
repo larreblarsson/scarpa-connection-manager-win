@@ -558,7 +558,7 @@ public sealed partial class SftpWindow : Window, System.ComponentModel.INotifyPr
                 _activeJumpTunnel = tunnel;
 
                 // 4. Connect to the final target (which is now properly routed)
-                _sftpService.Connect(targetConfig, targetConfig.Password, dispatcher, xamlRoot);
+                _sftpService.Connect(targetConfig, targetConfig.Password.ToPlainString(), dispatcher, xamlRoot);
                 LoadRemoteDirectory(_sftpService.WorkingDirectory);
             }
             catch (Exception ex)
@@ -1450,142 +1450,147 @@ public sealed partial class SftpWindow : Window, System.ComponentModel.INotifyPr
         tb.Text = item.Name;
     }
 
-    private async Task CommitRename(TextBox tb, FileItem item)
-    {
-        if (!item.IsEditing) return;
+    private async Task CommitRename(TextBox tb, FileItem item)
+    {
+        if (!item.IsEditing) return;
 
-        string newName = tb.Text.Trim();
-        if (string.IsNullOrWhiteSpace(newName) || newName == item.Name)
-        {
-            CancelRename(tb, item);
-            return;
-        }
+        string rawName = tb.Text.Trim();
+        string newName = SanitizeFileName(rawName); // <--- Sanitize input here
 
-        var activeList = _isLocalFocused ? LocalFileList : RemoteFileList;
-        activeList.Focus(FocusState.Pointer);
-        item.IsEditing = false;
+        if (string.IsNullOrWhiteSpace(newName) || newName == item.Name)
+        {
+            CancelRename(tb, item);
+            return;
+        }
 
-        try
-        {
-            bool isLocalItem = _localFiles.Contains(item);
+        var activeList = _isLocalFocused ? LocalFileList : RemoteFileList;
+        activeList.Focus(FocusState.Pointer);
+        item.IsEditing = false;
 
-            if (isLocalItem)
-            {
-                string baseDir = Path.GetDirectoryName(item.FullPath) ?? _currentLocalPath;
-                string newPath = Path.Combine(baseDir, newName);
+        try
+        {
+            bool isLocalItem = _localFiles.Contains(item);
 
-                if (File.Exists(newPath) || Directory.Exists(newPath))
-                {
-                    if (!await ConfirmOverwriteAsync(newName))
-                    {
-                        CancelRename(tb, item);
-                        return;
-                    }
-                    if (Directory.Exists(newPath)) Directory.Delete(newPath, true);
-                    else File.Delete(newPath);
-                }
+            if (isLocalItem)
+            {
+                string baseDir = Path.GetDirectoryName(item.FullPath) ?? _currentLocalPath;
+                string newPath = Path.Combine(baseDir, newName);
 
-                if (item.IsDirectory) Directory.Move(item.FullPath, newPath);
-                else File.Move(item.FullPath, newPath);
+                if (File.Exists(newPath) || Directory.Exists(newPath))
+                {
+                    if (!await ConfirmOverwriteAsync(newName))
+                    {
+                        CancelRename(tb, item);
+                        return;
+                    }
+                    if (Directory.Exists(newPath)) Directory.Delete(newPath, true);
+                    else File.Delete(newPath);
+                }
 
-                LoadLocalDirectory(_currentLocalPath);
-            }
-            else
-            {
-                string targetDir = _currentRemotePath == "/" ? "" : _currentRemotePath;
-                string newPath = $"{targetDir}/{newName}";
+                if (item.IsDirectory) Directory.Move(item.FullPath, newPath);
+                else File.Move(item.FullPath, newPath);
 
-                await PerformTransferAsync($"Renaming to {newName}...", async () =>
-                {
-                    string listPath = string.IsNullOrEmpty(targetDir) ? "/" : targetDir;
-                    var existingRemote = _sftpService.List(listPath).ToList();
-                    var conflict = existingRemote.FirstOrDefault(x => x.Name == newName);
+                LoadLocalDirectory(_currentLocalPath);
+            }
+            else
+            {
+                string targetDir = _currentRemotePath == "/" ? "" : _currentRemotePath;
+                string newPath = $"{targetDir}/{newName}";
 
-                    if (conflict != null)
-                    {
-                        if (!await ConfirmOverwriteAsync(newName)) return;
-                        _sftpService.Delete(newPath, conflict.IsDirectory);
-                    }
+                await PerformTransferAsync($"Renaming to {newName}...", async () =>
+                {
+                    string listPath = string.IsNullOrEmpty(targetDir) ? "/" : targetDir;
+                    var existingRemote = _sftpService.List(listPath).ToList();
+                    var conflict = existingRemote.FirstOrDefault(x => x.Name == newName);
 
-                    _sftpService.Rename(item.FullPath, newPath);
-                });
+                    if (conflict != null)
+                    {
+                        if (!await ConfirmOverwriteAsync(newName)) return;
+                        _sftpService.Delete(newPath, conflict.IsDirectory);
+                    }
 
-                LoadRemoteDirectory(_currentRemotePath);
-            }
-        }
-        catch (Exception ex)
-        {
-            CancelRename(tb, item);
-            if (this.Content?.XamlRoot != null)
-            {
-                var errDlg = new ContentDialog { Title = "Error", Content = ex.Message, CloseButtonText = "OK", XamlRoot = this.Content.XamlRoot };
-                await errDlg.ShowAsync();
-            }
-        }
-    }
+                    _sftpService.Rename(item.FullPath, newPath);
+                });
 
-    private void CancelNewFolder(FileItem item)
+                LoadRemoteDirectory(_currentRemotePath);
+            }
+        }
+        catch (Exception ex)
+        {
+            CancelRename(tb, item);
+            if (this.Content?.XamlRoot != null)
+            {
+                var errDlg = new ContentDialog { Title = "Error", Content = ex.Message, CloseButtonText = "OK", XamlRoot = this.Content.XamlRoot };
+                await errDlg.ShowAsync();
+            }
+        }
+    }
+
+    private void CancelNewFolder(FileItem item)
     {
         item.IsEditing = false;
         if (_localFiles.Contains(item)) _localFiles.Remove(item);
         if (_remoteFiles.Contains(item)) _remoteFiles.Remove(item);
     }
 
-    private async Task CommitNewFolder(TextBox tb, FileItem item)
-    {
-        if (!item.IsEditing) return;
+    private async Task CommitNewFolder(TextBox tb, FileItem item)
+    {
+        if (!item.IsEditing) return;
 
-        string newName = tb.Text.Trim();
-        if (string.IsNullOrWhiteSpace(newName))
-        {
-            CancelNewFolder(item);
-            return;
-        }
+        string rawName = tb.Text.Trim();
+        string newName = SanitizeFileName(rawName); // <--- Sanitize input here
 
-        var activeList = _isLocalFocused ? LocalFileList : RemoteFileList;
-        activeList.Focus(FocusState.Pointer);
-        item.IsEditing = false;
-        item.IsNewFolder = false;
+        if (string.IsNullOrWhiteSpace(newName))
+        {
+            CancelNewFolder(item);
+            return;
+        }
 
-        try
-        {
-            if (_isLocalFocused)
-            {
-                string targetDir = Path.Combine(_currentLocalPath, newName);
-                if (Directory.Exists(targetDir) || File.Exists(targetDir))
-                {
-                    CancelNewFolder(item);
-                    var errDlg = new ContentDialog { Title = "Error", Content = $"An item named '{newName}' already exists.", CloseButtonText = "OK", XamlRoot = this.Content?.XamlRoot };
-                    await errDlg.ShowAsync();
-                    return;
-                }
+        var activeList = _isLocalFocused ? LocalFileList : RemoteFileList;
+        activeList.Focus(FocusState.Pointer);
+        item.IsEditing = false;
+        item.IsNewFolder = false;
+        item.Name = newName; // Ensure UI updates to the clean name
 
-                Directory.CreateDirectory(targetDir);
-                LoadLocalDirectory(_currentLocalPath);
-            }
-            else
-            {
-                string targetDir = _currentRemotePath == "/" ? $"/{newName}" : $"{_currentRemotePath}/{newName}";
+        try
+        {
+            if (_isLocalFocused)
+            {
+                string targetDir = Path.Combine(_currentLocalPath, newName);
+                if (Directory.Exists(targetDir) || File.Exists(targetDir))
+                {
+                    CancelNewFolder(item);
+                    var errDlg = new ContentDialog { Title = "Error", Content = $"An item named '{newName}' already exists.", CloseButtonText = "OK", XamlRoot = this.Content?.XamlRoot };
+                    await errDlg.ShowAsync();
+                    return;
+                }
 
-                await PerformTransferAsync($"Creating folder {newName}...", () =>
-                {
-                    _sftpService.CreateDirectory(targetDir);
-                });
-                LoadRemoteDirectory(_currentRemotePath);
-            }
-        }
-        catch (Exception ex)
-        {
-            CancelNewFolder(item);
-            if (this.Content?.XamlRoot != null)
-            {
-                var errDlg = new ContentDialog { Title = "Error", Content = ex.Message, CloseButtonText = "OK", XamlRoot = this.Content.XamlRoot };
-                await errDlg.ShowAsync();
-            }
-        }
-    }
+                Directory.CreateDirectory(targetDir);
+                LoadLocalDirectory(_currentLocalPath);
+            }
+            else
+            {
+                string targetDir = _currentRemotePath == "/" ? $"/{newName}" : $"{_currentRemotePath}/{newName}";
 
-    private static T? FindVisualChild<T>(DependencyObject? parent) where T : DependencyObject
+                await PerformTransferAsync($"Creating folder {newName}...", () =>
+                {
+                    _sftpService.CreateDirectory(targetDir);
+                });
+                LoadRemoteDirectory(_currentRemotePath);
+            }
+        }
+        catch (Exception ex)
+        {
+            CancelNewFolder(item);
+            if (this.Content?.XamlRoot != null)
+            {
+                var errDlg = new ContentDialog { Title = "Error", Content = ex.Message, CloseButtonText = "OK", XamlRoot = this.Content.XamlRoot };
+                await errDlg.ShowAsync();
+            }
+        }
+    }
+
+    private static T? FindVisualChild<T>(DependencyObject? parent) where T : DependencyObject
     {
         if (parent == null) return null;
         for (int i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
@@ -2562,6 +2567,23 @@ public sealed partial class SftpWindow : Window, System.ComponentModel.INotifyPr
             }
         }
     }
+    private static string SanitizeFileName(string name)
+    {
+        if (string.IsNullOrEmpty(name)) return name;
 
+        // 1. Define illegal characters for Windows (covers both local and remote safety to keep names compatible)
+        char[] invalidChars = Path.GetInvalidFileNameChars(); // Includes <, >, :, ", /, \, |, ?, *
+
+        // 2. Replace illegal characters with an underscore '_' or strip them
+        foreach (char c in invalidChars)
+        {
+            name = name.Replace(c, '_');
+        }
+
+        // 3. Trim trailing dots or spaces which cause corruption in Windows
+        name = name.TrimEnd(' ', '.');
+
+        return name;
+    }
 
 }

@@ -20,16 +20,44 @@
             <!-- Reverted back to the native WinUI 3 CommandBarFlyout -->
             <CommandBarFlyout x:Name="FileContextMenu">
                 <CommandBarFlyout.PrimaryCommands>
-                    <AppBarButton Label="Cut" Icon="Cut" Click="ContextCut_Click"/>
-                    <AppBarButton Label="Copy" Icon="Copy" Click="ContextCopy_Click"/>
-                    <AppBarButton Label="Paste" Icon="Paste" Click="ContextPaste_Click"/>
-                    <AppBarButton Label="Rename" Icon="Rename" Click="ContextRename_Click"/>
-                    <AppBarButton Label="Delete" Icon="Delete" Click="ContextDelete_Click"/>
-                    <AppBarButton Label="New Folder" Icon="NewFolder" Click="ContextNewFolder_Click"/>
+                    <AppBarButton Label="Cut" Click="ContextCut_Click">
+                        <AppBarButton.Icon>
+                            <SymbolIcon Symbol="Cut" Foreground="DarkOrange"/>
+                        </AppBarButton.Icon>
+                    </AppBarButton>
+                    <AppBarButton Label="Copy" Click="ContextCopy_Click">
+                        <AppBarButton.Icon>
+                            <SymbolIcon Symbol="Copy" Foreground="DodgerBlue"/>
+                        </AppBarButton.Icon>
+                    </AppBarButton>
+                    <AppBarButton Label="Paste" Click="ContextPaste_Click">
+                        <AppBarButton.Icon>
+                            <SymbolIcon Symbol="Paste" Foreground="MediumSeaGreen"/>
+                        </AppBarButton.Icon>
+                    </AppBarButton>
+                    <AppBarButton Label="Rename" Click="ContextRename_Click">
+                        <AppBarButton.Icon>
+                            <SymbolIcon Symbol="Rename" Foreground="MediumPurple"/>
+                        </AppBarButton.Icon>
+                    </AppBarButton>
+                    <AppBarButton Label="Delete" Click="ContextDelete_Click">
+                        <AppBarButton.Icon>
+                            <SymbolIcon Symbol="Delete" Foreground="Crimson"/>
+                        </AppBarButton.Icon>
+                    </AppBarButton>
+                    <AppBarButton Label="New Folder" Click="ContextNewFolder_Click">
+                        <AppBarButton.Icon>
+                            <SymbolIcon Symbol="NewFolder" Foreground="Goldenrod"/>
+                        </AppBarButton.Icon>
+                    </AppBarButton>
                 </CommandBarFlyout.PrimaryCommands>
 
                 <CommandBarFlyout.SecondaryCommands>
-                    <AppBarButton Label="Calculate Size" Icon="Calculator" Click="ContextCalculateSize_Click"/>
+                    <AppBarButton Label="Calculate Size" Click="ContextCalculateSize_Click">
+                        <AppBarButton.Icon>
+                            <SymbolIcon Symbol="Calculator" Foreground="Teal"/>
+                        </AppBarButton.Icon>
+                    </AppBarButton>
                 </CommandBarFlyout.SecondaryCommands>
             </CommandBarFlyout>
 
@@ -64,15 +92,46 @@
             </Grid.RowDefinitions>
             <Grid Grid.Row="0" Background="#F8F8F8" CornerRadius="6" Margin="0,0,0,6">
                 <CommandBar HorizontalAlignment="Left" DefaultLabelPosition="Right" Background="Transparent">
-                    <AppBarButton Icon="Upload" Label="Upload" Click="Upload_Click" ToolTipService.ToolTip="Upload selected local files to remote server"/>
-                    <AppBarButton Icon="Download" Label="Download" Click="Download_Click" ToolTipService.ToolTip="Download selected remote files to local machine"/>
-                    <AppBarButton Icon="Play" Label="Resume" Click="Resume_Click" ToolTipService.ToolTip="Resume an interrupted file transfer"/>
+                    <AppBarButton Label="Upload" Click="Upload_Click" ToolTipService.ToolTip="Upload selected local files to remote server">
+                        <AppBarButton.Icon>
+                            <SymbolIcon Symbol="Upload" Foreground="DodgerBlue"/>
+                        </AppBarButton.Icon>
+                    </AppBarButton>
+                    <AppBarButton Label="Download" Click="Download_Click" ToolTipService.ToolTip="Download selected remote files to local machine">
+                        <AppBarButton.Icon>
+                            <SymbolIcon Symbol="Download" Foreground="MediumSeaGreen"/>
+                        </AppBarButton.Icon>
+                    </AppBarButton>
+                    <AppBarButton Label="Resume" Click="Resume_Click" ToolTipService.ToolTip="Resume an interrupted file transfer">
+                        <AppBarButton.Icon>
+                            <SymbolIcon Symbol="Play" Foreground="LimeGreen"/>
+                        </AppBarButton.Icon>
+                    </AppBarButton>
+
                     <AppBarSeparator/>
-                    <AppBarButton Icon="Add" Label="New Folder" Click="NewFolder_Click" ToolTipService.ToolTip="Create a new folder"/>
-                    <AppBarButton Icon="Delete" Label="Delete" Click="Delete_Click" ToolTipService.ToolTip="Delete selected items"/>
-                    <AppBarButton Icon="Refresh" Label="Refresh" Click="Refresh_Click"/>
-                    <AppBarButton Icon="Find" Label="Search" Click="Search_Click" ToolTipService.ToolTip="Search files and folders"/>
+
+                    <AppBarButton Label="New Folder" Click="NewFolder_Click" ToolTipService.ToolTip="Create a new folder">
+                        <AppBarButton.Icon>
+                            <SymbolIcon Symbol="Add" Foreground="Goldenrod"/>
+                        </AppBarButton.Icon>
+                    </AppBarButton>
+                    <AppBarButton Label="Delete" Click="Delete_Click" ToolTipService.ToolTip="Delete selected items">
+                        <AppBarButton.Icon>
+                            <SymbolIcon Symbol="Delete" Foreground="Crimson"/>
+                        </AppBarButton.Icon>
+                    </AppBarButton>
+                    <AppBarButton Label="Refresh" Click="Refresh_Click">
+                        <AppBarButton.Icon>
+                            <SymbolIcon Symbol="Refresh" Foreground="SteelBlue"/>
+                        </AppBarButton.Icon>
+                    </AppBarButton>
+                    <AppBarButton Label="Search" Click="Search_Click" ToolTipService.ToolTip="Search files and folders">
+                        <AppBarButton.Icon>
+                            <SymbolIcon Symbol="Find" Foreground="MediumPurple"/>
+                        </AppBarButton.Icon>
+                    </AppBarButton>
                 </CommandBar>
+
             </Grid>
             <Grid Grid.Row="1">
                 <Grid.ColumnDefinitions>

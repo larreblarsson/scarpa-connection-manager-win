@@ -50,12 +50,13 @@ public class FileItem : System.ComponentModel.INotifyPropertyChanged
 
     private bool _isDropHighlight;
     private bool _isEditing;
-
-    public bool IsNewFolder { get; set; } = false;
+    
+    public bool IsNewFolder { get; set; } = false;
 
     public string Name { get; set; } = "";
     public string FullPath { get; set; } = "";
-    public bool IsDirectory { get; set; }
+    public override string ToString() => Name;
+    public bool IsDirectory { get; set; }
     public string Icon => IsDirectory ? "\uE8D5" : "\uE7C3";
 
     public Brush IconColor => IsDirectory ? FolderIconBrush : FileIconBrush;
@@ -169,6 +170,9 @@ public sealed partial class SftpWindow : Window, System.ComponentModel.INotifyPr
     private bool _showDateCol = true;
     private bool _showTypeCol = true;
     private bool _showSizeCol = true;
+    private bool _isShowingWarning = false;
+    private string _typeToFindBuffer = "";
+    private DispatcherTimer _typeToFindTimer;
 
     // --- Window PropertyChanged Event ---
     public event System.ComponentModel.PropertyChangedEventHandler? PropertyChanged;
@@ -212,7 +216,14 @@ public sealed partial class SftpWindow : Window, System.ComponentModel.INotifyPr
     {
         this.InitializeComponent();
 
-        if (allServers != null) _allServers = allServers;
+        _typeToFindTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(800) };
+        _typeToFindTimer.Tick += (s, e) =>
+        {
+            _typeToFindBuffer = "";
+            _typeToFindTimer.Stop();
+        };
+
+        if (allServers != null) _allServers = allServers;
 
         var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
         var windowId = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hwnd);
@@ -521,6 +532,36 @@ public sealed partial class SftpWindow : Window, System.ComponentModel.INotifyPr
             }
         }
     }
+
+    private void FileList_CharacterReceived(Microsoft.UI.Xaml.UIElement sender, Microsoft.UI.Xaml.Input.CharacterReceivedRoutedEventArgs args)
+    {
+        // 1. Do not intercept typing if the user is currently renaming a file
+        if (args.OriginalSource is TextBox) return;
+
+        if (sender is not ListView listView) return;
+
+        char c = args.Character;
+
+        // 2. Ignore control characters (Enter, Backspace, etc.)
+        if (char.IsControl(c)) return;
+
+        // 3. Restart the 800ms timer and append the typed character
+        _typeToFindTimer.Stop();
+        _typeToFindBuffer += char.ToLower(c);
+        _typeToFindTimer.Start();
+
+        // 4. Search for the closest match in the focused list
+        foreach (var item in listView.Items)
+        {
+            if (item is FileItem fileItem && fileItem.Name.ToLower().StartsWith(_typeToFindBuffer))
+            {
+                listView.SelectedItem = fileItem;
+                listView.ScrollIntoView(fileItem);
+                args.Handled = true;
+                break;
+            }
+        }
+    }
 
     private async Task ConnectAndListFilesAsync(ServerConfig cfg)
     {
@@ -1318,42 +1359,34 @@ public sealed partial class SftpWindow : Window, System.ComponentModel.INotifyPr
     // --- Context Menu Handlers ---
 
     private void FileList_RightTapped(object sender, RightTappedRoutedEventArgs e)
-    {
-        if (sender is not ListView listView) return;
+    {
+        if (sender is not ListView listView) return;
 
-        bool isLocal = listView == LocalFileList;
-        SetActivePane(isLocal);
+        bool isLocal = listView == LocalFileList;
+        SetActivePane(isLocal);
 
-        bool shouldShowMenu = false;
+        if (e.OriginalSource is FrameworkElement element && element.DataContext is FileItem item)
+        {
+            if (!listView.SelectedItems.Contains(item))
+            {
+                listView.SelectedItem = item;
+            }
+        }
+        else
+        {
+            listView.SelectedItems.Clear();
+        }
 
-        if (e.OriginalSource is FrameworkElement element && element.DataContext is FileItem item)
-        {
-            if (!listView.SelectedItems.Contains(item))
-            {
-                listView.SelectedItem = item;
-            }
-            shouldShowMenu = true;
-        }
-        else
-        {
-            if (listView.SelectedItems.Count > 0)
-            {
-                shouldShowMenu = true;
-            }
-        }
+        var showOptions = new Microsoft.UI.Xaml.Controls.Primitives.FlyoutShowOptions
+        {
+            Position = e.GetPosition(listView),
+            ShowMode = Microsoft.UI.Xaml.Controls.Primitives.FlyoutShowMode.Transient
+        };
 
-        if (shouldShowMenu)
-        {
-            var showOptions = new Microsoft.UI.Xaml.Controls.Primitives.FlyoutShowOptions
-            {
-                Position = e.GetPosition(listView)
-            };
+        FileContextMenu.ShowAt(listView, showOptions);
+    }
 
-            FileContextMenu.ShowAt(listView, showOptions);
-        }
-    }
-
-    private void ContextCut_Click(object sender, RoutedEventArgs e)
+    private void ContextCut_Click(object sender, RoutedEventArgs e)
     {
         FileContextMenu.Hide();
         var activeList = _isLocalFocused ? LocalFileList : RemoteFileList;
@@ -1379,7 +1412,14 @@ public sealed partial class SftpWindow : Window, System.ComponentModel.INotifyPr
         Delete_Click(this, new RoutedEventArgs());
     }
 
-    // --- Inline Renaming Logic ---
+    private void ContextNewFolder_Click(object sender, RoutedEventArgs e)
+    {
+        // 1. Hide the menu to release focus
+        FileContextMenu.Hide();
+
+        // 2. Trigger your existing new folder logic
+        NewFolder_Click(sender, e);
+    }
 
     private void F2_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
     {
@@ -1387,7 +1427,8 @@ public sealed partial class SftpWindow : Window, System.ComponentModel.INotifyPr
         args.Handled = true;
     }
 
-    private async void TriggerRename(ListView activeList, FileItem selected)
+    
+    private async void TriggerRename(ListView activeList, FileItem selected)
     {
         selected.IsEditing = true;
         await Task.Delay(50);
@@ -1454,8 +1495,16 @@ public sealed partial class SftpWindow : Window, System.ComponentModel.INotifyPr
     {
         if (!item.IsEditing) return;
 
+        // LOCK: Instantly disable editing mode to prevent LostFocus from triggering a duplicate save
+        item.IsEditing = false;
+
         string rawName = tb.Text.Trim();
-        string newName = SanitizeFileName(rawName); // <--- Sanitize input here
+        string newName = SanitizeFileName(rawName);
+
+        if (rawName != newName)
+        {
+            await ShowInvalidCharacterWarningAsync(rawName);
+        }
 
         if (string.IsNullOrWhiteSpace(newName) || newName == item.Name)
         {
@@ -1465,7 +1514,6 @@ public sealed partial class SftpWindow : Window, System.ComponentModel.INotifyPr
 
         var activeList = _isLocalFocused ? LocalFileList : RemoteFileList;
         activeList.Focus(FocusState.Pointer);
-        item.IsEditing = false;
 
         try
         {
@@ -1537,8 +1585,16 @@ public sealed partial class SftpWindow : Window, System.ComponentModel.INotifyPr
     {
         if (!item.IsEditing) return;
 
+        // LOCK: Instantly disable editing mode to prevent LostFocus from triggering a duplicate save
+        item.IsEditing = false;
+
         string rawName = tb.Text.Trim();
-        string newName = SanitizeFileName(rawName); // <--- Sanitize input here
+        string newName = SanitizeFileName(rawName);
+
+        if (rawName != newName)
+        {
+            await ShowInvalidCharacterWarningAsync(rawName);
+        }
 
         if (string.IsNullOrWhiteSpace(newName))
         {
@@ -1548,9 +1604,8 @@ public sealed partial class SftpWindow : Window, System.ComponentModel.INotifyPr
 
         var activeList = _isLocalFocused ? LocalFileList : RemoteFileList;
         activeList.Focus(FocusState.Pointer);
-        item.IsEditing = false;
         item.IsNewFolder = false;
-        item.Name = newName; // Ensure UI updates to the clean name
+        item.Name = newName;
 
         try
         {
@@ -1570,6 +1625,16 @@ public sealed partial class SftpWindow : Window, System.ComponentModel.INotifyPr
             }
             else
             {
+                // 1. Check if the folder already exists in our current remote file list
+                var conflict = _remoteFiles.FirstOrDefault(x => string.Equals(x.Name, newName, StringComparison.OrdinalIgnoreCase) && x != item);
+                if (conflict != null)
+                {
+                    CancelNewFolder(item);
+                    var errDlg = new ContentDialog { Title = "Error", Content = $"An item named '{newName}' already exists on the server.", CloseButtonText = "OK", XamlRoot = this.Content?.XamlRoot };
+                    await errDlg.ShowAsync();
+                    return;
+                }
+
                 string targetDir = _currentRemotePath == "/" ? $"/{newName}" : $"{_currentRemotePath}/{newName}";
 
                 await PerformTransferAsync($"Creating folder {newName}...", () =>
@@ -2567,23 +2632,44 @@ public sealed partial class SftpWindow : Window, System.ComponentModel.INotifyPr
             }
         }
     }
+
     private static string SanitizeFileName(string name)
     {
         if (string.IsNullOrEmpty(name)) return name;
 
-        // 1. Define illegal characters for Windows (covers both local and remote safety to keep names compatible)
-        char[] invalidChars = Path.GetInvalidFileNameChars(); // Includes <, >, :, ", /, \, |, ?, *
-
-        // 2. Replace illegal characters with an underscore '_' or strip them
+        // Strip out invalid Windows filename characters completely
+        char[] invalidChars = Path.GetInvalidFileNameChars(); // <, >, :, ", /, \, |, ?, *
         foreach (char c in invalidChars)
         {
-            name = name.Replace(c, '_');
+            name = name.Replace(c.ToString(), string.Empty);
         }
 
-        // 3. Trim trailing dots or spaces which cause corruption in Windows
+        // Trim trailing dots or spaces which cause filesystem corruption
         name = name.TrimEnd(' ', '.');
 
         return name;
+    }
+
+    private async Task ShowInvalidCharacterWarningAsync(string originalName)
+    {
+        if (_isShowingWarning || this.Content?.XamlRoot == null) return;
+
+        _isShowingWarning = true;
+        try
+        {
+            var dialog = new ContentDialog
+            {
+                Title = "Invalid Name",
+                Content = $"A file or folder name cannot contain any of the following characters:\n\\ / ? * : | \" < >\n\nYou typed: '{originalName}'",
+                CloseButtonText = "OK",
+                XamlRoot = this.Content.XamlRoot
+            };
+            await dialog.ShowAsync();
+        }
+        finally
+        {
+            _isShowingWarning = false;
+        }
     }
 
 }

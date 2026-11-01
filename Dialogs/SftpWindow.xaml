@@ -20,13 +20,17 @@
             <!-- Reverted back to the native WinUI 3 CommandBarFlyout -->
             <CommandBarFlyout x:Name="FileContextMenu">
                 <CommandBarFlyout.PrimaryCommands>
-                    <AppBarButton Icon="Cut" Label="Cut" Click="ContextCut_Click" />
-                    <AppBarButton Icon="Copy" Label="Copy" Click="ContextCopy_Click" />
-                    <AppBarButton Icon="Paste" Label="Paste" Click="ContextPaste_Click" />
-                    <AppBarButton Icon="Rename" Label="Rename" Click="ContextRename_Click" />
-                    <AppBarButton Icon="Delete" Label="Delete" Click="ContextDelete_Click" />
-                    <AppBarButton Icon="Calculator" Label="Calculate Size" Click="ContextCalculateSize_Click" />
+                    <AppBarButton Label="Cut" Icon="Cut" Click="ContextCut_Click"/>
+                    <AppBarButton Label="Copy" Icon="Copy" Click="ContextCopy_Click"/>
+                    <AppBarButton Label="Paste" Icon="Paste" Click="ContextPaste_Click"/>
+                    <AppBarButton Label="Rename" Icon="Rename" Click="ContextRename_Click"/>
+                    <AppBarButton Label="Delete" Icon="Delete" Click="ContextDelete_Click"/>
+                    <AppBarButton Label="New Folder" Icon="NewFolder" Click="ContextNewFolder_Click"/>
                 </CommandBarFlyout.PrimaryCommands>
+
+                <CommandBarFlyout.SecondaryCommands>
+                    <AppBarButton Label="Calculate Size" Icon="Calculator" Click="ContextCalculateSize_Click"/>
+                </CommandBarFlyout.SecondaryCommands>
             </CommandBarFlyout>
 
             <MenuFlyout x:Name="HeaderContextMenu">
@@ -143,7 +147,7 @@
                     </Grid>
 
                     <!-- Row 2: LISTVIEW (Header removed from inside) -->
-                    <ListView x:Name="LocalFileList" Grid.Row="2" BorderBrush="Gray" BorderThickness="1" 
+                    <ListView x:Name="LocalFileList" CharacterReceived="FileList_CharacterReceived" Grid.Row="2" BorderBrush="Gray" BorderThickness="1" 
                         SelectionChanged="FileList_SelectionChanged"
                         DoubleTapped="LocalFileList_DoubleTapped" SelectionMode="Extended"
                         GotFocus="LocalFileList_GotFocus" PointerPressed="LocalFileList_PointerPressed"
@@ -257,7 +261,7 @@
                     </Grid>
 
                     <!-- Row 2: LISTVIEW (Header removed from inside) -->
-                    <ListView x:Name="RemoteFileList" Grid.Row="2" BorderBrush="Gray" BorderThickness="1" 
+                    <ListView x:Name="RemoteFileList" CharacterReceived="FileList_CharacterReceived" Grid.Row="2" BorderBrush="Gray" BorderThickness="1" 
                         SelectionChanged="FileList_SelectionChanged"
                         DoubleTapped="RemoteFileList_DoubleTapped" SelectionMode="Extended"
                         GotFocus="RemoteFileList_GotFocus" PointerPressed="RemoteFileList_PointerPressed"
@@ -272,6 +276,9 @@
                             </Style>
                         </ListView.ItemContainerStyle>
 
+                        
+                        
+                        
                         <ListView.ItemTemplate>
                             <DataTemplate>
                                 <Grid HorizontalAlignment="Stretch" Padding="5,5,0,5" Background="{Binding DropBackgroundBrush, Mode=OneWay}">

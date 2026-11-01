@@ -59,8 +59,20 @@ public sealed class SftpService : IDisposable
         (_client ?? throw new InvalidOperationException("Not connected"))
         .ListDirectory(path)
         .Where(f => f.Name != ".");
-        
-    public void CreateDirectory(string remote) => _client!.CreateDirectory(remote);
+
+    public void CreateDirectory(string remote)
+    {
+        try
+        {
+            _client!.CreateDirectory(remote);
+        }
+        catch (Renci.SshNet.Common.SftpException ex)
+        {
+            // Translates raw "Failure" into a readable message that PerformTransferAsync can display
+            throw new InvalidOperationException($"Could not create folder. It may already exist or you lack permissions. (Server: {ex.Message})", ex);
+        }
+    }
+
     public void Rename(string from, string to) => _client!.RenameFile(from, to);
 
     public void Delete(string remote, bool isDirectory)

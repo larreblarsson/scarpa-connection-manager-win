@@ -39,9 +39,6 @@
                 </MenuFlyoutItem>
                 <MenuFlyoutSeparator/>
                 <MenuFlyoutItem Text="Exit" Click="Exit_Click"/>
-
-                <MenuFlyoutSeparator />
-                <MenuFlyoutItem Text="Exit" Click="Exit_Click" />
             </MenuBarItem>
 
             <MenuBarItem Title="Servers">
@@ -73,6 +70,12 @@
             </MenuBarItem>
 
             <MenuBarItem Title="Help">
+                <MenuFlyoutItem Text="User Guide" Click="HelpUserGuide_Click">
+                    <MenuFlyoutItem.Icon>
+                        <FontIcon Glyph="&#xE8A5;" />
+                        <!-- Document icon -->
+                    </MenuFlyoutItem.Icon>
+                </MenuFlyoutItem>
                 <MenuFlyoutItem Text="About" Click="About_Click" />
             </MenuBarItem>
         </MenuBar>

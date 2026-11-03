@@ -84,8 +84,9 @@ public sealed partial class MainWindow : Window
     private DateTime _lastClickTime = DateTime.MinValue;
     private DispatcherTimer? _renameTimer;
     private Dictionary<TreeViewNode, object> _nodeTags = new();
+    private Services.LocalWebServer _helpServer;
 
-    public MainWindow()
+    public MainWindow()
     {
         this.InitializeComponent();
         this.Title = "Scarpa Connection Manager";
@@ -116,7 +117,26 @@ public sealed partial class MainWindow : Window
         this.Closed += MainWindow_Closed;
     }
 
-    private async void OnLoaded(object sender, RoutedEventArgs e)
+    private void HelpUserGuide_Click(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
+    {
+        if (_helpServer == null)
+        {
+            string helpFolder = System.IO.Path.Combine(System.AppDomain.CurrentDomain.BaseDirectory, "HelpDocs");
+
+            if (!System.IO.Directory.Exists(helpFolder))
+            {
+                System.IO.Directory.CreateDirectory(helpFolder);
+            }
+
+            _helpServer = new Services.LocalWebServer(helpFolder);
+            _helpServer.Start();
+        }
+
+        string url = _helpServer.BaseUrl + "UserGuide.html";
+        _ = Windows.System.Launcher.LaunchUriAsync(new Uri(url));
+    }
+
+    private async void OnLoaded(object sender, RoutedEventArgs e)
     {
         AppPaths.EnsureDirectories();
         _settings = SettingsService.Load();

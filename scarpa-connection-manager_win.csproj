@@ -40,6 +40,75 @@
     <Content Include="Assets\Square44x44Logo.targetsize-24_altform-unplated.png" />
     <Content Include="Assets\StoreLogo.png" />
     <Content Include="Assets\Wide310x150Logo.scale-200.png" />
+    <Content Include="HelpDocs\AndriodMirroMain.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="HelpDocs\AndriodMirrorEdit.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="HelpDocs\AndriodMirrorSession.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="HelpDocs\DragAndDrop.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="HelpDocs\EditAppearanceTab.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="HelpDocs\EditGeneralTab.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="HelpDocs\EditLoginActionAddSequenceTab.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="HelpDocs\EditLoginActionTab.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="HelpDocs\EditNetworkingAddJumpHosts.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="HelpDocs\EditNetworkingAddPFRule.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="HelpDocs\EditNetworkingTab.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="HelpDocs\EditRDPTab.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="HelpDocs\EditTerminalTab.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="HelpDocs\Export.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="HelpDocs\ImportMeny.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="HelpDocs\InlineChangeName.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="HelpDocs\MainWindow.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="HelpDocs\RightClickMeny.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="HelpDocs\SetGlobalDefaults.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="HelpDocs\SetInitialPassWord.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="HelpDocs\SFTP_GUI_Session.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="HelpDocs\SSH_Session.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="HelpDocs\UserGuide.html">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
     <Content Include="terminal.html">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
@@ -77,6 +146,29 @@
     <None Remove="Dialogs\ServerDialog.xaml" />
     <None Remove="Dialogs\SftpWindow.xaml" />
     <None Remove="Dialogs\SshSessionDialog.xaml" />
+    <None Remove="HelpDocs\AndriodMirroMain.png" />
+    <None Remove="HelpDocs\AndriodMirrorEdit.png" />
+    <None Remove="HelpDocs\AndriodMirrorSession.png" />
+    <None Remove="HelpDocs\DragAndDrop.png" />
+    <None Remove="HelpDocs\EditAppearanceTab.png" />
+    <None Remove="HelpDocs\EditGeneralTab.png" />
+    <None Remove="HelpDocs\EditLoginActionAddSequenceTab.png" />
+    <None Remove="HelpDocs\EditLoginActionTab.png" />
+    <None Remove="HelpDocs\EditNetworkingAddJumpHosts.png" />
+    <None Remove="HelpDocs\EditNetworkingAddPFRule.png" />
+    <None Remove="HelpDocs\EditNetworkingTab.png" />
+    <None Remove="HelpDocs\EditRDPTab.png" />
+    <None Remove="HelpDocs\EditTerminalTab.png" />
+    <None Remove="HelpDocs\Export.png" />
+    <None Remove="HelpDocs\ImportMeny.png" />
+    <None Remove="HelpDocs\InlineChangeName.png" />
+    <None Remove="HelpDocs\MainWindow.png" />
+    <None Remove="HelpDocs\RightClickMeny.png" />
+    <None Remove="HelpDocs\SetGlobalDefaults.png" />
+    <None Remove="HelpDocs\SetInitialPassWord.png" />
+    <None Remove="HelpDocs\SFTP_GUI_Session.png" />
+    <None Remove="HelpDocs\SSH_Session.png" />
+    <None Remove="HelpDocs\UserGuide.html" />
     <None Remove="ServerDialog.xaml" />
     <None Remove="terminal.html" />
     <None Remove="Views\SftpWindow.xaml" />

@@ -122,6 +122,8 @@ public sealed partial class ServerDialog : Microsoft.UI.Xaml.Window
             AntiIdleCheck.IsChecked = Config.AntiIdleEnabled;
             AntiIdleStringBox.Text = Config.AntiIdleString ?? "";
             AntiIdleIntervalBox.Value = Config.AntiIdleInterval > 0 ? Config.AntiIdleInterval : 10;
+            AntiIdleNoOpCheck.IsChecked = Config.AntiIdleNoOp;
+            AntiIdleStringBox.IsEnabled = !Config.AntiIdleNoOp;
 
             // Terminal - Startup Command
             StartupCmdCheck.IsChecked = Config.StartupCmdEnabled;
@@ -190,6 +192,8 @@ public sealed partial class ServerDialog : Microsoft.UI.Xaml.Window
             AntiIdleCheck.IsChecked = false;
             AntiIdleStringBox.Text = "\\n";
             AntiIdleIntervalBox.Value = 60;
+            AntiIdleNoOpCheck.IsChecked = false;
+            AntiIdleStringBox.IsEnabled = true;
 
             StartupCmdCheck.IsChecked = false;
 
@@ -457,6 +461,7 @@ public sealed partial class ServerDialog : Microsoft.UI.Xaml.Window
         Config.AntiIdleEnabled = AntiIdleCheck.IsChecked == true;
         Config.AntiIdleString = AntiIdleStringBox.Text;
         Config.AntiIdleInterval = double.IsNaN(AntiIdleIntervalBox.Value) ? 60 : (int)AntiIdleIntervalBox.Value;
+        Config.AntiIdleNoOp = AntiIdleNoOpCheck.IsChecked == true;
 
         // Terminal Startup Command
         Config.StartupCmdEnabled = StartupCmdCheck.IsChecked == true;
@@ -1000,5 +1005,11 @@ public sealed partial class ServerDialog : Microsoft.UI.Xaml.Window
         }
         return false;
     }
-
+    private void AntiIdleNoOpCheck_Changed(object sender, RoutedEventArgs e)
+    {
+        if (AntiIdleStringBox != null && AntiIdleNoOpCheck != null)
+        {
+            AntiIdleStringBox.IsEnabled = AntiIdleNoOpCheck.IsChecked != true;
+        }
+    }
 }

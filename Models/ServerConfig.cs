@@ -124,6 +124,7 @@ public sealed class ServerConfig
     [JsonPropertyName("anti_idle_enabled")] public bool AntiIdleEnabled { get; set; }
     [JsonPropertyName("anti_idle_int")] public int AntiIdleInterval { get; set; } = 60;
     [JsonPropertyName("anti_idle_str")] public string AntiIdleString { get; set; } = "\\n";
+    [JsonPropertyName("anti_idle_noop")] public bool AntiIdleNoOp { get; set; }
 
     // Startup Command File
     [JsonPropertyName("startup_cmd_enabled")] public bool StartupCmdEnabled { get; set; }

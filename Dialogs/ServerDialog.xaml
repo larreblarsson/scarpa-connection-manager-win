@@ -153,6 +153,7 @@
                                 <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                     <CheckBox x:Name="AntiIdleCheck" Content="Send string:" VerticalAlignment="Center" MinWidth="0" Margin="0,0,4,0"/>
                                     <TextBox x:Name="AntiIdleStringBox" Width="60" VerticalAlignment="Center" />
+                                    <CheckBox x:Name="AntiIdleNoOpCheck" Content="Use NO-OP instead" Checked="AntiIdleNoOpCheck_Changed" Unchecked="AntiIdleNoOpCheck_Changed" Margin="10,0,10,0" />
                                     <TextBlock Text="every" VerticalAlignment="Center" Margin="4,0,4,0" />
 
                                     <NumberBox x:Name="AntiIdleIntervalBox" SpinButtonPlacementMode="Inline" SmallChange="1" LargeChange="10" Width="180" VerticalAlignment="Center" />

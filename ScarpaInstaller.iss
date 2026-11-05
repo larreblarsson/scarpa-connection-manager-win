@@ -15,3 +15,15 @@ Source: "Publish\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs creat
 
 [Icons]
 Name: "{group}\Scarpa Connection Manager"; Filename: "{app}\scarpa-connection-manager_win.exe"; IconFilename: "{app}\scarpa-connection-manager_win.exe"
+
+[Run]
+Filename: "{app}\scarpa-connection-manager_win.exe"; Description: "Launch Scarpa Connection Manager"; Flags: nowait postinstall skipifsilent
+
+[Code]
+function SetForegroundWindow(hWnd: Integer): Boolean;
+external 'SetForegroundWindow@user32.dll stdcall';
+
+procedure InitializeWizard();
+begin
+  SetForegroundWindow(WizardForm.Handle);
+end;

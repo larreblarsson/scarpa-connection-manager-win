@@ -451,14 +451,22 @@ public sealed partial class TerminalControl : UserControl
                 while (_sshClient != null && _sshClient.IsConnected && !_antiIdleCts.Token.IsCancellationRequested)
                 {
                     await Task.Delay(cfg.AntiIdleInterval * 1000, _antiIdleCts.Token);
-                    if (_shellStream != null && _shellStream.CanWrite)
+
+                    if (cfg.AntiIdleNoOp)
                     {
+                        // Native SSH.NET Keep-Alive (NO-OP) packet
+                        _sshClient.SendKeepAlive();
+                    }
+                    else if (_shellStream != null && _shellStream.CanWrite)
+                    {
+                        // Standard string injection fallback
                         _shellStream.Write(bytes, 0, bytes.Length);
                         _shellStream.Flush();
                     }
                 }
             }
             catch (TaskCanceledException) { }
+            catch (Exception) { /* Handle unexpected network disconnects gracefully */ }
         });
     }
 

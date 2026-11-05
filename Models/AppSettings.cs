@@ -12,7 +12,10 @@ public sealed class AppSettings
 {
     [JsonPropertyName("master_passphrase_salt")] public string? MasterSaltHex { get; set; }
     [JsonPropertyName("master_passphrase_hash")] public string? MasterHashHex { get; set; }
-    [JsonPropertyName("disclaimer_accepted")] public bool DisclaimerAccepted { get; set; }
+
+    // Combined the JSON attribute and the default value into a single declaration
+    [JsonPropertyName("disclaimer_accepted")] public bool DisclaimerAccepted { get; set; } = false;
+
     [JsonPropertyName("remember_master")] public bool RememberMaster { get; set; }
 
     /// <summary>Terminal host used for SSH/SFTP CLI sessions.</summary>

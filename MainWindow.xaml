@@ -70,13 +70,9 @@
             </MenuBarItem>
 
             <MenuBarItem Title="Help">
-                <MenuFlyoutItem Text="User Guide" Click="HelpUserGuide_Click">
-                    <MenuFlyoutItem.Icon>
-                        <FontIcon Glyph="&#xE8A5;" />
-                        <!-- Document icon -->
-                    </MenuFlyoutItem.Icon>
-                </MenuFlyoutItem>
-                <MenuFlyoutItem Text="About" Click="About_Click" />
+                <MenuFlyoutItem Text="About" Click="HelpAbout_Click"/>
+                <MenuFlyoutItem Text="User Guide" Click="HelpUserGuide_Click"/>
+                <MenuFlyoutItem Text="Reset Disclaimer" Click="HelpResetDisclaimer_Click"/>
             </MenuBarItem>
         </MenuBar>
 
@@ -101,14 +97,11 @@
             <TreeView.ItemTemplate>
                 <DataTemplate>
                     <Grid Background="{Binding Content.BackgroundBrush}" CornerRadius="4" Margin="0,2">
-
-                        <!-- Windows 11 Blue Selection Indicator -->
                         <Rectangle Width="3" Height="16" Fill="#0078D4" 
                                    HorizontalAlignment="Left" VerticalAlignment="Center" 
                                    RadiusX="1.5" RadiusY="1.5"
                                    Visibility="{Binding Content.IndicatorVisibility}" />
 
-                        <!-- Main Content (Padding updated to clear the blue line) -->
                         <StackPanel Orientation="Horizontal" Spacing="8" MinHeight="32" Padding="12,0,8,0">
                             <FontIcon Glyph="{Binding Content.IconGlyph}" Foreground="{Binding Content.IconColor}" VerticalAlignment="Center"/>
 
@@ -195,7 +188,7 @@
                             <FontIcon Glyph="&#xE756;" />
                         </MenuFlyoutItem.Icon>
                     </MenuFlyoutItem>
-                    
+
                     <MenuFlyoutItem Text="SFTP" Click="SftpGui_Click">
                         <MenuFlyoutItem.Icon>
                             <FontIcon Glyph="&#xE7B4;" />
@@ -237,5 +230,64 @@
         <!-- Log Box -->
         <TextBox x:Name="LogBox" Grid.Row="2" IsReadOnly="True" AcceptsReturn="True" 
                  ScrollViewer.VerticalScrollBarVisibility="Auto" BorderThickness="0,1,0,0" Background="Transparent" />
+
+        <!-- About Dialog -->
+        <ContentDialog x:Name="AboutDialog" CloseButtonText="Close">
+            <StackPanel Spacing="10" HorizontalAlignment="Center" Padding="20">
+                <Image Source="ms-appx:///Assets/scarpa_icon.ico" Width="64" Height="64" HorizontalAlignment="Center" Margin="0,0,0,10"/>
+
+                <TextBlock Text="Scarpa Connection Manager" FontWeight="SemiBold" FontSize="18" HorizontalAlignment="Center"/>
+                <TextBlock Text="1.0.1.0" Foreground="Gray" HorizontalAlignment="Center"/>
+
+                <TextBlock Text="A WinUI-based SSH/SFTP session manager." HorizontalAlignment="Center" Margin="0,15,0,5"/>
+
+                <TextBlock Text="Riposa in pace, Aquila di Filottrano. Sarai sempre con noi!" 
+                   Foreground="DimGray" 
+                   HorizontalAlignment="Center" 
+                   TextWrapping="Wrap"
+                   FontStyle="Italic"/>
+            </StackPanel>
+        </ContentDialog>
+
+        <!-- Legal Disclaimer Dialog -->
+        <ContentDialog x:Name="DisclaimerDialog"
+                       Title="Disclaimer"
+                       PrimaryButtonText="OK"
+                       SecondaryButtonText="Cancel"
+                       IsPrimaryButtonEnabled="False"
+                       PrimaryButtonClick="DisclaimerDialog_PrimaryButtonClick"
+                       SecondaryButtonClick="DisclaimerDialog_SecondaryButtonClick"
+                       CloseButtonText="">
+            <StackPanel Spacing="12" MaxWidth="600">
+                <TextBlock Text="SCARPA Connection Manager – Legal Disclaimer" Foreground="Gray" Margin="0,0,0,10"/>
+
+                <TextBlock TextWrapping="Wrap" Foreground="#505050">
+                    This software is provided "as is", without warranty of any kind, express or implied, including but not limited to the warranties of merchantability, fitness for a particular purpose, and noninfringement. In no event shall the author or contributors be held liable for any claim, damages, or other liability, whether in an action of contract, tort, or otherwise, arising from, out of, or in connection with the software or the use or other dealings in the software.
+                </TextBlock>
+
+                <TextBlock TextWrapping="Wrap" Foreground="#505050">
+                    By installing or using this application, you acknowledge that:
+                </TextBlock>
+
+                <TextBlock TextWrapping="Wrap" Foreground="#505050" Margin="10,0,0,0">
+                    - You are solely responsible for any actions performed using this software.<LineBreak/>
+                    - You understand that SSH and SFTP connections may expose systems to security risks.<LineBreak/>
+                    - You agree not to hold the author liable for any data loss, system compromise, or unintended consequences resulting from use of this application.
+                </TextBlock>
+
+                <TextBlock TextWrapping="Wrap" Foreground="#505050">
+                    This software is intended for educational and administrative purposes only.<LineBreak/>
+                    Use at your own risk.
+                </TextBlock>
+
+                <TextBlock TextWrapping="Wrap" Foreground="#505050" Margin="0,0,0,15">
+                    © Bo Tomas Larsson, 2025. All rights reserved.
+                </TextBlock>
+
+                <CheckBox x:Name="AcceptTermsCheckBox" Content="I accept the terms" Checked="AcceptTermsCheckBox_Changed" Unchecked="AcceptTermsCheckBox_Changed"/>
+            </StackPanel>
+        </ContentDialog>
+
+
     </Grid>
 </Window>

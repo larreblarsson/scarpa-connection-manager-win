@@ -125,11 +125,13 @@
         <h2>User Guide</h2>
         <ul>
             <li><a href="#getting-started">1. Managing Sessions</a></li>
-            <li><a href="#appearance">2. Terminal Customization</a></li>
-            <li><a href="#automation">3. Automation & Login</a></li>
-            <li><a href="#networking">4. Network & Routing</a></li>
-            <li><a href="#rdp">5. Remote Desktop (RDP)</a></li>
-            <li><a href="#android-mirroring">6. Android Device Manager</a></li>
+            <li><a href="#terminal-settings">2. Terminal & Logging</a></li>
+            <li><a href="#appearance">3. Terminal Customization</a></li>
+            <li><a href="#automation">4. Automation & Login</a></li>
+            <li><a href="#networking">5. Network & Routing</a></li>
+            <li><a href="#rdp">6. Remote Desktop (RDP)</a></li>
+            <li><a href="#android-mirroring">7. Android Device Manager</a></li>
+            <li><a href="#security">8. Security Architecture</a></li>
         </ul>
     </nav>
 
@@ -159,8 +161,24 @@
             <div class="image-caption">Configuring standard SSH connection details, including Host, Port, and Authentication type.</div>
         </div>
 
-        <!-- Section 2: Appearance -->
-        <h3 id="appearance">2. Terminal Customization (Appearance)</h3>
+        <!-- Section 2: Terminal Settings -->
+        <h3 id="terminal-settings">2. Terminal & Logging</h3>
+        <p>The <strong>Terminal</strong> tab provides essential controls for session auditing, connection keep-alives, and automatic script execution.</p>
+
+        <ul class="feature-list">
+            <li><strong>Session Logging:</strong> Enable session logging to capture your terminal output to a local file[cite: 6]. You can specify a precise <code>Log file path</code> and choose whether to <strong>Append to file</strong> or <strong>Overwrite file</strong> on subsequent connections[cite: 6].</li>
+            <li><strong>Append Data to Log:</strong> Inject custom telemetry or timestamps into your logs automatically. You can define specific text patterns and variables (such as <code>%H</code> for Hostname or <code>%D</code> for Date) to be written at connect, at disconnect, or prepended to each line[cite: 6].</li>
+            <li><strong>Anti-idle (Keep-Alive):</strong> Prevent strict firewalls from dropping your session due to inactivity. You can instruct the terminal to send a standard string (like <code>\r</code>) at a set interval, or check the <strong>Use NO-OP instead</strong> box[cite: 6]. Using NO-OP sends a silent Keep-Alive packet at the SSH protocol layer, ensuring your connection stays open without injecting unwanted characters into your visual command prompt.</li>
+            <li><strong>Scrollback Buffer & Startup Scripts:</strong> Configure how many lines of terminal history are retained in memory (default is 10,000)[cite: 6]. Additionally, you can utilize the <strong>Startup Command File</strong> section to automatically send the contents of a local script file to the remote server immediately after a successful login[cite: 6].</li>
+        </ul>
+
+        <div class="image-container">
+            <img src="EditTerminalTab.png" alt="Terminal Settings Tab">
+            <div class="image-caption">Configuring session logging, NO-OP anti-idle intervals, and startup command files within the Terminal tab.</div>
+        </div>
+
+        <!-- Section 3: Appearance -->
+        <h3 id="appearance">3. Terminal Customization (Appearance)</h3>
         <p>The <strong>Appearance</strong> tab grants you complete control over the visual presentation of your SSH terminal windows. Tailoring these settings can help reduce eye strain during long sessions or allow you to color-code critical production servers to prevent accidental commands.</p>
 
         <ul class="feature-list">
@@ -175,8 +193,8 @@
             <div class="image-caption">Adjusting terminal colors, fonts, and pre-built schemes to suit your visual preferences.</div>
         </div>
 
-        <!-- Section 3: Automation -->
-        <h3 id="automation">3. Automation & Login Actions</h3>
+        <!-- Section 4: Automation -->
+        <h3 id="automation">4. Automation & Login Actions</h3>
         <p>For complex environments involving jump servers, two-factor authentication prompts, or strict administrative routers, the <strong>Login Action</strong> tab acts as a powerful macro engine. Instead of manually typing repetitive login commands, you can instruct the terminal to execute them automatically.</p>
 
         <p>The main window provides a sequence list where you can Add, Edit, Delete, or reorder (Move Up / Move Down) specific automation steps. The terminal will execute these steps sequentially from top to bottom upon successful connection.</p>
@@ -198,8 +216,8 @@
             <div class="image-caption">Configuring an Expect/Send automation rule with a defined timeout.</div>
         </div>
 
-        <!-- Section 4: Networking -->
-        <h3 id="networking">4. Network & Routing</h3>
+        <!-- Section 5: Networking -->
+        <h3 id="networking">5. Network & Routing</h3>
         <p>The <strong>Network</strong> tab handles advanced routing scenarios. If the target server is isolated behind a strict corporate firewall, you can configure <strong>Jump Hosts</strong>. A Jump Host acts as an intermediary gateway; the application will silently connect to this gateway first, using the specified Host, Port, User, and Password, and then automatically bridge the connection to your final destination.</p>
 
         <div class="image-container">
@@ -219,8 +237,8 @@
             <div class="image-caption">Creating a Local Port Forwarding tunnel mapping a source port to a remote destination.</div>
         </div>
 
-        <!-- Section 5: RDP -->
-        <h3 id="rdp">5. Remote Desktop (RDP)</h3>
+        <!-- Section 6: RDP -->
+        <h3 id="rdp">6. Remote Desktop (RDP)</h3>
         <p>Scarpa Connection Manager goes beyond command-line interfaces by offering full support for graphical Windows sessions. Under the <strong>RDP</strong> tab, you can flip the toggle switch to enable Remote Desktop capabilities for the selected session.</p>
 
         <ul class="feature-list">
@@ -234,8 +252,8 @@
             <div class="image-caption">Configuring RDP parameters including display resolution, audio, clipboard syncing, and local drive redirection.</div>
         </div>
 
-        <!-- Section 6: Android Mirroring -->
-        <h3 id="android-mirroring">6. Android Device Manager</h3>
+        <!-- Section 7: Android Mirroring -->
+        <h3 id="android-mirroring">7. Android Device Manager</h3>
         <p>The integrated Android Device Manager provides a seamless way to view, control, and interact with physical Android devices right from your desktop. The main dashboard displays a list of all devices that are currently saved, authorized, or actively connected via USB or ADB over Wi-Fi. The <strong>Manual Refresh</strong> button quickly polls the system to detect newly plugged-in hardware.</p>
 
         <div class="image-container">
@@ -261,6 +279,15 @@
             <img src="AndriodMirrorSession.png" alt="Active Android Session">
             <div class="image-caption">A live, highly responsive mirrored Android session allowing full mouse and keyboard interaction.</div>
         </div>
+
+        <!-- Section 8: Security Architecture -->
+        <h3 id="security">8. Security Architecture</h3>
+        <p>Security is a foundational pillar of the Scarpa Connection Manager, engineered specifically to ensure your infrastructure credentials and workflows remain strictly protected against memory exposure and local disk exploitation.</p>
+
+        <ul class="feature-list">
+            <li><strong>Memory and Storage Encryption:</strong> All sensitive credentials including passwords, Jump Host credentials, and SSH key passphrases are heavily encrypted. While the application is running, sensitive strings are managed exclusively using secure memory allocation mechanisms (<code>SecureString</code>). This ensures passwords remain encrypted dynamically in RAM, only decrypting for the exact millisecond they are needed for network authentication, neutralizing the threat of memory dumps.</li>
+            <li><strong>Anti-Tamper Script Verification:</strong> To protect against local exploits, any file linked to the <strong>Startup Command File</strong> functionality is cryptographically hashed when the configuration is saved. When the session starts, the application automatically verifies the current file hash against its internal secure record. If a malicious actor or malware alters the script file on your local disk outside of the application, Scarpa will detect the hash mismatch and instantly abort execution, keeping your remote servers safe from injected payloads.</li>
+        </ul>
 
     </main>
 </body>

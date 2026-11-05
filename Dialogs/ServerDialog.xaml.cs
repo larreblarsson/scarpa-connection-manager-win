@@ -276,14 +276,28 @@ public sealed partial class ServerDialog : Microsoft.UI.Xaml.Window
 
     private async void BrowseLogPath_Click(object sender, RoutedEventArgs e)
     {
-        var picker = new Windows.Storage.Pickers.FolderPicker();
+        // Use a FileSavePicker so the user can define a file name AND a folder
+        var picker = new Windows.Storage.Pickers.FileSavePicker();
         var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
         WinRT.Interop.InitializeWithWindow.Initialize(picker, hwnd);
-        picker.SuggestedStartLocation = Windows.Storage.Pickers.PickerLocationId.DocumentsLibrary;
-        picker.FileTypeFilter.Add("*");
 
-        var folder = await picker.PickSingleFolderAsync();
-        if (folder != null) LogPathTextBox.Text = folder.Path;
+        picker.SuggestedStartLocation = Windows.Storage.Pickers.PickerLocationId.DocumentsLibrary;
+
+        // If there's already a path, suggest its file name. Otherwise, suggest a default.
+        string currentPath = LogPathTextBox.Text;
+        picker.SuggestedFileName = string.IsNullOrWhiteSpace(currentPath)
+            ? "session.log"
+            : System.IO.Path.GetFileName(currentPath);
+
+        // Allow standard text/log extensions
+        picker.FileTypeChoices.Add("Log Files", new List<string>() { ".log" });
+        picker.FileTypeChoices.Add("Text Files", new List<string>() { ".txt" });
+
+        var file = await picker.PickSaveFileAsync();
+        if (file != null)
+        {
+            LogPathTextBox.Text = file.Path;
+        }
     }
 
     private async void BrowseStartupCmd_Click(object sender, RoutedEventArgs e)

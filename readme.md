@@ -6,11 +6,13 @@ Built on .NET 8 as a completely self-contained deployment, Scarpa requires no ex
 
 ---
 
-## Security & Data Protection
+## Security Architecture & Data Protection
 
-Security is handled entirely locally; Scarpa never transmits configuration data to external servers.
+Security is a foundational pillar of the Scarpa Connection Manager, engineered specifically to ensure your infrastructure credentials and workflows remain strictly protected against memory exposure and local disk exploitation.
 
-*   **AES-Encrypted Local Storage:** All server configurations, credentials, port forwarding rules, and automation scripts are heavily encrypted at rest. Data is stored locally in `%LocalAppData%\ScarpaConnectionManager\ssh_servers.json.enc` utilizing robust AES encryption, ensuring that even if the physical drive is compromised, your infrastructure credentials remain secure.
+*   **Memory and Storage Encryption:** All sensitive credentials—including passwords, Jump Host credentials, and SSH key passphrases—are heavily encrypted. While the application is running, sensitive strings are managed exclusively using secure memory allocation mechanisms (`SecureString`). This ensures passwords remain encrypted dynamically in RAM, only decrypting for the exact millisecond they are needed for network authentication, neutralizing the threat of memory dumps.
+*   **AES-Encrypted Local Storage:** All server configurations, credentials, port forwarding rules, and automation scripts are encrypted at rest. Data is stored locally in `%LocalAppData%\ScarpaConnectionManager\ssh_servers.json.enc` utilizing robust AES encryption, ensuring that even if the physical drive is compromised, your infrastructure credentials remain secure.
+*   **Anti-Tamper Script Verification:** To protect against local exploits, any file linked to the **Startup Command File** functionality is cryptographically hashed when the configuration is saved. When the session starts, the application automatically verifies the current file hash against its internal secure record. If a malicious actor or malware alters the script file on your local disk outside of the application, Scarpa will detect the hash mismatch and instantly abort execution, keeping your remote servers safe from injected payloads.
 *   **Comprehensive Authentication Support:** 
     *   Standard Password & Keyboard-Interactive authentication.
     *   Native support for RSA, DSA, ECDSA, and Ed25519 private key files (`-i` identity files).
@@ -56,9 +58,9 @@ Complex infrastructure requires complex routing. Scarpa handles complex SSH tunn
 
 ## Auditing & Connection Resilience
 
-*   **Anti-Idle (Keep-Alive):** Keep long-running sessions alive behind strict corporate firewalls or aggressive NAT routers. Configure custom payload strings (e.g., a null byte or whitespace) and exact transmission intervals (in seconds) to prevent premature session termination.
+*   **Anti-Idle (Keep-Alive):** Keep long-running sessions alive behind strict corporate firewalls or aggressive NAT routers. Configure custom payload strings (e.g., a null byte or whitespace) and exact transmission intervals (in seconds) to prevent premature session termination. You can also opt to use **NO-OP** Keep-Alive packets which send a silent packet at the SSH protocol layer, ensuring your connection stays open without injecting unwanted characters into your visual command prompt.
 *   **Intelligent Logging Engine:** 
-    *   Route raw terminal stdout/stderr directly to local `.log` files.
+    *   Route raw terminal stdout/stderr directly to local `.log` or `.txt` files.
     *   Optionally strip ANSI color codes from logs for clean plaintext reading.
     *   Toggle between **Append** (maintaining history across sessions) or **Overwrite** modes.
     *   Inject custom, variable-driven strings into the log file exactly when a session connects or disconnects (Supports variables like `%H` for Host, `%Y` for Year, `%m` for minute, etc.).
@@ -75,3 +77,15 @@ Complex infrastructure requires complex routing. Scarpa handles complex SSH tunn
     *   Toggle local Drive Mapping (`drivestoredirect`).
     *   Bypass or enforce strict SSL Certificate validation.
 *   **Resolution Management:** Launch sessions in seamless Full-Screen mode, or lock them to explicit custom resolutions (e.g., `1920x1080`, `1280x720`) to fit within specific monitor zones.
+
+---
+
+## Android Device Manager
+
+The integrated Android Device Manager provides a seamless way to view, control, and interact with physical Android devices right from your desktop. 
+
+*   **Interactive Mirroring Session:** Captures your local mouse clicks, scrolls, and keyboard inputs and instantly injects them into the Android operating system, allowing you to navigate the device exactly as if it were in your hands.
+*   **Connection & Detection:** Displays a list of all devices that are currently saved, authorized, or actively connected via USB or ADB over Wi-Fi. 
+*   **Performance Optimization:** Lower the bitrate or cap the maximum resolution to provide a smoother, lower-latency stream over a wireless connection.
+*   **Display Control:** Turn off the physical screen of the phone or tablet while mirroring it, saving battery life and preventing OLED burn-in during long debugging sessions.
+*   **Audio Relay:** Route the Android device's native audio output directly to your PC speakers.

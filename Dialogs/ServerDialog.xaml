@@ -106,7 +106,7 @@
                         <StackPanel x:Name="TerminalPage" Spacing="16" Visibility="Collapsed">
                             <ToggleSwitch x:Name="EnableLoggingSwitch" Header="Enable session logging" />
 
-                            <TextBlock Text="Log file folder path" Margin="0,0,0,-12" />
+                            <TextBlock Text="Log file path" Margin="0,0,0,-12" />
                             <Grid ColumnSpacing="8">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />

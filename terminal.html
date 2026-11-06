@@ -51,6 +51,18 @@
         
         // 2. Fit the terminal to the container right after opening
         fitAddon.fit();
+
+        // --- NEW CODE: Send dimensions to C# when xterm recalculates its grid ---
+        term.onResize((size) => {
+            if (window.chrome && window.chrome.webview) {
+                window.chrome.webview.postMessage(JSON.stringify({
+                    type: 'resize',
+                    cols: size.cols,
+                    rows: size.rows
+                }));
+            }
+        });
+        // ------------------------------------------------------------------------
         
         // 3. Listen for window resizes and recalculate rows/columns automatically
         window.addEventListener('resize', () => {

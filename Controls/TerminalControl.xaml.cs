@@ -126,6 +126,41 @@ public sealed partial class TerminalControl : UserControl
         TerminalView.WebMessageReceived += (s, e) =>
         {
             string input = e.TryGetWebMessageAsString();
+
+            // 1. Intercept terminal resize messages
+            if (input.StartsWith("{\"type\":\"resize\""))
+            {
+                try
+                {
+                    using var jsonDoc = System.Text.Json.JsonDocument.Parse(input);
+                    uint cols = jsonDoc.RootElement.GetProperty("cols").GetUInt32();
+                    uint rows = jsonDoc.RootElement.GetProperty("rows").GetUInt32();
+
+                    if (_shellStream != null)
+                    {
+                        // SSH.NET hides the window resize feature internally. We use reflection to bypass this and invoke it.
+                        var bindingFlags = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
+                        var channelField = typeof(ShellStream).GetField("_channel", bindingFlags);
+                        var channelProperty = typeof(ShellStream).GetProperty("Channel", bindingFlags);
+
+                        object? channel = channelField != null ? channelField.GetValue(_shellStream) : channelProperty?.GetValue(_shellStream);
+
+                        if (channel != null)
+                        {
+                            var method = channel.GetType().GetMethod("SendWindowChangeRequest", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+                            method?.Invoke(channel, new object[] { cols, rows, (uint)0, (uint)0 });
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"Failed to resize terminal: {ex.Message}");
+                }
+
+                return; // Stop here so we don't send the JSON string to the server as typed keystrokes
+            }
+
+            // 2. Handle normal terminal input (keystrokes)
             if (_isSftp)
             {
                 if (_sftpInputWriter != null) { _sftpInputWriter.Write(input); _sftpInputWriter.Flush(); }
@@ -581,5 +616,75 @@ public sealed partial class TerminalControl : UserControl
             if (_sftpProcess != null && !_sftpProcess.HasExited) _sftpProcess.Kill();
         }
         catch { }
+    }
+    public async Task ApplyLiveAppearanceAsync(ServerConfig newCfg)
+    {
+        _config = newCfg;
+
+        string fontName = "Consolas";
+        int fontSize = 11;
+
+        if (!string.IsNullOrWhiteSpace(_config.TermFont))
+        {
+            int lastSpace = _config.TermFont.LastIndexOf(' ');
+            if (lastSpace > 0 && int.TryParse(_config.TermFont.Substring(lastSpace + 1), out int parsedSize))
+            {
+                fontName = _config.TermFont.Substring(0, lastSpace).Trim();
+                fontSize = parsedSize;
+            }
+            else fontName = _config.TermFont;
+        }
+
+        string fg = _config.TermForeground ?? "#D0D0D0";
+        string bg = _config.TermBackground ?? "#101010";
+        string palette = _config.TermPalette ?? "None";
+        string ansiColors = "";
+        string selectionBg = "";
+
+        if (palette == "Tango")
+        {
+            ansiColors = "black: '#2e3436', red: '#cc0000', green: '#4e9a06', yellow: '#c4a000', blue: '#3465a4', magenta: '#75507b', cyan: '#06989a', white: '#d3d7cf', brightBlack: '#555753', brightRed: '#ef2929', brightGreen: '#8ae234', brightYellow: '#fce94f', brightBlue: '#729fcf', brightMagenta: '#ad7fa8', brightCyan: '#34e2e2', brightWhite: '#eeeeec', ";
+            selectionBg = "selectionBackground: 'rgba(255, 255, 255, 0.3)',";
+        }
+        else if (palette == "XTerm")
+        {
+            ansiColors = "black: '#000000', red: '#cd0000', green: '#00cd00', yellow: '#cdcd00', blue: '#0000ee', magenta: '#cd00cd', cyan: '#00cdcd', white: '#e5e5e5', brightBlack: '#7f7f7f', brightRed: '#ff0000', brightGreen: '#00ff00', brightYellow: '#ffff00', brightBlue: '#5c5cff', brightMagenta: '#ff00ff', brightCyan: '#00ffff', brightWhite: '#ffffff', ";
+            selectionBg = "selectionBackground: 'rgba(255, 255, 255, 0.3)',";
+        }
+        else if (palette == "Rxvt")
+        {
+            ansiColors = "black: '#000000', red: '#cd0000', green: '#00cd00', yellow: '#cdcd00', blue: '#0000cd', magenta: '#cd00cd', cyan: '#00cdcd', white: '#faebd7', brightBlack: '#404040', brightRed: '#ff0000', brightGreen: '#00ff00', brightYellow: '#ffff00', brightBlue: '#0000ff', brightMagenta: '#ff00ff', brightCyan: '#00ffff', brightWhite: '#ffffff', ";
+            selectionBg = "selectionBackground: 'rgba(255, 255, 255, 0.3)',";
+        }
+        else
+        {
+            selectionBg = IsLightColor(bg)
+                ? "selectionBackground: 'rgba(0, 0, 0, 0.25)',"
+                : "selectionBackground: 'rgba(255, 255, 255, 0.25)',";
+        }
+
+        string script = $@"
+            if (typeof term !== 'undefined') {{
+                term.options.fontFamily = '{fontName}, Consolas, monospace';
+                term.options.fontSize = {fontSize};
+                
+                term.options.theme = {{ 
+                    {ansiColors} 
+                    {selectionBg}
+                    background: '{bg}', 
+                    foreground: '{fg}',
+                    cursor: '{fg}',
+                    cursorAccent: '{bg}'
+                }};
+                
+                document.body.style.backgroundColor = '{bg}';
+                
+                if (typeof fitAddon !== 'undefined') {{
+                    fitAddon.fit();
+                }}
+            }}
+        ";
+
+        await TerminalView.CoreWebView2.ExecuteScriptAsync(script);
     }
 }

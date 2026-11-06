@@ -5,6 +5,7 @@ using ScarpaConnectionManager.Models;
 using ScarpaConnectionManager.Services;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 
 namespace scarpa_connection_manager_win.Dialogs;
@@ -20,21 +21,27 @@ public sealed partial class SshSessionWindow : Window
     public SshSessionWindow(ServerConfig cfg, string? logPath, List<ServerConfig>? allServers = null, IDisposable? jumpTunnel = null)
     {
         this.InitializeComponent();
-        this.Title = $"{cfg.Name} - SSH Terminal (Connecting...)";
 
         _initialConfig = cfg;
         _logPath = logPath;
         _allServers = allServers;
         _jumpTunnel = jumpTunnel;
 
-        // Set default window size and show instantly
+        // --- CUSTOM TITLE BAR SETUP ---
+        ExtendsContentIntoTitleBar = true;
+        SetTitleBar(AppTitleBar);
+        AppTitleText.Text = $"{_initialConfig.Name} - SSH Terminal (Connecting...)";
+
         var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
         var windowId = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hwnd);
         var appWindow = Microsoft.UI.Windowing.AppWindow.GetFromWindowId(windowId);
-        appWindow.Resize(new Windows.Graphics.SizeInt32(1050, 750));
 
+        appWindow.Resize(new Windows.Graphics.SizeInt32(1050, 750));
         string iconPath = System.IO.Path.Combine(System.AppContext.BaseDirectory, "Assets\\scarpa_icon.ico");
         appWindow.SetIcon(iconPath);
+
+        // Calculate exact width needed to prevent drawing over the Minimize/Maximize/Close buttons
+        RightPaddingGrid.Width = appWindow.TitleBar.RightInset;
 
         this.Closed += SshSessionWindow_Closed;
 
@@ -50,7 +57,6 @@ public sealed partial class SshSessionWindow : Window
         {
             try
             {
-                // Deconstruct tuple directly to avoid property naming issues
                 var (routedConfig, tunnel) = await JumpServerService.PrepareConnectionAsync(_initialConfig, _allServers);
                 targetConfig = routedConfig;
                 _jumpTunnel = tunnel;
@@ -61,10 +67,38 @@ public sealed partial class SshSessionWindow : Window
             }
         }
 
-        this.Title = $"{_initialConfig.Name} - SSH Terminal";
+        AppTitleText.Text = $"{_initialConfig.Name} - SSH Terminal";
 
         _termControl = new TerminalControl(targetConfig, _logPath);
-        RootGrid.Children.Add(_termControl);
+        TerminalGrid.Children.Add(_termControl);
+    }
+
+    private async void EditConfigBtn_Click(object sender, RoutedEventArgs e)
+    {
+        var folders = _allServers?.Select(s => s.Folder).Where(f => !string.IsNullOrEmpty(f)).Distinct().ToList() ?? new List<string>();
+
+        var dialog = new ServerDialog(_initialConfig, folders, _initialConfig.Folder);
+
+        if (await dialog.ShowModalAsync() && dialog.Saved)
+        {
+            var json = System.Text.Json.JsonSerializer.Serialize(dialog.Config);
+            var updatedCfg = System.Text.Json.JsonSerializer.Deserialize<ServerConfig>(json);
+
+            if (updatedCfg != null)
+            {
+                foreach (var prop in typeof(ServerConfig).GetProperties())
+                {
+                    if (prop.CanWrite) prop.SetValue(_initialConfig, prop.GetValue(updatedCfg));
+                }
+            }
+
+            AppTitleText.Text = $"{_initialConfig.Name} - SSH Terminal";
+
+            if (_termControl != null)
+            {
+                await _termControl.ApplyLiveAppearanceAsync(_initialConfig);
+            }
+        }
     }
 
     private void SshSessionWindow_Closed(object sender, WindowEventArgs args)

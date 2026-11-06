@@ -904,15 +904,50 @@ public sealed partial class SftpWindow : Window, System.ComponentModel.INotifyPr
         RemoteFileList.BorderThickness = topOnlyThickness;
     }
 
-    private void LocalFileList_GotFocus(object sender, RoutedEventArgs e) => SetActivePane(true);
-    private void LocalFileList_PointerPressed(object sender, PointerRoutedEventArgs e) => SetActivePane(true);
+    private void LocalFileList_GotFocus(object sender, RoutedEventArgs e) => SetActivePane(true);
+    private void LocalFileList_PointerPressed(object sender, PointerRoutedEventArgs e)
+    {
+        SetActivePane(true);
+        HandleThumbButtons(sender, e, isLocal: true);
+    }
 
-    private void RemoteFileList_GotFocus(object sender, RoutedEventArgs e) => SetActivePane(false);
-    private void RemoteFileList_PointerPressed(object sender, PointerRoutedEventArgs e) => SetActivePane(false);
+    private void RemoteFileList_GotFocus(object sender, RoutedEventArgs e) => SetActivePane(false);
+    private void RemoteFileList_PointerPressed(object sender, PointerRoutedEventArgs e)
+    {
+        SetActivePane(false);
+        HandleThumbButtons(sender, e, isLocal: false);
+    }
 
-    // --- Keyboard Accelerators ---
+    private void HandleThumbButtons(object sender, PointerRoutedEventArgs e, bool isLocal)
+    {
+        // Now 'sender' is successfully passed in and can be cast to UIElement
+        var pointerProperties = e.GetCurrentPoint((UIElement)sender).Properties;
 
-    private void CtrlC_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+        // XButton1 is the standard "Back" (thumb) button
+        if (pointerProperties.IsXButton1Pressed)
+        {
+            e.Handled = true;
+
+            // Find the ".." folder to go UP one directory level
+            var activeFiles = isLocal ? _localFiles : _remoteFiles;
+            var parentFolder = activeFiles.FirstOrDefault(x => x.Name == "..");
+
+            if (parentFolder != null)
+            {
+                if (isLocal) LoadLocalDirectory(parentFolder.FullPath);
+                else Task.Run(() => LoadRemoteDirectory(parentFolder.FullPath));
+            }
+        }
+        // XButton2 is the standard "Forward" button
+        else if (pointerProperties.IsXButton2Pressed)
+        {
+            e.Handled = true;
+        }
+    }
+
+    // --- Keyboard Accelerators ---
+
+    private void CtrlC_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
     {
         var activeList = _isLocalFocused ? LocalFileList : RemoteFileList;
         CopySelected(activeList, _isLocalFocused, isCut: false);
@@ -2671,5 +2706,4 @@ public sealed partial class SftpWindow : Window, System.ComponentModel.INotifyPr
             _isShowingWarning = false;
         }
     }
-
 }

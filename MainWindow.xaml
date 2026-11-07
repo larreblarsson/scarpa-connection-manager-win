@@ -243,7 +243,7 @@
                 <Image Source="ms-appx:///Assets/scarpa_icon.ico" Width="64" Height="64" HorizontalAlignment="Center" Margin="0,0,0,10"/>
 
                 <TextBlock Text="Scarpa Connection Manager" FontWeight="SemiBold" FontSize="18" HorizontalAlignment="Center"/>
-                <TextBlock Text="1.0.1.0" Foreground="Gray" HorizontalAlignment="Center"/>
+                <TextBlock Text="1.1.0" Foreground="Gray" HorizontalAlignment="Center"/>
 
                 <TextBlock Text="A WinUI-based SSH/SFTP session manager." HorizontalAlignment="Center" Margin="0,15,0,5"/>
 

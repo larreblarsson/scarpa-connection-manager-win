@@ -1,8 +1,8 @@
 [Setup]
 AppName=Scarpa Connection Manager
-AppVersion=1.0.1.0
+AppVersion=1.1.0
 DefaultDirName={autopf}\ScarpaConnectionManager
-OutputBaseFilename=ScarpaSetup_v1.0.1.0_x64
+OutputBaseFilename=ScarpaConnectionManagerSetup_1.1.0
 ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir=Releases
 DefaultGroupName=Network

@@ -1,0 +1,33 @@
+name: Build and Release Installer
+
+on:
+  push:
+    tags:
+      - '[0-9]*' # Triggers on any tag starting with a number (1.1.0, 1.1.0-1, 2.0.0)
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    - name: Setup .NET 8
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.0.x'
+
+    - name: Publish App
+      run: dotnet publish "scarpa-connection-manager_win.sln" -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o .\Publish
+
+    - name: Compile Inno Setup Installer
+      run: |
+        "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "ScarpaInstaller.iss"
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v2
+      with:
+        files: Releases/*.exe
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

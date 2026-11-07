@@ -3,11 +3,15 @@ name: Build and Release Installer
 on:
   push:
     tags:
-      - '[0-9]*' # Triggers on any tag starting with a number (1.1.0, 1.1.0-1, 2.0.0)
+      - '[0-9]*' # Triggers on any tag starting with a number
 
 jobs:
   build-and-release:
     runs-on: windows-latest
+    
+    # REQUIRED: Grants the workflow permission to create a release and upload assets
+    permissions:
+      contents: write
 
     steps:
     - name: Checkout Code

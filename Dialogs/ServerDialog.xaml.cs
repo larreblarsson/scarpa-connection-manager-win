@@ -35,17 +35,21 @@ public sealed partial class ServerDialog : Microsoft.UI.Xaml.Window
         var appWindow = Microsoft.UI.Windowing.AppWindow.GetFromWindowId(windowId);
 
         string iconPath = System.IO.Path.Combine(System.AppContext.BaseDirectory, "Assets\\scarpa_icon.ico");
-        appWindow.SetIcon(iconPath);
+        if (System.IO.File.Exists(iconPath))
+        {
+            appWindow.SetIcon(iconPath);
+        }
 
         int windowWidth = 850;
-        int windowHeight = 700;
+        int windowHeight = 1000;
 
         var displayArea = Microsoft.UI.Windowing.DisplayArea.GetFromWindowId(windowId, Microsoft.UI.Windowing.DisplayAreaFallback.Primary);
         if (displayArea != null)
         {
             var workArea = displayArea.WorkArea;
-            var x = (workArea.Width - windowWidth) / 2;
-            var y = (workArea.Height - windowHeight) / 2;
+            // Added workArea.X and workArea.Y to properly center on secondary monitors
+            var x = workArea.X + ((workArea.Width - windowWidth) / 2);
+            var y = workArea.Y + ((workArea.Height - windowHeight) / 2);
             appWindow.MoveAndResize(new Windows.Graphics.RectInt32(x, y, windowWidth, windowHeight));
         }
         else

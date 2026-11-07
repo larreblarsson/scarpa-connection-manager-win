@@ -52,10 +52,8 @@
             </NavigationView.MenuItems>
 
             <Border Background="Transparent" BorderBrush="{ThemeResource SurfaceStrokeColorDefaultBrush}" BorderThickness="1,0,0,0" Padding="24">
-                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="0,0,12,0">
-
-                    <!-- MinWidth="580" forces all tabs to perfectly match the Terminal page width -->
-                    <Grid MinWidth="580">
+                <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto" Padding="0,0,16,0">
+                    <Grid MaxWidth="650" HorizontalAlignment="Stretch">
 
                         <!-- 1. GENERAL PAGE -->
                         <StackPanel x:Name="GeneralPage" Spacing="16">
@@ -150,15 +148,21 @@
                             <!-- Anti-idle Section -->
                             <StackPanel Spacing="8" Margin="0,16,0,0">
                                 <TextBlock Text="Anti-idle" FontWeight="SemiBold" />
-                                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                    <CheckBox x:Name="AntiIdleCheck" Content="Send string:" VerticalAlignment="Center" MinWidth="0" Margin="0,0,4,0"/>
-                                    <TextBox x:Name="AntiIdleStringBox" Width="60" VerticalAlignment="Center" />
-                                    <CheckBox x:Name="AntiIdleNoOpCheck" Content="Use NO-OP instead" Checked="AntiIdleNoOpCheck_Changed" Unchecked="AntiIdleNoOpCheck_Changed" Margin="10,0,10,0" />
-                                    <TextBlock Text="every" VerticalAlignment="Center" Margin="4,0,4,0" />
 
-                                    <NumberBox x:Name="AntiIdleIntervalBox" SpinButtonPlacementMode="Inline" SmallChange="1" LargeChange="10" Width="180" VerticalAlignment="Center" />
+                                <!-- ROW 1: Action Selection -->
+                                <StackPanel Orientation="Horizontal" Spacing="16" VerticalAlignment="Center">
+                                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                        <CheckBox x:Name="AntiIdleCheck" Content="Send string:" VerticalAlignment="Center" MinWidth="0" />
+                                        <TextBox x:Name="AntiIdleStringBox" Width="60" VerticalAlignment="Center" />
+                                    </StackPanel>
+                                    <CheckBox x:Name="AntiIdleNoOpCheck" Content="Use NO-OP instead" VerticalAlignment="Center" Checked="AntiIdleNoOpCheck_Changed" Unchecked="AntiIdleNoOpCheck_Changed" />
+                                </StackPanel>
 
-                                    <TextBlock Text="seconds" VerticalAlignment="Center" Margin="4,0,0,0" />
+                                <!-- ROW 2: Interval Settings -->
+                                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" Margin="0,4,0,0">
+                                    <TextBlock Text="Execute every" VerticalAlignment="Center" />
+                                    <NumberBox x:Name="AntiIdleIntervalBox" SpinButtonPlacementMode="Inline" SmallChange="1" LargeChange="10" Width="100" VerticalAlignment="Center" />
+                                    <TextBlock Text="seconds" VerticalAlignment="Center" />
                                 </StackPanel>
                             </StackPanel>
 

@@ -13,6 +13,7 @@
         </Grid.RowDefinitions>
 
         <!-- Custom Title Bar -->
+        <!-- Custom Title Bar -->
         <Grid x:Name="AppTitleBar" Height="32" Background="Transparent">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto"/>
@@ -26,13 +27,15 @@
             <TextBlock x:Name="AppTitleText" Grid.Column="1" VerticalAlignment="Center" FontSize="12" Margin="0,0,0,0"/>
 
             <!-- Edit Settings Button -->
-            <Button x:Name="EditConfigBtn" Grid.Column="2" Content="&#xE713;" 
-                    FontFamily="Segoe Fluent Icons" Background="Transparent" BorderThickness="0" 
-                    Width="40" Height="32" Click="EditConfigBtn_Click" 
-                    ToolTipService.ToolTip="Edit Session Settings"/>
+            <!-- We added Padding="0" and Width="46" to stop the button from clipping its own icon -->
+            <Button x:Name="EditConfigBtn" Grid.Column="2" Background="Transparent" BorderThickness="0" 
+                    Width="46" Height="32" Padding="0" Click="EditConfigBtn_Click" 
+                    ToolTipService.ToolTip="Edit Session Settings">
+                <SymbolIcon Symbol="Setting" />
+            </Button>
 
             <!-- System Buttons Padding (Minimize, Maximize, Close) -->
-            <Grid x:Name="RightPaddingGrid" Grid.Column="3"/>
+            <Grid x:Name="RightPaddingGrid" Grid.Column="3" MinWidth="140"/>
         </Grid>
 
         <!-- Terminal Container -->

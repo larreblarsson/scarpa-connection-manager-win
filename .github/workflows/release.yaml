@@ -23,7 +23,7 @@ jobs:
       
     - name: Compile Inno Setup Installer
       run: |
-        "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "ScarpaInstaller.iss"
+        & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "ScarpaInstaller.iss"
 
     - name: Create GitHub Release
       uses: softprops/action-gh-release@v2

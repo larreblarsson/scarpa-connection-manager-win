@@ -89,3 +89,5 @@ The integrated Android Device Manager provides a seamless way to view, control, 
 *   **Performance Optimization:** Lower the bitrate or cap the maximum resolution to provide a smoother, lower-latency stream over a wireless connection.
 *   **Display Control:** Turn off the physical screen of the phone or tablet while mirroring it, saving battery life and preventing OLED burn-in during long debugging sessions.
 *   **Audio Relay:** Route the Android device's native audio output directly to your PC speakers.
+
+*Riposa in pace, Aquila di Filottrano. Sarai sempre con noi!*

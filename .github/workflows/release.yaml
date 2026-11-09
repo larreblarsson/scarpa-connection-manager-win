@@ -23,11 +23,11 @@ jobs:
         dotnet-version: '8.0.x'
 
     - name: Publish App
-      run: dotnet publish "scarpa-connection-manager_win.csproj" -c Release -p:Platform=x64 -r win-x64 --self-contained true -p:PublishSingleFile=true -o .\Publish
+      run: dotnet publish "scarpa-connection-manager_win.csproj" -c Release -p:Platform=x64 -r win-x64 --self-contained true -p:PublishSingleFile=true "-p:Version=${{ github.ref_name }}" -p:IncludeSourceRevisionInInformationalVersion=false -o .\Publish
       
     - name: Compile Inno Setup Installer
       run: |
-        & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "ScarpaInstaller.iss"
+        & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "/DBuildVersion=${{ github.ref_name }}" "ScarpaInstaller.iss"
 
     - name: Create GitHub Release
       uses: softprops/action-gh-release@v2

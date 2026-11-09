@@ -23,7 +23,11 @@ Filename: "{app}\scarpa-connection-manager_win.exe"; Description: "Launch Scarpa
 function SetForegroundWindow(hWnd: Integer): Boolean;
 external 'SetForegroundWindow@user32.dll stdcall';
 
-procedure InitializeWizard();
+procedure CurPageChanged(CurPageID: Integer);
 begin
-  SetForegroundWindow(WizardForm.Handle);
+  if CurPageID = wpWelcome then
+  begin
+    WizardForm.BringToFront();
+    SetForegroundWindow(WizardForm.Handle);
+  end;
 end;

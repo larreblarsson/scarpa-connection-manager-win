@@ -20,14 +20,21 @@ Name: "{group}\Scarpa Connection Manager"; Filename: "{app}\scarpa-connection-ma
 Filename: "{app}\scarpa-connection-manager_win.exe"; Description: "Launch Scarpa Connection Manager"; Flags: nowait postinstall skipifsilent
 
 [Code]
-function SetForegroundWindow(hWnd: Integer): Boolean;
-external 'SetForegroundWindow@user32.dll stdcall';
+const
+  HWND_TOPMOST = -1;
+  HWND_NOTOPMOST = -2;
+  SWP_NOSIZE = 1;
+  SWP_NOMOVE = 2;
+  SWP_SHOWWINDOW = 64;
 
-procedure CurPageChanged(CurPageID: Integer);
+function SetWindowPos(hWnd: Integer; hWndInsertAfter: Integer; X, Y, cx, cy, uFlags: Integer): Boolean;
+external 'SetWindowPos@user32.dll stdcall';
+
+procedure InitializeWizard();
 begin
-  if CurPageID = wpWelcome then
-  begin
-    WizardForm.BringToFront();
-    SetForegroundWindow(WizardForm.Handle);
-  end;
+  // 1. Force the installer to the absolute top layer of the Z-order
+  SetWindowPos(WizardForm.Handle, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE or SWP_NOSIZE or SWP_SHOWWINDOW);
+  
+  // 2. Immediately remove the 'always on top' flag so it doesn't get permanently stuck over your other apps
+  SetWindowPos(WizardForm.Handle, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE or SWP_NOSIZE or SWP_SHOWWINDOW);
 end;

@@ -13,7 +13,8 @@ using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Windows.System;
 using static Org.BouncyCastle.Math.EC.ECCurve;
-using System.Runtime.InteropServices; // <-- ADDED FOR FOCUS FIX
+using System.Runtime.InteropServices;
+using System.Reflection;
 
 namespace scarpa_connection_manager_win;
 
@@ -1390,7 +1391,18 @@ public sealed partial class MainWindow : Window
 
     private async void HelpAbout_Click(object sender, Microsoft.UI.Xaml.RoutedEventArgs e)
     {
+        // Fetch the version from the assembly and push it to the UI
+        VersionTextBlock.Text = GetAppVersion();
+
         await AboutDialog.ShowAsync();
+    }
+
+    public string GetAppVersion()
+    {
+        var assembly = Assembly.GetExecutingAssembly();
+        var attribute = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>();
+
+        return attribute?.InformationalVersion ?? "Unknown Version";
     }
 
     // --- Async File Pickers ---

@@ -1,8 +1,12 @@
+#ifndef BuildVersion
+#define BuildVersion "1.1.0-Local"
+#endif
+
 [Setup]
 AppName=Scarpa Connection Manager
-AppVersion=1.1.0
+AppVersion={#BuildVersion}
 DefaultDirName={autopf}\ScarpaConnectionManager
-OutputBaseFilename=ScarpaConnectionManagerSetup_1.1.0
+OutputBaseFilename=ScarpaConnectionManagerSetup_{#BuildVersion}
 ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir=Releases
 DefaultGroupName=Network

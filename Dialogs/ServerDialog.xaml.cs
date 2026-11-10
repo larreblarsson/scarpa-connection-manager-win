@@ -598,8 +598,8 @@ public sealed partial class ServerDialog : Microsoft.UI.Xaml.Window
 
     private async Task<bool> ShowLoginActionEditorAsync(string title, LoginActionStep step)
     {
-        var expectBox = new TextBox { Text = step.Expect, Header = "Expect (Pattern to match)", PlaceholderText = "e.g., password:" };
-        var sendBox = new TextBox { Text = step.Send, Header = "Send (Response to send)", PlaceholderText = "e.g., MyPassword" };
+        var expectBox = new TextBox { Text = step.Expect, Header = "Expect"};
+        var sendBox = new TextBox { Text = step.Send, Header = "Send"};
         var timeoutBox = new NumberBox { Value = step.Timeout, Header = "Timeout (seconds)", Minimum = 1, Maximum = 300, HorizontalAlignment = HorizontalAlignment.Stretch };
 
         var contentPanel = new StackPanel
@@ -824,7 +824,7 @@ public sealed partial class ServerDialog : Microsoft.UI.Xaml.Window
 
     private async Task<bool> ShowPortForwardEditorAsync(string title, PortForwardRule rule)
     {
-        var nameBox = new TextBox { Text = rule.Name, Header = "Rule Name (Optional)", PlaceholderText = "e.g., Web UI or DB Tunnel" };
+        var nameBox = new TextBox { Text = rule.Name, Header = "Rule Name" };
         var typeBox = new ComboBox
         {
             ItemsSource = new[] { "Local", "Remote", "Dynamic" },

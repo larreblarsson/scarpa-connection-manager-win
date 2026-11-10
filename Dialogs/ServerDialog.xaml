@@ -57,6 +57,11 @@
 
                         <!-- 1. GENERAL PAGE -->
                         <StackPanel x:Name="GeneralPage" Spacing="16">
+                            <StackPanel Spacing="2">
+                                <TextBlock Text="General" Style="{StaticResource SubtitleTextBlockStyle}" />
+                                <TextBlock Text="Basic connection settings and credentials." Foreground="Gray" FontSize="12" />
+                            </StackPanel>
+
                             <TextBox x:Name="NameBox" Header="Display name" />
 
                             <Grid ColumnSpacing="16">
@@ -102,8 +107,13 @@
 
                         <!-- 2. TERMINAL PAGE -->
                         <StackPanel x:Name="TerminalPage" Spacing="16" Visibility="Collapsed">
-                            <ToggleSwitch x:Name="EnableLoggingSwitch" Header="Enable session logging" />
+                            <StackPanel Spacing="2">
+                                <TextBlock Text="Terminal" Style="{StaticResource SubtitleTextBlockStyle}" />
+                                <TextBlock Text="Configure logging, anti-idle, and session behavior." Foreground="Gray" FontSize="12" />
+                            </StackPanel>
 
+                            <ToggleSwitch x:Name="EnableLoggingSwitch" Header="Enable session logging" />
+                            
                             <TextBlock Text="Log file path" Margin="0,0,0,-12" />
                             <Grid ColumnSpacing="8">
                                 <Grid.ColumnDefinitions>
@@ -191,33 +201,61 @@
                         </StackPanel>
 
                         <!-- 3. LOGIN ACTION PAGE -->
-                        <StackPanel x:Name="LoginActionPage" Visibility="Collapsed" Padding="16" Spacing="12">
-                            <TextBlock Text="Automation / Login Actions" Style="{StaticResource SubtitleTextBlockStyle}" />
+                        <StackPanel x:Name="LoginActionPage" Visibility="Collapsed" Spacing="16">
+                            <StackPanel Spacing="2">
+                                <TextBlock Text="Login Actions" Style="{StaticResource SubtitleTextBlockStyle}" />
+                                <TextBlock Text="Automate commands after connecting." Foreground="Gray" FontSize="12" />
+                            </StackPanel>
 
-                            <ListView x:Name="LoginActionList" Height="180" BorderBrush="Gray" BorderThickness="1" CornerRadius="4">
+                            <ListView x:Name="LoginActionList" Height="180" BorderBrush="Gray" BorderThickness="1" CornerRadius="4" SelectionMode="Single" Background="White">
+                                <ListView.Header>
+                                    <Grid Padding="12,8" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,0,0,1" Background="Transparent">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="2*"/>
+                                            <ColumnDefinition Width="Auto" MinWidth="30"/>
+                                            <ColumnDefinition Width="3*"/>
+                                            <ColumnDefinition Width="1*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="Expect" FontWeight="SemiBold" Foreground="Gray" Grid.Column="0"/>
+                                        <!-- Empty column for the arrow -->
+                                        <TextBlock Text="Send" FontWeight="SemiBold" Foreground="Gray" Grid.Column="2"/>
+                                        <TextBlock Text="Timeout" FontWeight="SemiBold" Foreground="Gray" Grid.Column="3" HorizontalAlignment="Right"/>
+                                    </Grid>
+                                </ListView.Header>
                                 <ListView.ItemTemplate>
                                     <DataTemplate>
-                                        <StackPanel Orientation="Horizontal" Spacing="12" Padding="4">
-                                            <TextBlock Text="{Binding Expect}" FontWeight="SemiBold" Width="120"/>
-                                            <TextBlock Text="→" Foreground="Gray"/>
-                                            <TextBlock Text="{Binding Send}" Width="150"/>
-                                            <TextBlock Text="{Binding Timeout}" Foreground="Gray"/>
-                                        </StackPanel>
+                                        <Grid Padding="0,8">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="2*"/>
+                                                <ColumnDefinition Width="Auto" MinWidth="30"/>
+                                                <ColumnDefinition Width="3*"/>
+                                                <ColumnDefinition Width="1*"/>
+                                            </Grid.ColumnDefinitions>
+
+                                            <TextBlock Text="{Binding Expect}" Grid.Column="0" VerticalAlignment="Center" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" Padding="0,0,10,0"/>
+                                            <TextBlock Text="→" Grid.Column="1" VerticalAlignment="Center" Foreground="Gray" HorizontalAlignment="Center"/>
+                                            <TextBlock Text="{Binding Send}" Grid.Column="2" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Padding="10,0,10,0"/>
+                                            <TextBlock Text="{Binding Timeout}" Grid.Column="3" VerticalAlignment="Center" Foreground="Gray" HorizontalAlignment="Right"/>
+                                        </Grid>
                                     </DataTemplate>
                                 </ListView.ItemTemplate>
                             </ListView>
 
                             <StackPanel Orientation="Horizontal" Spacing="8">
-                                <Button Content="Add" Click="LoginAction_Add_Click" />
-                                <Button Content="Edit" Click="LoginAction_Edit_Click" />
-                                <Button Content="Delete" Click="LoginAction_Delete_Click" />
-                                <Button Content="Move Up" Click="LoginAction_Up_Click" />
-                                <Button Content="Move Down" Click="LoginAction_Down_Click" />
+                                <Button Content="Add" Click="LoginAction_Add_Click" Width="70" />
+                                <Button Content="Edit" Click="LoginAction_Edit_Click" Width="70" />
+                                <Button Content="Delete" Click="LoginAction_Delete_Click" Width="70" />
+                                <Button Content="&#xE70E;" FontFamily="Segoe Fluent Icons" Click="LoginAction_Up_Click" ToolTipService.ToolTip="Move Up" Width="40"/>
+                                <Button Content="&#xE70D;" FontFamily="Segoe Fluent Icons" Click="LoginAction_Down_Click" ToolTipService.ToolTip="Move Down" Width="40"/>
                             </StackPanel>
                         </StackPanel>
 
                         <!-- 4. APPEARANCE PAGE -->
                         <StackPanel x:Name="AppearancePage" Spacing="16" Visibility="Collapsed">
+                            <StackPanel Spacing="2">
+                                <TextBlock Text="Appearance" Style="{StaticResource SubtitleTextBlockStyle}" />
+                                <TextBlock Text="Customize terminal colors, fonts, and themes." Foreground="Gray" FontSize="12" />
+                            </StackPanel>
                             <Grid RowSpacing="16" ColumnSpacing="12">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="120" />
@@ -332,8 +370,13 @@
 
                         <!-- 5. RDP PAGE -->
                         <StackPanel x:Name="RdpPage" Spacing="16" Visibility="Collapsed">
-                            <ToggleSwitch x:Name="RdpEnabledSwitch" Header="Enable Remote Desktop (RDP)" />
+                            <StackPanel Spacing="2">
+                                <TextBlock Text="Remote Desktop (RDP)" Style="{StaticResource SubtitleTextBlockStyle}" />
+                                <TextBlock Text="Settings for Windows Remote Desktop connections." Foreground="Gray" FontSize="12" />
+                            </StackPanel>
 
+                            <ToggleSwitch x:Name="RdpEnabledSwitch" Header="Enable Remote Desktop (RDP)" />
+                            
                             <Grid ColumnSpacing="16">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="100" />
@@ -367,16 +410,41 @@
                         </StackPanel>
 
                         <!-- 6. NETWORK & ROUTING PAGE (Merged Port Forwarding & Jump Hosts) -->
-                        <StackPanel x:Name="NetworkPage" Visibility="Collapsed" Padding="16" Spacing="16">
+                        <StackPanel x:Name="NetworkPage" Visibility="Collapsed" Spacing="16">
                             <TextBlock Text="Network &amp; Routing" Style="{StaticResource SubtitleTextBlockStyle}" />
 
                             <!-- Port Forwarding Section -->
                             <StackPanel Spacing="8">
-                                <TextBlock Text="Port Forwarding Rules" FontWeight="SemiBold" />
-                                <ListView x:Name="PortForwardList" Height="150" BorderBrush="Gray" BorderThickness="1" CornerRadius="4">
+                                <StackPanel Spacing="2">
+                                    <TextBlock Text="Port Forwarding Rules" FontWeight="SemiBold" />
+                                    <TextBlock Text="Map local ports to remote destinations through this connection." Foreground="Gray" FontSize="12" />
+                                </StackPanel>
+
+                                <ListView x:Name="PortForwardList" Height="150" BorderBrush="Gray" BorderThickness="1" CornerRadius="4" SelectionMode="Single" Background="White">
+                                    <ListView.Header>
+                                        <Grid Padding="12,8" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,0,0,1" Background="Transparent">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="1*"/>
+                                                <ColumnDefinition Width="1*"/>
+                                                <ColumnDefinition Width="2*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="Type" FontWeight="SemiBold" Foreground="Gray" Grid.Column="0"/>
+                                            <TextBlock Text="Local Port" FontWeight="SemiBold" Foreground="Gray" Grid.Column="1"/>
+                                            <TextBlock Text="Destination" FontWeight="SemiBold" Foreground="Gray" Grid.Column="2"/>
+                                        </Grid>
+                                    </ListView.Header>
                                     <ListView.ItemTemplate>
                                         <DataTemplate>
-                                            <TextBlock Text="{Binding DisplayText}" VerticalAlignment="Center" Padding="4" />
+                                            <Grid Padding="0,8">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="1*"/>
+                                                    <ColumnDefinition Width="1*"/>
+                                                    <ColumnDefinition Width="2*"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="{Binding Type}" Grid.Column="0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Padding="0,0,10,0"/>
+                                                <TextBlock Text="{Binding LocalPort}" Grid.Column="1" VerticalAlignment="Center" Padding="0,0,10,0"/>
+                                                <TextBlock Text="{Binding Destination}" Grid.Column="2" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                            </Grid>
                                         </DataTemplate>
                                     </ListView.ItemTemplate>
                                 </ListView>
@@ -387,18 +455,18 @@
                                     <Button Content="Delete" Click="PortForward_Delete_Click" Width="70" />
                                 </StackPanel>
                             </StackPanel>
-
+                            
                             <!-- Visual Divider -->
                             <Border Height="1" Background="{ThemeResource DividerStrokeColorDefaultBrush}" Margin="0,8" />
 
                             <!-- Jump Hosts Section -->
                             <StackPanel Spacing="8">
                                 <StackPanel Spacing="2">
-                                    <TextBlock Text="SSH Jump Hosts / Tunnels (Order: Top to Bottom)" FontWeight="SemiBold" />
+                                    <TextBlock Text="SSH Jump Hosts" FontWeight="SemiBold" />
                                     <TextBlock Text="Routes your connection through these servers before reaching the destination." Foreground="Gray" FontSize="12" />
                                 </StackPanel>
 
-                                <ListView x:Name="JumpHostsList" Height="150" BorderBrush="Gray" BorderThickness="1" CornerRadius="4" SelectionMode="Single">
+                                <ListView x:Name="JumpHostsList" Height="150" BorderBrush="Gray" BorderThickness="1" CornerRadius="4" SelectionMode="Single" Background="White">
                                     <ListView.Header>
                                         <Grid Padding="12,8" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,0,0,1" Background="Transparent">
                                             <Grid.ColumnDefinitions>

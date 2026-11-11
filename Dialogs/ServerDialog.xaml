@@ -424,26 +424,42 @@
                                     <ListView.Header>
                                         <Grid Padding="12,8" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,0,0,1" Background="Transparent">
                                             <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="1.5*"/>
                                                 <ColumnDefinition Width="1*"/>
-                                                <ColumnDefinition Width="1*"/>
+                                                <ColumnDefinition Width="1.2*"/>
                                                 <ColumnDefinition Width="2*"/>
                                             </Grid.ColumnDefinitions>
-                                            <TextBlock Text="Type" FontWeight="SemiBold" Foreground="Gray" Grid.Column="0"/>
-                                            <TextBlock Text="Local Port" FontWeight="SemiBold" Foreground="Gray" Grid.Column="1"/>
-                                            <TextBlock Text="Destination" FontWeight="SemiBold" Foreground="Gray" Grid.Column="2"/>
+                                            <TextBlock Text="Name" FontWeight="SemiBold" Foreground="Gray" Grid.Column="0"/>
+                                            <TextBlock Text="Type" FontWeight="SemiBold" Foreground="Gray" Grid.Column="1"/>
+                                            <TextBlock Text="Source Port" FontWeight="SemiBold" Foreground="Gray" Grid.Column="2"/>
+                                            <TextBlock Text="Destination" FontWeight="SemiBold" Foreground="Gray" Grid.Column="3"/>
                                         </Grid>
                                     </ListView.Header>
                                     <ListView.ItemTemplate>
                                         <DataTemplate>
                                             <Grid Padding="0,8">
                                                 <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="1.5*"/>
                                                     <ColumnDefinition Width="1*"/>
-                                                    <ColumnDefinition Width="1*"/>
+                                                    <ColumnDefinition Width="1.2*"/>
                                                     <ColumnDefinition Width="2*"/>
                                                 </Grid.ColumnDefinitions>
-                                                <TextBlock Text="{Binding Type}" Grid.Column="0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Padding="0,0,10,0"/>
-                                                <TextBlock Text="{Binding LocalPort}" Grid.Column="1" VerticalAlignment="Center" Padding="0,0,10,0"/>
-                                                <TextBlock Text="{Binding Destination}" Grid.Column="2" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+
+                                                <!-- Binds to "Name" (e.g., Stina) -->
+                                                <TextBlock Text="{Binding Name}" Grid.Column="0" VerticalAlignment="Center" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" Padding="0,0,10,0"/>
+
+                                                <!-- Binds to "Type" (e.g., Local) -->
+                                                <TextBlock Text="{Binding Type}" Grid.Column="1" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Padding="0,0,10,0"/>
+
+                                                <!-- Binds to "SourcePort" -->
+                                                <TextBlock Text="{Binding SourcePort}" Grid.Column="2" VerticalAlignment="Center" Padding="0,0,10,0"/>
+
+                                                <!-- Combines Host and Port side-by-side -->
+                                                <StackPanel Orientation="Horizontal" Grid.Column="3" VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding DestinationHost}" TextTrimming="CharacterEllipsis"/>
+                                                    <TextBlock Text=":" Margin="2,0"/>
+                                                    <TextBlock Text="{Binding DestinationPort}" />
+                                                </StackPanel>
                                             </Grid>
                                         </DataTemplate>
                                     </ListView.ItemTemplate>

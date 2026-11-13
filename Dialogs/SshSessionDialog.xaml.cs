@@ -30,9 +30,13 @@ public sealed partial class SshSessionWindow : Window
         // --- CUSTOM TITLE BAR SETUP ---
         ExtendsContentIntoTitleBar = true;
         SetTitleBar(AppTitleBar);
-        AppTitleText.Text = $"{_initialConfig.Name} - SSH Terminal (Connecting...)";
+
+        string initialTitle = $"{_initialConfig.Name} - SSH Terminal (Connecting...)";
+        AppTitleText.Text = initialTitle;
+        this.Title = initialTitle; 
 
         var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+
         var windowId = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hwnd);
         var appWindow = Microsoft.UI.Windowing.AppWindow.GetFromWindowId(windowId);
 
@@ -67,7 +71,9 @@ public sealed partial class SshSessionWindow : Window
             }
         }
 
-        AppTitleText.Text = $"{_initialConfig.Name} - SSH Terminal";
+        string connectedTitle = $"{_initialConfig.Name} - SSH Terminal";
+        AppTitleText.Text = connectedTitle;
+        this.Title = connectedTitle;
 
         _termControl = new TerminalControl(targetConfig, _logPath);
         TerminalGrid.Children.Add(_termControl);
@@ -92,7 +98,9 @@ public sealed partial class SshSessionWindow : Window
                 }
             }
 
-            AppTitleText.Text = $"{_initialConfig.Name} - SSH Terminal";
+            string updatedTitle = $"{_initialConfig.Name} - SSH Terminal";
+            AppTitleText.Text = updatedTitle;
+            this.Title = updatedTitle;
 
             if (_termControl != null)
             {

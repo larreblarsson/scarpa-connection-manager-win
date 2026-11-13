@@ -30,6 +30,9 @@ public sealed partial class TerminalControl : UserControl
     private ServerConfig _config;
     private CancellationTokenSource _antiIdleCts = new();
 
+    private uint _termCols = 80;
+    private uint _termRows = 24;
+
     // Automation tracking
     private string? _currentExpect;
     private TaskCompletionSource<bool>? _expectTcs;
@@ -133,8 +136,10 @@ public sealed partial class TerminalControl : UserControl
                 try
                 {
                     using var jsonDoc = System.Text.Json.JsonDocument.Parse(input);
-                    uint cols = jsonDoc.RootElement.GetProperty("cols").GetUInt32();
-                    uint rows = jsonDoc.RootElement.GetProperty("rows").GetUInt32();
+
+                    // Update our class-level tracking variables
+                    _termCols = jsonDoc.RootElement.GetProperty("cols").GetUInt32();
+                    _termRows = jsonDoc.RootElement.GetProperty("rows").GetUInt32();
 
                     if (_shellStream != null)
                     {
@@ -148,7 +153,9 @@ public sealed partial class TerminalControl : UserControl
                         if (channel != null)
                         {
                             var method = channel.GetType().GetMethod("SendWindowChangeRequest", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
-                            method?.Invoke(channel, new object[] { cols, rows, (uint)0, (uint)0 });
+
+                            // --> Use the new tracking variables here instead of cols/rows
+                            method?.Invoke(channel, new object[] { _termCols, _termRows, (uint)0, (uint)0 });
                         }
                     }
                 }
@@ -279,7 +286,8 @@ public sealed partial class TerminalControl : UserControl
             
             document.body.style.backgroundColor = '{bg}';
             fitAddon.fit();
-            
+
+            window.chrome.webview.postMessage(JSON.stringify({{ type: 'resize', cols: term.cols, rows: term.rows }}));
             window.addEventListener('focus', () => term.focus());
             document.addEventListener('click', () => term.focus());
             
@@ -364,7 +372,7 @@ public sealed partial class TerminalControl : UserControl
                     }
                 }
 
-                _shellStream = _sshClient.CreateShellStream("xterm", 80, 24, 800, 600, 1024);
+                _shellStream = _sshClient.CreateShellStream("xterm", _termCols, _termRows, 800, 600, 1024);
 
                 StartAntiIdle(cfg);
 
@@ -681,6 +689,7 @@ public sealed partial class TerminalControl : UserControl
                 
                 if (typeof fitAddon !== 'undefined') {{
                     fitAddon.fit();
+                    window.chrome.webview.postMessage(JSON.stringify({{ type: 'resize', cols: term.cols, rows: term.rows }}));
                 }}
             }}
         ";

@@ -124,6 +124,21 @@ public sealed partial class TerminalControl : UserControl
 
         await TerminalView.EnsureCoreWebView2Async();
 
+        // --- SECURITY LOCKDOWN START ---
+        TerminalView.CoreWebView2.Settings.AreDevToolsEnabled = false; // Change to true only when debugging
+        TerminalView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
+        TerminalView.CoreWebView2.Settings.IsStatusBarEnabled = false;
+
+        // Block navigation to external sites
+        TerminalView.CoreWebView2.NavigationStarting += (s, e) =>
+        {
+            if (!e.Uri.StartsWith("https://terminal.local/"))
+            {
+                e.Cancel = true;
+            }
+        };
+        // --- SECURITY LOCKDOWN END ---
+
         TerminalView.CoreWebView2.SetVirtualHostNameToFolderMapping("terminal.local", AppContext.BaseDirectory, Microsoft.Web.WebView2.Core.CoreWebView2HostResourceAccessKind.Allow);
 
         TerminalView.WebMessageReceived += (s, e) =>
@@ -271,28 +286,33 @@ public sealed partial class TerminalControl : UserControl
                 }
             }
 
-            string script = $@"
-            term.options.fontFamily = '{fontName}, Consolas, monospace';
-            term.options.fontSize = {fontSize};
-            
-            term.options.theme = {{ 
-                {ansiColors} 
-                {selectionBg}
-                background: '{bg}', 
-                foreground: '{fg}',
-                cursor: '{fg}',
-                cursorAccent: '{bg}'
-            }};
-            
-            document.body.style.backgroundColor = '{bg}';
-            fitAddon.fit();
+            // Encode user-provided configuration strings safely
+            string safeFontName = System.Text.Json.JsonSerializer.Serialize($"{fontName}, Consolas, monospace");
+            string safeBg = System.Text.Json.JsonSerializer.Serialize(bg);
+            string safeFg = System.Text.Json.JsonSerializer.Serialize(fg);
 
-            window.chrome.webview.postMessage(JSON.stringify({{ type: 'resize', cols: term.cols, rows: term.rows }}));
-            window.addEventListener('focus', () => term.focus());
-            document.addEventListener('click', () => term.focus());
-            
-            term.focus();
-        ";
+            string script = $@"
+        term.options.fontFamily = {safeFontName};
+        term.options.fontSize = {fontSize};
+        
+        term.options.theme = {{ 
+            {ansiColors} 
+            {selectionBg}
+            background: {safeBg}, 
+            foreground: {safeFg},
+            cursor: {safeFg},
+            cursorAccent: {safeBg}
+        }};
+        
+        document.body.style.backgroundColor = {safeBg};
+        fitAddon.fit();
+
+        window.chrome.webview.postMessage(JSON.stringify({{ type: 'resize', cols: term.cols, rows: term.rows }}));
+        window.addEventListener('focus', () => term.focus());
+        document.addEventListener('click', () => term.focus());
+        
+        term.focus();
+    ";
 
             await TerminalView.CoreWebView2.ExecuteScriptAsync(script);
 
@@ -484,8 +504,22 @@ public sealed partial class TerminalControl : UserControl
     private void StartAntiIdle(ServerConfig cfg)
     {
         if (!cfg.AntiIdleEnabled || cfg.AntiIdleInterval <= 0) return;
-        string payload = (cfg.AntiIdleString ?? "").Replace("\\r", "\r").Replace("\\n", "\n");
-        var bytes = Encoding.UTF8.GetBytes(payload);
+
+        // Sanitize the payload to prevent command injection by removing all newlines
+        string rawPayload = cfg.AntiIdleString ?? "";
+        string safePayload = rawPayload
+            .Replace("\\r", "")
+            .Replace("\\n", "")
+            .Replace("\r", "")
+            .Replace("\n", "");
+
+        // Provide a safe fallback if the payload is empty
+        if (string.IsNullOrEmpty(safePayload) && !cfg.AntiIdleNoOp)
+        {
+            safePayload = " \x08"; // Space followed by backspace
+        }
+
+        var bytes = Encoding.UTF8.GetBytes(safePayload);
 
         Task.Run(async () =>
         {
@@ -502,7 +536,7 @@ public sealed partial class TerminalControl : UserControl
                     }
                     else if (_shellStream != null && _shellStream.CanWrite)
                     {
-                        // Standard string injection fallback
+                        // Standard string injection fallback using the sanitized payload
                         _shellStream.Write(bytes, 0, bytes.Length);
                         _shellStream.Flush();
                     }
@@ -523,7 +557,29 @@ public sealed partial class TerminalControl : UserControl
                 string bundledSftp = Path.Combine(AppContext.BaseDirectory, "Tools", "sftp.exe");
                 string systemSftp = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "OpenSSH", "sftp.exe");
 
-                string secureSftpPath = File.Exists(bundledSftp) ? bundledSftp : systemSftp;
+                string secureSftpPath = systemSftp; // Default to system
+
+                if (File.Exists(bundledSftp))
+                {
+                    // Verify the bundled executable against a known good SHA256 hash
+                    using (var sha256 = System.Security.Cryptography.SHA256.Create())
+                    using (var stream = File.OpenRead(bundledSftp))
+                    {
+                        string currentHash = Convert.ToBase64String(sha256.ComputeHash(stream));
+
+                        // Replace with the actual Base64 hash of your verified sftp.exe
+                        string expectedHash = "YOUR_KNOWN_GOOD_BASE64_HASH_HERE";
+
+                        if (currentHash == expectedHash)
+                        {
+                            secureSftpPath = bundledSftp;
+                        }
+                        else
+                        {
+                            SendToTerminal("\r\n\x1b[31m[SECURITY ALERT] Bundled sftp.exe hash mismatch. Falling back to system SFTP.\x1b[0m\r\n");
+                        }
+                    }
+                }
 
                 var psi = new ProcessStartInfo
                 {
@@ -547,8 +603,6 @@ public sealed partial class TerminalControl : UserControl
             catch (Exception ex) { SendToTerminal($"\r\n\x1b[31mSFTP Launch failed: {ex.Message}\x1b[0m\r\n"); }
         });
     }
-
-
 
     private async Task ReadProcessStreamAsync(StreamReader reader)
     {
@@ -625,6 +679,7 @@ public sealed partial class TerminalControl : UserControl
         }
         catch { }
     }
+
     public async Task ApplyLiveAppearanceAsync(ServerConfig newCfg)
     {
         _config = newCfg;
@@ -671,28 +726,33 @@ public sealed partial class TerminalControl : UserControl
                 : "selectionBackground: 'rgba(255, 255, 255, 0.25)',";
         }
 
+        // Encode user-provided configuration strings safely
+        string safeFontName = System.Text.Json.JsonSerializer.Serialize($"{fontName}, Consolas, monospace");
+        string safeBg = System.Text.Json.JsonSerializer.Serialize(bg);
+        string safeFg = System.Text.Json.JsonSerializer.Serialize(fg);
+
         string script = $@"
-            if (typeof term !== 'undefined') {{
-                term.options.fontFamily = '{fontName}, Consolas, monospace';
-                term.options.fontSize = {fontSize};
-                
-                term.options.theme = {{ 
-                    {ansiColors} 
-                    {selectionBg}
-                    background: '{bg}', 
-                    foreground: '{fg}',
-                    cursor: '{fg}',
-                    cursorAccent: '{bg}'
-                }};
-                
-                document.body.style.backgroundColor = '{bg}';
-                
-                if (typeof fitAddon !== 'undefined') {{
-                    fitAddon.fit();
-                    window.chrome.webview.postMessage(JSON.stringify({{ type: 'resize', cols: term.cols, rows: term.rows }}));
-                }}
+        if (typeof term !== 'undefined') {{
+            term.options.fontFamily = {safeFontName};
+            term.options.fontSize = {fontSize};
+            
+            term.options.theme = {{ 
+                {ansiColors} 
+                {selectionBg}
+                background: {safeBg}, 
+                foreground: {safeFg},
+                cursor: {safeFg},
+                cursorAccent: {safeBg}
+            }};
+            
+            document.body.style.backgroundColor = {safeBg};
+            
+            if (typeof fitAddon !== 'undefined') {{
+                fitAddon.fit();
+                window.chrome.webview.postMessage(JSON.stringify({{ type: 'resize', cols: term.cols, rows: term.rows }}));
             }}
-        ";
+        }}
+    ";
 
         await TerminalView.CoreWebView2.ExecuteScriptAsync(script);
     }

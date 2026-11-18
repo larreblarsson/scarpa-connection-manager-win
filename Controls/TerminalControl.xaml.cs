@@ -19,10 +19,6 @@ public sealed partial class TerminalControl : UserControl
     private SshClient? _sshClient;
     private ShellStream? _shellStream;
 
-    private bool _isSftp;
-    private Process? _sftpProcess;
-    private StreamWriter? _sftpInputWriter;
-
     private StreamWriter? _logWriter;
     private bool _logTimestamps;
     private bool _isNewLine = true;
@@ -38,11 +34,10 @@ public sealed partial class TerminalControl : UserControl
     private TaskCompletionSource<bool>? _expectTcs;
     private StringBuilder _loginBuffer = new();
 
-    public TerminalControl(ServerConfig cfg, string? logPath, bool isSftp = false)
+    public TerminalControl(ServerConfig cfg, string? logPath)
     {
         this.InitializeComponent();
         _config = cfg;
-        _isSftp = isSftp;
 
         if (cfg.LoggingEnabled && !string.IsNullOrWhiteSpace(logPath))
         {
@@ -85,7 +80,7 @@ public sealed partial class TerminalControl : UserControl
         if (_logWriter == null) return;
         try
         {
-            string cleanText = Regex.Replace(rawText, @"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])", "");
+            string cleanText = Regex.Replace(rawText, @"\x1B(?:[@-Z\\-_]|$$[0-?]*[ -/]*[@-~])", "");
             cleanText = Regex.Replace(cleanText, @"[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]", "");
             cleanText = Regex.Replace(cleanText, @"(?i)(password|passphrase)(.*?:\s*)(.*)", "$1$2[REDACTED]");
 
@@ -183,25 +178,17 @@ public sealed partial class TerminalControl : UserControl
             }
 
             // 2. Handle normal terminal input (keystrokes)
-            if (_isSftp)
+            if (_shellStream != null && _shellStream.CanWrite)
             {
-                if (_sftpInputWriter != null) { _sftpInputWriter.Write(input); _sftpInputWriter.Flush(); }
-            }
-            else
-            {
-                if (_shellStream != null && _shellStream.CanWrite)
-                {
-                    var bytes = Encoding.UTF8.GetBytes(input);
-                    _shellStream.Write(bytes, 0, bytes.Length);
-                    _shellStream.Flush();
-                }
+                var bytes = Encoding.UTF8.GetBytes(input);
+                _shellStream.Write(bytes, 0, bytes.Length);
+                _shellStream.Flush();
             }
         };
 
         TerminalView.CoreWebView2.NavigationCompleted += (s, e) =>
         {
-            if (_isSftp) StartSftpSession(cfg);
-            else StartSshSession(cfg);
+            StartSshSession(cfg);
         };
 
         TerminalView.CoreWebView2.Navigate("https://terminal.local/terminal.html");
@@ -531,8 +518,9 @@ public sealed partial class TerminalControl : UserControl
 
                     if (cfg.AntiIdleNoOp)
                     {
-                        // Native SSH.NET Keep-Alive (NO-OP) packet
+                        #pragma warning disable CS0618
                         _sshClient.SendKeepAlive();
+                        #pragma warning disable CS0618
                     }
                     else if (_shellStream != null && _shellStream.CanWrite)
                     {
@@ -545,79 +533,6 @@ public sealed partial class TerminalControl : UserControl
             catch (TaskCanceledException) { }
             catch (Exception) { /* Handle unexpected network disconnects gracefully */ }
         });
-    }
-
-    private void StartSftpSession(ServerConfig cfg)
-    {
-        Task.Run(() =>
-        {
-            try
-            {
-                string args = ConnectionLauncher.BuildSftpArguments(cfg);
-                string bundledSftp = Path.Combine(AppContext.BaseDirectory, "Tools", "sftp.exe");
-                string systemSftp = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "OpenSSH", "sftp.exe");
-
-                string secureSftpPath = systemSftp; // Default to system
-
-                if (File.Exists(bundledSftp))
-                {
-                    // Verify the bundled executable against a known good SHA256 hash
-                    using (var sha256 = System.Security.Cryptography.SHA256.Create())
-                    using (var stream = File.OpenRead(bundledSftp))
-                    {
-                        string currentHash = Convert.ToBase64String(sha256.ComputeHash(stream));
-
-                        // Replace with the actual Base64 hash of your verified sftp.exe
-                        string expectedHash = "YOUR_KNOWN_GOOD_BASE64_HASH_HERE";
-
-                        if (currentHash == expectedHash)
-                        {
-                            secureSftpPath = bundledSftp;
-                        }
-                        else
-                        {
-                            SendToTerminal("\r\n\x1b[31m[SECURITY ALERT] Bundled sftp.exe hash mismatch. Falling back to system SFTP.\x1b[0m\r\n");
-                        }
-                    }
-                }
-
-                var psi = new ProcessStartInfo
-                {
-                    FileName = secureSftpPath,
-                    Arguments = args,
-                    UseShellExecute = false,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    RedirectStandardInput = true,
-                    CreateNoWindow = true
-                };
-
-                _sftpProcess = Process.Start(psi);
-                if (_sftpProcess != null)
-                {
-                    _sftpInputWriter = _sftpProcess.StandardInput;
-                    _ = ReadProcessStreamAsync(_sftpProcess.StandardOutput);
-                    _ = ReadProcessStreamAsync(_sftpProcess.StandardError);
-                }
-            }
-            catch (Exception ex) { SendToTerminal($"\r\n\x1b[31mSFTP Launch failed: {ex.Message}\x1b[0m\r\n"); }
-        });
-    }
-
-    private async Task ReadProcessStreamAsync(StreamReader reader)
-    {
-        char[] buffer = new char[1024];
-        try
-        {
-            while (true)
-            {
-                int charsRead = await reader.ReadAsync(buffer, 0, buffer.Length);
-                if (charsRead == 0) break;
-                SendToTerminal(new string(buffer, 0, charsRead));
-            }
-            SendToTerminal("\r\n\x1b[33mSession disconnected.\x1b[0m\r\n");
-        }
-        catch { }
     }
 
     private async Task ReadStreamAsync()
@@ -634,7 +549,7 @@ public sealed partial class TerminalControl : UserControl
                 WriteToLog(text);
                 SendToTerminal(text);
 
-                string cleanText = Regex.Replace(text, @"\x1B\[[0-?]*[ -/]*[@-~]|\x1B\][^\x07\x1B]*(?:\x07|\x1B\\)", "");
+                string cleanText = Regex.Replace(text, @"\x1B\[[0-?]*[ -/]*[@-~]|\x1B$$[^\x07\x1B]*(?:\x07|\x1B\\)", "");
                 cleanText = Regex.Replace(cleanText, @"[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]", "");
 
                 _loginBuffer.Append(cleanText);
@@ -673,9 +588,6 @@ public sealed partial class TerminalControl : UserControl
             _shellStream?.Dispose();
             if (_sshClient != null && _sshClient.IsConnected) _sshClient.Disconnect();
             _sshClient?.Dispose();
-
-            _sftpInputWriter?.Close();
-            if (_sftpProcess != null && !_sftpProcess.HasExited) _sftpProcess.Kill();
         }
         catch { }
     }

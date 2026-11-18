@@ -19,7 +19,7 @@ public sealed partial class AndroidMirrorWindow : Window
     private readonly string _settingsFile;
 
     // Background watcher to detect USB unplug/plug automatically
-    private DispatcherTimer _adbWatcherTimer;
+    private DispatcherTimer? _adbWatcherTimer;
     private string _lastAdbOutput = string.Empty;
     private Dictionary<string, DateTime> _lastReconnectAttempts = new();
 
@@ -149,7 +149,13 @@ public sealed partial class AndroidMirrorWindow : Window
                                 CreateNoWindow = true,
                                 UseShellExecute = false
                             };
-                            using (var pConnect = Process.Start(psiConnect)) { await pConnect?.WaitForExitAsync(); }
+                            using (var pConnect = Process.Start(psiConnect))
+                            {
+                                if (pConnect != null)
+                                {
+                                    await pConnect.WaitForExitAsync();
+                                }
+                            }
                             attemptedRecovery = true;
                         }
                     }
@@ -375,7 +381,13 @@ public sealed partial class AndroidMirrorWindow : Window
                         UseShellExecute = false,
                         CreateNoWindow = true
                     };
-                    using (var p1 = Process.Start(psiTcp)) { await p1?.WaitForExitAsync(); }
+                    using (var p1 = Process.Start(psiTcp))
+                    {
+                        if (p1 != null)
+                        {
+                            await p1.WaitForExitAsync();
+                        }
+                    }
 
                     wirelessBtn.Content = "Connecting over Wi-Fi...";
                     await Task.Delay(1500);
@@ -390,8 +402,17 @@ public sealed partial class AndroidMirrorWindow : Window
                     };
                     using (var p2 = Process.Start(psiConnect))
                     {
-                        string outText = await p2.StandardOutput.ReadToEndAsync();
-                        await p2.WaitForExitAsync();
+                        string outText = string.Empty;
+
+                        if (p2 != null)
+                        {
+                            outText = await p2.StandardOutput.ReadToEndAsync();
+                        }
+
+                        if (p2 != null)
+                        {
+                            await p2.WaitForExitAsync();
+                        }
 
                         if (outText.Contains("connected to") || outText.Contains("already connected"))
                         {
@@ -467,9 +488,14 @@ public sealed partial class AndroidMirrorWindow : Window
                             UseShellExecute = false,
                             CreateNoWindow = true
                         };
-                        using (var pUsb = Process.Start(psiUsb)) { await pUsb?.WaitForExitAsync(); }
+                        using (var pUsb = Process.Start(psiUsb))
+                        {
+                            if (pUsb != null)
+                            {
+                                await pUsb.WaitForExitAsync();
+                            }
+                        }
 
-                        // SECOND: Now that the phone knows to switch back, sever the local network route
                         var psiDisconnect = new ProcessStartInfo
                         {
                             FileName = GetSecureToolPath("adb"),
@@ -477,7 +503,14 @@ public sealed partial class AndroidMirrorWindow : Window
                             UseShellExecute = false,
                             CreateNoWindow = true
                         };
-                        using (var pDisc = Process.Start(psiDisconnect)) { await pDisc?.WaitForExitAsync(); }
+                        using (var pDisc = Process.Start(psiDisconnect))
+                        {
+                            if (pDisc != null)
+                            {
+                                await pDisc.WaitForExitAsync();
+                            }
+                        }
+
                     }
                     catch { }
                 }

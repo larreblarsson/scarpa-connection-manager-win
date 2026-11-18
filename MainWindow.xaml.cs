@@ -98,7 +98,7 @@ public sealed partial class MainWindow : Window
     private DateTime _lastClickTime = DateTime.MinValue;
     private DispatcherTimer? _renameTimer;
     private Dictionary<TreeViewNode, object> _nodeTags = new();
-    private Services.LocalWebServer _helpServer;
+    private Services.LocalWebServer? _helpServer;
     private string _searchBuffer = "";
     private DispatcherTimer? _searchTimer;
 
@@ -1815,7 +1815,7 @@ public sealed partial class MainWindow : Window
 
         if (localSettings.Values["GlobalDefaultPalette"] != null)
         {
-            server.TermPalette = localSettings.Values["GlobalDefaultPalette"].ToString() == "0" ? "None" : "Custom";
+            server.TermPalette = localSettings.Values["GlobalDefaultPalette"]?.ToString() == "0" ? "None" : "Custom";
         }
         else
         {

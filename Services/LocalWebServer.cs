@@ -3,6 +3,7 @@ using System.IO;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading.Tasks;
+using Windows.Storage.Streams;
 
 namespace scarpa_connection_manager_win.Services
 {
@@ -55,7 +56,9 @@ namespace scarpa_connection_manager_win.Services
         {
             try
             {
-                string filename = context.Request.Url.AbsolutePath.TrimStart('/');
+                string filename = context?.Request?.Url?.AbsolutePath?.TrimStart('/') ?? string.Empty;
+
+
                 if (string.IsNullOrEmpty(filename)) filename = "UserGuide.html";
 
                 // Sanitize path to prevent directory traversal attacks
@@ -65,7 +68,11 @@ namespace scarpa_connection_manager_win.Services
                 if (File.Exists(filePath))
                 {
                     byte[] buffer = File.ReadAllBytes(filePath);
-                    context.Response.ContentLength64 = buffer.Length;
+                    if (context?.Response != null)
+                    {
+                        context.Response.ContentLength64 = buffer != null ? buffer.Length : 0;
+                    }
+
 
                     string ext = Path.GetExtension(filePath).ToLower();
                     context.Response.ContentType = ext switch
@@ -84,7 +91,11 @@ namespace scarpa_connection_manager_win.Services
                 }
                 else
                 {
-                    context.Response.StatusCode = 404;
+                    if (context?.Response != null)
+                    {
+                        context.Response.StatusCode = 404;
+                    }
+
                 }
             }
             catch

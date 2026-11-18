@@ -436,7 +436,7 @@ public sealed partial class ServerDialog : Microsoft.UI.Xaml.Window
             // We only care about the child nodes that map to our drive letters.
             foreach (var selectedNode in treeView.SelectedNodes)
             {
-                if (nodeMapping.TryGetValue(selectedNode, out string driveValue))
+                if (nodeMapping.TryGetValue(selectedNode, out string? driveValue))
                 {
                     selectedDrives.Add(driveValue);
                 }

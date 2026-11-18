@@ -507,9 +507,13 @@ public sealed partial class SftpWindow : Window, System.ComponentModel.INotifyPr
                 e.Handled = true;
                 if (selected.IsDirectory)
                 {
-                    if (listView == LocalFileList) LoadLocalDirectory(selected.FullPath);
-                    else Task.Run(() => LoadRemoteDirectory(selected.FullPath));
-                }
+                    if (listView == LocalFileList)
+                        LoadLocalDirectory(selected.FullPath);
+                    else if (selected?.FullPath != null)
+                    {
+                        _ = Task.Run(() => LoadRemoteDirectory(selected.FullPath));
+                    }
+                }
                 else
                 {
                     // Open the file if it's not a directory
@@ -525,12 +529,14 @@ public sealed partial class SftpWindow : Window, System.ComponentModel.INotifyPr
             var activeFiles = listView == LocalFileList ? _localFiles : _remoteFiles;
             var parentFolder = activeFiles.FirstOrDefault(x => x.Name == "..");
 
-            if (parentFolder != null)
-            {
-                if (listView == LocalFileList) LoadLocalDirectory(parentFolder.FullPath);
-                else Task.Run(() => LoadRemoteDirectory(parentFolder.FullPath));
-            }
-        }
+            if (parentFolder?.FullPath != null)
+            {
+                if (listView == LocalFileList)
+                    LoadLocalDirectory(parentFolder.FullPath);
+                else
+                    _ = Task.Run(() => LoadRemoteDirectory(parentFolder.FullPath));
+            }
+        }
     }
 
     private void FileList_CharacterReceived(Microsoft.UI.Xaml.UIElement sender, Microsoft.UI.Xaml.Input.CharacterReceivedRoutedEventArgs args)
@@ -1823,9 +1829,14 @@ public sealed partial class SftpWindow : Window, System.ComponentModel.INotifyPr
         _awaitingDoubleTap = false;
         if (RemoteFileList.SelectedItem is FileItem selected)
         {
-            if (selected.IsDirectory) Task.Run(() => LoadRemoteDirectory(selected.FullPath));
-            else await OpenFileAsync(selected, isLocal: false);
-        }
+            if (selected != null)
+            {
+                if (selected.IsDirectory && selected.FullPath != null)
+                    _ = Task.Run(() => LoadRemoteDirectory(selected.FullPath));
+                else
+                    await OpenFileAsync(selected, isLocal: false);
+            }
+        }
     }
 
     // --- Drag and Drop Handlers ---

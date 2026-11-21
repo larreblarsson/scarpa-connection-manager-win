@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html>
 <head>
     <meta charset="utf-8" />
@@ -30,9 +30,40 @@
             height: 100% !important; 
             width: 100% !important; 
         }
+
+        /* Custom Context Menu Styles */
+        #context-menu {
+            display: none;
+            position: absolute;
+            background: #252526;
+            border: 1px solid #454545;
+            box-shadow: 2px 2px 5px rgba(0,0,0,0.5);
+            z-index: 1000;
+            min-width: 120px;
+            border-radius: 4px;
+            padding: 4px 0;
+        }
+
+        .menu-item {
+            padding: 8px 15px;
+            color: #cccccc;
+            cursor: pointer;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-size: 13px;
+        }
+
+        .menu-item:hover {
+            background: #094771;
+            color: #ffffff;
+        }
     </style>
 </head>
 <body>
+    <div id="context-menu">
+        <div class="menu-item" id="menu-copy">Copy</div>
+        <div class="menu-item" id="menu-paste">Paste</div>
+    </div>
+
     <div id="terminal-container"></div>
     <script>
         const term = new Terminal({
@@ -52,7 +83,7 @@
         // 2. Fit the terminal to the container right after opening
         fitAddon.fit();
 
-        // --- NEW CODE: Send dimensions to C# when xterm recalculates its grid ---
+        // Send dimensions to C# when xterm recalculates its grid
         term.onResize((size) => {
             if (window.chrome && window.chrome.webview) {
                 window.chrome.webview.postMessage(JSON.stringify({
@@ -62,7 +93,6 @@
                 }));
             }
         });
-        // ------------------------------------------------------------------------
         
         // 3. Listen for window resizes and recalculate rows/columns automatically
         window.addEventListener('resize', () => {
@@ -87,6 +117,72 @@
             if (window.chrome && window.chrome.webview) {
                 window.chrome.webview.postMessage(data);
             }
+        });
+
+        // --- Context Menu Logic ---
+        const contextMenu = document.getElementById('context-menu');
+
+        document.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            contextMenu.style.display = 'block';
+            
+            // Keep menu within window bounds
+            const maxLeft = window.innerWidth - contextMenu.offsetWidth;
+            const maxTop = window.innerHeight - contextMenu.offsetHeight;
+            contextMenu.style.left = `${Math.min(e.pageX, maxLeft)}px`;
+            contextMenu.style.top = `${Math.min(e.pageY, maxTop)}px`;
+        });
+
+        document.addEventListener('click', (e) => {
+            if (e.target.id !== 'menu-copy' && e.target.id !== 'menu-paste') {
+                contextMenu.style.display = 'none';
+            }
+        });
+
+        document.getElementById('menu-copy').addEventListener('click', () => {
+            if (term.hasSelection() && window.chrome && window.chrome.webview) {
+                window.chrome.webview.postMessage(JSON.stringify({
+                    type: 'copy',
+                    text: term.getSelection()
+                }));
+                term.clearSelection();
+            }
+            contextMenu.style.display = 'none';
+            term.focus();
+        });
+
+        document.getElementById('menu-paste').addEventListener('click', () => {
+            if (window.chrome && window.chrome.webview) {
+                window.chrome.webview.postMessage(JSON.stringify({ type: 'paste' }));
+            }
+            contextMenu.style.display = 'none';
+            term.focus();
+        });
+
+        // --- Keyboard Shortcut Logic (Ctrl+C / Ctrl+V) ---
+        term.attachCustomKeyEventHandler((e) => {
+            if (e.type === 'keydown') {
+                // Ctrl+C
+                if (e.ctrlKey && e.code === 'KeyC') {
+                    if (term.hasSelection()) {
+                        // If text is selected, copy it and stop the terminal from sending SIGINT
+                        window.chrome.webview.postMessage(JSON.stringify({
+                            type: 'copy',
+                            text: term.getSelection()
+                        }));
+                        term.clearSelection();
+                        return false; 
+                    }
+                    // If no text is selected, let Ctrl+C pass through to cancel running SSH commands
+                    return true; 
+                }
+                // Ctrl+V
+                if (e.ctrlKey && e.code === 'KeyV') {
+                    window.chrome.webview.postMessage(JSON.stringify({ type: 'paste' }));
+                    return false; // Stop xterm from printing raw characters
+                }
+            }
+            return true;
         });
     </script>
 </body>

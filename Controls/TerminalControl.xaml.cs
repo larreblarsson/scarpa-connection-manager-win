@@ -80,7 +80,7 @@ public sealed partial class TerminalControl : UserControl
         if (_logWriter == null) return;
         try
         {
-            string cleanText = Regex.Replace(rawText, @"\x1B(?:[@-Z\\-_]|$$[0-?]*[ -/]*[@-~])", "");
+            string cleanText = Regex.Replace(rawText, @"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])", "");
             cleanText = Regex.Replace(cleanText, @"[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]", "");
             cleanText = Regex.Replace(cleanText, @"(?i)(password|passphrase)(.*?:\s*)(.*)", "$1$2[REDACTED]");
 
@@ -136,11 +136,51 @@ public sealed partial class TerminalControl : UserControl
 
         TerminalView.CoreWebView2.SetVirtualHostNameToFolderMapping("terminal.local", AppContext.BaseDirectory, Microsoft.Web.WebView2.Core.CoreWebView2HostResourceAccessKind.Allow);
 
-        TerminalView.WebMessageReceived += (s, e) =>
+        TerminalView.WebMessageReceived += async (s, e) =>
         {
             string input = e.TryGetWebMessageAsString();
 
-            // 1. Intercept terminal resize messages
+            // Intercept Copy command
+            if (input.StartsWith("{\"type\":\"copy\""))
+            {
+                try
+                {
+                    using var jsonDoc = System.Text.Json.JsonDocument.Parse(input);
+                    string text = jsonDoc.RootElement.GetProperty("text").GetString() ?? "";
+                    var dataPackage = new Windows.ApplicationModel.DataTransfer.DataPackage();
+                    dataPackage.SetText(text);
+                    Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(dataPackage);
+                }
+                catch (Exception ex) { Debug.WriteLine($"Copy failed: {ex.Message}"); }
+                return;
+            }
+
+            // Intercept Paste command
+            if (input.StartsWith("{\"type\":\"paste\""))
+            {
+                try
+                {
+                    var dataPackageView = Windows.ApplicationModel.DataTransfer.Clipboard.GetContent();
+                    if (dataPackageView.Contains(Windows.ApplicationModel.DataTransfer.StandardDataFormats.Text))
+                    {
+                        string text = await dataPackageView.GetTextAsync();
+                        
+                        // Convert Windows line endings to Unix line endings for the terminal
+                        text = text.Replace("\r\n", "\n");
+
+                        if (_shellStream != null && _shellStream.CanWrite)
+                        {
+                            var bytes = Encoding.UTF8.GetBytes(text);
+                            _shellStream.Write(bytes, 0, bytes.Length);
+                            _shellStream.Flush();
+                        }
+                    }
+                }
+                catch (Exception ex) { Debug.WriteLine($"Paste failed: {ex.Message}"); }
+                return;
+            }
+
+            // Intercept terminal resize messages
             if (input.StartsWith("{\"type\":\"resize\""))
             {
                 try
@@ -174,10 +214,10 @@ public sealed partial class TerminalControl : UserControl
                     Debug.WriteLine($"Failed to resize terminal: {ex.Message}");
                 }
 
-                return; // Stop here so we don't send the JSON string to the server as typed keystrokes
+                return; 
             }
 
-            // 2. Handle normal terminal input (keystrokes)
+            // Handle normal terminal input (keystrokes)
             if (_shellStream != null && _shellStream.CanWrite)
             {
                 var bytes = Encoding.UTF8.GetBytes(input);

@@ -119,6 +119,13 @@ public sealed partial class TerminalControl : UserControl
 
         await TerminalView.EnsureCoreWebView2Async();
 
+        // ADD THIS: Map 'terminal.local' to the root folder where terminal.html is copied
+        TerminalView.CoreWebView2.SetVirtualHostNameToFolderMapping(
+            "terminal.local",
+            AppDomain.CurrentDomain.BaseDirectory,
+            Microsoft.Web.WebView2.Core.CoreWebView2HostResourceAccessKind.Allow);
+
+
         // --- SECURITY LOCKDOWN START ---
         TerminalView.CoreWebView2.Settings.AreDevToolsEnabled = false; // Change to true only when debugging
         TerminalView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = false;
@@ -134,13 +141,60 @@ public sealed partial class TerminalControl : UserControl
         };
         // --- SECURITY LOCKDOWN END ---
 
-        TerminalView.CoreWebView2.SetVirtualHostNameToFolderMapping("terminal.local", AppContext.BaseDirectory, Microsoft.Web.WebView2.Core.CoreWebView2HostResourceAccessKind.Allow);
-
         TerminalView.WebMessageReceived += async (s, e) =>
         {
             string input = e.TryGetWebMessageAsString();
 
-            // Intercept Copy command
+            // 1. Intercept Native Context Menu Request
+            if (input.StartsWith("{\"type\":\"contextmenu\""))
+            {
+                try
+                {
+                    using var jsonDoc = System.Text.Json.JsonDocument.Parse(input);
+                    double x = jsonDoc.RootElement.GetProperty("x").GetDouble();
+                    double y = jsonDoc.RootElement.GetProperty("y").GetDouble();
+                    bool hasSelection = jsonDoc.RootElement.GetProperty("hasSelection").GetBoolean();
+
+                    // Use MenuFlyout for the standard Windows 11 vertical menu with icons
+                    var flyout = new MenuFlyout();
+
+                    // Optional: Uncomment the next line if your app is in Dark Mode but you want a Light menu
+                    // flyout.RequestedTheme = Microsoft.UI.Xaml.ElementTheme.Light;
+
+                    var copyItem = new MenuFlyoutItem
+                    {
+                        Text = "Copy",
+                        Icon = new SymbolIcon(Symbol.Copy),
+                        IsEnabled = hasSelection
+                    };
+                    copyItem.Click += (sender, args) =>
+                    {
+                        _ = TerminalView.CoreWebView2.ExecuteScriptAsync("window.doCopy();");
+                    };
+
+                    var pasteItem = new MenuFlyoutItem
+                    {
+                        Text = "Paste",
+                        Icon = new SymbolIcon(Symbol.Paste)
+                    };
+                    pasteItem.Click += async (sender, args) =>
+                    {
+                        await HandlePasteAsync();
+                    };
+
+                    flyout.Items.Add(copyItem);
+                    flyout.Items.Add(pasteItem);
+
+                    flyout.ShowAt(TerminalView, new Microsoft.UI.Xaml.Controls.Primitives.FlyoutShowOptions
+                    {
+                        Position = new Windows.Foundation.Point(x, y)
+                    });
+                }
+                catch (Exception ex) { Debug.WriteLine($"Context menu failed: {ex.Message}"); }
+                return;
+            }
+
+            // 2. Intercept Copy command
             if (input.StartsWith("{\"type\":\"copy\""))
             {
                 try
@@ -155,45 +209,23 @@ public sealed partial class TerminalControl : UserControl
                 return;
             }
 
-            // Intercept Paste command
             if (input.StartsWith("{\"type\":\"paste\""))
             {
-                try
-                {
-                    var dataPackageView = Windows.ApplicationModel.DataTransfer.Clipboard.GetContent();
-                    if (dataPackageView.Contains(Windows.ApplicationModel.DataTransfer.StandardDataFormats.Text))
-                    {
-                        string text = await dataPackageView.GetTextAsync();
-                        
-                        // Convert Windows line endings to Unix line endings for the terminal
-                        text = text.Replace("\r\n", "\n");
-
-                        if (_shellStream != null && _shellStream.CanWrite)
-                        {
-                            var bytes = Encoding.UTF8.GetBytes(text);
-                            _shellStream.Write(bytes, 0, bytes.Length);
-                            _shellStream.Flush();
-                        }
-                    }
-                }
-                catch (Exception ex) { Debug.WriteLine($"Paste failed: {ex.Message}"); }
+                _ = HandlePasteAsync();
                 return;
             }
 
-            // Intercept terminal resize messages
+            // 3. Intercept terminal resize messages
             if (input.StartsWith("{\"type\":\"resize\""))
             {
                 try
                 {
                     using var jsonDoc = System.Text.Json.JsonDocument.Parse(input);
-
-                    // Update our class-level tracking variables
                     _termCols = jsonDoc.RootElement.GetProperty("cols").GetUInt32();
                     _termRows = jsonDoc.RootElement.GetProperty("rows").GetUInt32();
 
                     if (_shellStream != null)
                     {
-                        // SSH.NET hides the window resize feature internally. We use reflection to bypass this and invoke it.
                         var bindingFlags = System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance;
                         var channelField = typeof(ShellStream).GetField("_channel", bindingFlags);
                         var channelProperty = typeof(ShellStream).GetProperty("Channel", bindingFlags);
@@ -203,21 +235,15 @@ public sealed partial class TerminalControl : UserControl
                         if (channel != null)
                         {
                             var method = channel.GetType().GetMethod("SendWindowChangeRequest", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
-
-                            // --> Use the new tracking variables here instead of cols/rows
                             method?.Invoke(channel, new object[] { _termCols, _termRows, (uint)0, (uint)0 });
                         }
                     }
                 }
-                catch (Exception ex)
-                {
-                    Debug.WriteLine($"Failed to resize terminal: {ex.Message}");
-                }
-
-                return; 
+                catch (Exception ex) { Debug.WriteLine($"Failed to resize terminal: {ex.Message}"); }
+                return;
             }
 
-            // Handle normal terminal input (keystrokes)
+            // 4. Handle normal terminal input (keystrokes)
             if (_shellStream != null && _shellStream.CanWrite)
             {
                 var bytes = Encoding.UTF8.GetBytes(input);
@@ -630,6 +656,27 @@ public sealed partial class TerminalControl : UserControl
             _sshClient?.Dispose();
         }
         catch { }
+    }
+
+    private async Task HandlePasteAsync()
+    {
+        try
+        {
+            var dataPackageView = Windows.ApplicationModel.DataTransfer.Clipboard.GetContent();
+            if (dataPackageView.Contains(Windows.ApplicationModel.DataTransfer.StandardDataFormats.Text))
+            {
+                string text = await dataPackageView.GetTextAsync();
+                text = text.Replace("\r\n", "\n");
+
+                if (_shellStream != null && _shellStream.CanWrite)
+                {
+                    var bytes = Encoding.UTF8.GetBytes(text);
+                    _shellStream.Write(bytes, 0, bytes.Length);
+                    _shellStream.Flush();
+                }
+            }
+        }
+        catch (Exception ex) { Debug.WriteLine($"Paste failed: {ex.Message}"); }
     }
 
     public async Task ApplyLiveAppearanceAsync(ServerConfig newCfg)

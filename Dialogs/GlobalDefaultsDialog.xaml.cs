@@ -17,6 +17,8 @@ public sealed partial class GlobalDefaultsDialog : Window
         this.InitializeComponent();
         this.Title = "Global Default Settings";
 
+        DefaultFontBox.ItemsSource = ServerDialog.GetSystemFontFamilies();
+
         // Center the window on the screen
         var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
         var windowId = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hwnd);
@@ -67,7 +69,7 @@ public sealed partial class GlobalDefaultsDialog : Window
             fontSize = parsedSize;
         }
 
-        SetComboValue(TermFontBox, fontName);
+        SetComboValue(DefaultFontBox, fontName);
         SetComboValue(TermFontSizeBox, fontSize.ToString());
 
         TermScrollbackBox.Value = (double)(_localSettings.Values["GlobalDefaultScrollback"] ?? 10000.0);
@@ -91,7 +93,7 @@ public sealed partial class GlobalDefaultsDialog : Window
         _localSettings.Values["GlobalDefaultFg"] = TermFgBox.Text;
         _localSettings.Values["GlobalDefaultBg"] = TermBgBox.Text;
 
-        string finalFont = GetComboValue(TermFontBox, "Cascadia Mono");
+        string finalFont = GetComboValue(DefaultFontBox, "Cascadia Mono");
         string finalSize = GetComboValue(TermFontSizeBox, "16");
         _localSettings.Values["GlobalDefaultFont"] = $"{finalFont.Trim()} {finalSize.Trim()}";
 

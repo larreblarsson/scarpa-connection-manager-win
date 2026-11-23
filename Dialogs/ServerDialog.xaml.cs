@@ -1031,7 +1031,7 @@ public sealed partial class ServerDialog : Microsoft.UI.Xaml.Window
 
     #region Windows System Font Enumeration (DirectWrite)
 
-    private static List<string> GetSystemFontFamilies()
+    internal static List<string> GetSystemFontFamilies()
     {
         var fonts = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 

@@ -109,72 +109,96 @@
                         <StackPanel x:Name="TerminalPage" Spacing="16" Visibility="Collapsed">
                             <StackPanel Spacing="2">
                                 <TextBlock Text="Terminal" Style="{StaticResource SubtitleTextBlockStyle}" />
-                                <TextBlock Text="Configure logging, anti-idle, and session behavior." Foreground="Gray" FontSize="12" />
                             </StackPanel>
 
+                            <!-- Logging Section -->
+                            <TextBlock Text="Logging" FontWeight="SemiBold" />
                             <ToggleSwitch x:Name="EnableLoggingSwitch" Header="Enable session logging" />
-                            
-                            <TextBlock Text="Log file path" Margin="0,0,0,-12" />
-                            <Grid ColumnSpacing="8">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <TextBox x:Name="LogPathTextBox" PlaceholderText="C:\Logs\session.txt" Grid.Column="0" VerticalAlignment="Center" />
-                                <Button Content="Browse" Click="BrowseLogPath_Click" Grid.Column="1" VerticalAlignment="Center" />
-                            </Grid>
 
-                            <StackPanel Orientation="Horizontal" Spacing="15">
-                                <TextBlock Text="Mode:" VerticalAlignment="Center" />
-                                <RadioButton x:Name="AppendRadio" Content="Append to file" GroupName="LogMode" />
-                                <RadioButton x:Name="OverwriteRadio" Content="Overwrite file" GroupName="LogMode" />
-                            </StackPanel>
+                            <ContentControl IsEnabled="{x:Bind EnableLoggingSwitch.IsOn, Mode=OneWay}"
+                                HorizontalContentAlignment="Stretch"
+                                IsTabStop="False">
+                                                <StackPanel Spacing="16">
+                                                    <TextBlock Text="Log file path" Margin="0,0,0,-12" />
+                                                    <Grid ColumnSpacing="8">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBox x:Name="LogPathTextBox" PlaceholderText="C:\Logs\session.txt" Grid.Column="0" VerticalAlignment="Center" />
+                                                        <Button Content="Browse" Click="BrowseLogPath_Click" Grid.Column="1" VerticalAlignment="Center" />
+                                                    </Grid>
 
-                            <StackPanel Spacing="8" Margin="0,8,0,0">
-                                <CheckBox x:Name="AppendDataCheck" Content="Append Data to Log" MinWidth="0" />
+                                                    <StackPanel Orientation="Horizontal" Spacing="15">
+                                                        <TextBlock Text="Mode:" VerticalAlignment="Center" />
+                                                        <RadioButton x:Name="AppendRadio" Content="Append to file" GroupName="LogMode" />
+                                                        <RadioButton x:Name="OverwriteRadio" Content="Overwrite file" GroupName="LogMode" />
+                                                    </StackPanel>
 
-                                <Grid ColumnSpacing="12" RowSpacing="12" Margin="24,0,0,0">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="100" />
-                                        <ColumnDefinition Width="*" />
-                                    </Grid.ColumnDefinitions>
-                                    <Grid.RowDefinitions>
-                                        <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="Auto" />
-                                        <RowDefinition Height="Auto" />
-                                    </Grid.RowDefinitions>
-                                    <TextBlock Text="At connect:" Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" />
-                                    <TextBox x:Name="LogConnectBox" Grid.Row="0" Grid.Column="1" />
-                                    <TextBlock Text="At disconnect:" Grid.Row="1" Grid.Column="0" VerticalAlignment="Center" />
-                                    <TextBox x:Name="LogDisconnectBox" Grid.Row="1" Grid.Column="1" />
-                                    <TextBlock Text="On each line:" Grid.Row="2" Grid.Column="0" VerticalAlignment="Center" />
-                                    <TextBox x:Name="LogEachLineBox" Grid.Row="2" Grid.Column="1" />
-                                </Grid>
-
-                                <TextBlock Text="Substitutions: %H=Hostname, %S=Session Name, %Y=Year, %M=Month, %D=Day, %h=Hour, %m=Min, %s=Sec.&#x0a;Use \n for newline." 
-                                           Foreground="Gray" FontSize="12" TextWrapping="Wrap" Margin="24,4,0,0" />
-                            </StackPanel>
-
-                            <!-- Anti-idle Section -->
-                            <StackPanel Spacing="8" Margin="0,16,0,0">
-                                <TextBlock Text="Anti-idle" FontWeight="SemiBold" />
-
-                                <!-- ROW 1: Action Selection -->
-                                <StackPanel Orientation="Horizontal" Spacing="16" VerticalAlignment="Center">
-                                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                        <CheckBox x:Name="AntiIdleCheck" Content="Send string:" VerticalAlignment="Center" MinWidth="0" />
-                                        <TextBox x:Name="AntiIdleStringBox" Width="60" VerticalAlignment="Center" />
+                                                    <StackPanel Spacing="8" Margin="0,8,0,0">
+                                                        <CheckBox x:Name="AppendDataCheck" Content="Append Data to Log" MinWidth="0" />
+                                                        <ContentControl IsEnabled="{x:Bind (x:Boolean)AppendDataCheck.IsChecked, Mode=OneWay}"
+                                            HorizontalContentAlignment="Stretch"
+                                            IsTabStop="False">
+                                                            <Grid ColumnSpacing="12" RowSpacing="12" Margin="24,0,0,0">
+                                                                <Grid.ColumnDefinitions>
+                                                                    <ColumnDefinition Width="100" />
+                                                                    <ColumnDefinition Width="*" />
+                                                                </Grid.ColumnDefinitions>
+                                                                <Grid.RowDefinitions>
+                                                                    <RowDefinition Height="Auto" />
+                                                                    <RowDefinition Height="Auto" />
+                                                                    <RowDefinition Height="Auto" />
+                                                                </Grid.RowDefinitions>
+                                                                <TextBlock Text="At connect:" Grid.Row="0" Grid.Column="0" VerticalAlignment="Center" />
+                                                                <TextBox x:Name="LogConnectBox" Grid.Row="0" Grid.Column="1" />
+                                                                <TextBlock Text="At disconnect:" Grid.Row="1" Grid.Column="0" VerticalAlignment="Center" />
+                                                                <TextBox x:Name="LogDisconnectBox" Grid.Row="1" Grid.Column="1" />
+                                                                <TextBlock Text="On each line:" Grid.Row="2" Grid.Column="0" VerticalAlignment="Center" />
+                                                                <TextBox x:Name="LogEachLineBox" Grid.Row="2" Grid.Column="1" />
+                                                            </Grid>
+                                                        </ContentControl>
+                                                        <TextBlock Text="Substitutions: %H=Hostname, %S=Session Name, %Y=Year, %M=Month, %D=Day, %h=Hour, %m=Min, %s=Sec.&#x0a;Use \n for newline." 
+                                       Foreground="Gray" FontSize="12" TextWrapping="Wrap" Margin="24,4,0,0" />
                                     </StackPanel>
-                                    <CheckBox x:Name="AntiIdleNoOpCheck" Content="Use NO-OP instead" VerticalAlignment="Center" Checked="AntiIdleNoOpCheck_Changed" Unchecked="AntiIdleNoOpCheck_Changed" />
                                 </StackPanel>
+                            </ContentControl>
 
-                                <!-- ROW 2: Interval Settings -->
-                                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" Margin="0,4,0,0">
-                                    <TextBlock Text="Execute every" VerticalAlignment="Center" />
-                                    <NumberBox x:Name="AntiIdleIntervalBox" SpinButtonPlacementMode="Inline" SmallChange="1" LargeChange="10" Width="100" VerticalAlignment="Center" />
-                                    <TextBlock Text="seconds" VerticalAlignment="Center" />
-                                </StackPanel>
-                            </StackPanel>
+
+                         <!-- Anti-idle Section -->
+                         <StackPanel Spacing="8" Margin="0,16,0,0">
+                             <TextBlock Text="Anti-idle" FontWeight="SemiBold" />
+                             
+                             <!-- ROW 1: Action Selection -->
+                             <StackPanel Orientation="Horizontal" Spacing="16" VerticalAlignment="Center">
+                                 <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                     <CheckBox x:Name="AntiIdleCheck"
+                                         Content="Send string:"
+                                         VerticalAlignment="Center"
+                                         MinWidth="0"
+                                         Checked="AntiIdleOption_Changed"
+                                         Unchecked="AntiIdleOption_Changed" />
+                                      <TextBox x:Name="AntiIdleStringBox" Width="60" VerticalAlignment="Center" />
+                                  </StackPanel>
+                                  <CheckBox x:Name="AntiIdleNoOpCheck"
+                                      Content="Use NO-OP instead"
+                                      VerticalAlignment="Center"
+                                      Checked="AntiIdleOption_Changed"
+                                      Unchecked="AntiIdleOption_Changed" />
+                              </StackPanel>
+                             
+                             <!-- ROW 2: Interval Settings -->
+                             <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                 <TextBlock Text="Execute every" VerticalAlignment="Center" />
+                                 <NumberBox x:Name="AntiIdleIntervalBox"
+                                     MinWidth="150"
+                                     Width="150"
+                                     Minimum="1"
+                                     Maximum="3600"
+                                     SpinButtonPlacementMode="Inline" />
+                                  <TextBlock Text="seconds" VerticalAlignment="Center" />
+                             </StackPanel>
+                         </StackPanel>
 
                             <!-- Scrollback Buffer Section -->
                             <StackPanel Spacing="8" Margin="0,16,0,0">

@@ -21,7 +21,12 @@ public sealed partial class TerminalControl : UserControl
 
     private StreamWriter? _logWriter;
     private bool _logTimestamps;
-    private bool _isNewLine = true;
+    private string _pendingActiveLogLine = "";
+
+    private string _logPendingEscape = "";
+    private static readonly Regex AnsiEscapeRegex = new(
+        @"\x1B[\]P_^X][^\x07\x1B]*(?:\x07|\x1B\\)|\x1B\[[0-?]*[ -/]*[@-~]|\x1B[()*+#%][A-Za-z0-9]|\x1B[@-Z\\-_]",
+        RegexOptions.Compiled);
 
     private ServerConfig _config;
     private CancellationTokenSource _antiIdleCts = new();
@@ -75,39 +80,64 @@ public sealed partial class TerminalControl : UserControl
             .Replace("\\n", Environment.NewLine).Replace("\\r", "\r").Replace("\\t", "\t");
     }
 
-    private void WriteToLog(string rawText)
+    private string FormatAndRedactLogLine(string line)
+    {
+        string safeLine = Regex.Replace(line, @"(?i)(password|passphrase)(.*?:\s*)(.*)", "$1$2[REDACTED]");
+
+        var sb = new StringBuilder();
+        if (_logTimestamps)
+            sb.Append($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] ");
+
+        if (_config.AppendDataToLog && !string.IsNullOrEmpty(_config.LogEachLineString))
+            sb.Append(ApplyLogSubstitutions(_config.LogEachLineString));
+
+        sb.Append(safeLine);
+        return sb.ToString();
+    }
+
+    private void WriteLoggedLines(IEnumerable<string> lines, string activeLine)
     {
         if (_logWriter == null) return;
         try
         {
-            string cleanText = Regex.Replace(rawText, @"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])", "");
-            cleanText = Regex.Replace(cleanText, @"[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]", "");
-            cleanText = Regex.Replace(cleanText, @"(?i)(password|passphrase)(.*?:\s*)(.*)", "$1$2[REDACTED]");
-
-            string customPrefix = (_config.AppendDataToLog && !string.IsNullOrEmpty(_config.LogEachLineString))
-                ? ApplyLogSubstitutions(_config.LogEachLineString) : "";
-
-            if (!_logTimestamps && string.IsNullOrEmpty(customPrefix))
+            foreach (string line in lines)
             {
-                _logWriter.Write(cleanText);
-                return;
+                _logWriter.WriteLine(FormatAndRedactLogLine(line));
             }
-
-            var sb = new StringBuilder();
-            foreach (char c in cleanText)
-            {
-                if (_isNewLine && c != '\r' && c != '\n')
-                {
-                    if (_logTimestamps) sb.Append($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] ");
-                    if (!string.IsNullOrEmpty(customPrefix)) sb.Append(customPrefix);
-                    _isNewLine = false;
-                }
-                sb.Append(c);
-                if (c == '\n') _isNewLine = true;
-            }
-            _logWriter.Write(sb.ToString());
+            _pendingActiveLogLine = activeLine;
         }
         catch { }
+    }
+
+    private static bool IsIncompleteEscapeSequence(string tail)
+    {
+        if (tail.Length == 1) return true; // Lone ESC
+
+        char second = tail[1];
+
+        // String-terminated sequences: OSC (]), DCS (P), APC (_), PM (^), SOS (X)
+        if (second == ']' || second == 'P' || second == '_' || second == '^' || second == 'X')
+        {
+            return !tail.Contains('\x07') && !tail.Contains("\x1B\\");
+        }
+
+        // CSI sequence: ESC [ ... followed by final byte in 0x40..0x7E (@ through ~)
+        if (second == '[')
+        {
+            for (int i = 2; i < tail.Length; i++)
+            {
+                if (tail[i] >= '@' && tail[i] <= '~') return false;
+            }
+            return true;
+        }
+
+        // 3-byte charset / DEC sequences: ESC ( B, ESC ) 0, ESC # 8, etc.
+        if (tail.Length == 2 && (second == '(' || second == ')' || second == '*' || second == '+' || second == '#' || second == '%'))
+        {
+            return true;
+        }
+
+        return false;
     }
 
     private async Task InitializeTerminalAsync(ServerConfig cfg)
@@ -194,7 +224,7 @@ public sealed partial class TerminalControl : UserControl
                 return;
             }
 
-            // 2. Intercept Copy command
+            // 2a. Intercept Copy command
             if (input.StartsWith("{\"type\":\"copy\""))
             {
                 try
@@ -206,6 +236,24 @@ public sealed partial class TerminalControl : UserControl
                     Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(dataPackage);
                 }
                 catch (Exception ex) { Debug.WriteLine($"Copy failed: {ex.Message}"); }
+                return;
+            }
+
+            // 2b. Intercept finalized rendered terminal lines for logging
+            if (input.StartsWith("{\"type\":\"log_lines\""))
+            {
+                try
+                {
+                    using var jsonDoc = System.Text.Json.JsonDocument.Parse(input);
+                    var lines = new List<string>();
+                    foreach (var item in jsonDoc.RootElement.GetProperty("lines").EnumerateArray())
+                    {
+                        lines.Add(item.GetString() ?? "");
+                    }
+                    string activeLine = jsonDoc.RootElement.GetProperty("activeLine").GetString() ?? "";
+                    WriteLoggedLines(lines, activeLine);
+                }
+                catch (Exception ex) { Debug.WriteLine($"Log sync failed: {ex.Message}"); }
                 return;
             }
 
@@ -345,27 +393,66 @@ public sealed partial class TerminalControl : UserControl
             string safeFg = System.Text.Json.JsonSerializer.Serialize(fg);
 
             string script = $@"
-        term.options.fontFamily = {safeFontName};
-        term.options.fontSize = {fontSize};
-        
-        term.options.theme = {{ 
-            {ansiColors} 
-            {selectionBg}
-            background: {safeBg}, 
-            foreground: {safeFg},
-            cursor: {safeFg},
-            cursorAccent: {safeBg}
-        }};
-        
-        document.body.style.backgroundColor = {safeBg};
-        fitAddon.fit();
+    term.options.fontFamily = {safeFontName};
+    term.options.fontSize = {fontSize};
+    
+    term.options.theme = {{ 
+        {ansiColors} 
+        {selectionBg}
+        background: {safeBg}, 
+        foreground: {safeFg},
+        cursor: {safeFg},
+        cursorAccent: {safeBg}
+    }};
+    
+    document.body.style.backgroundColor = {safeBg};
+    term.options.scrollback = 10000;
+    fitAddon.fit();
 
-        window.chrome.webview.postMessage(JSON.stringify({{ type: 'resize', cols: term.cols, rows: term.rows }}));
-        window.addEventListener('focus', () => term.focus());
-        document.addEventListener('click', () => term.focus());
-        
-        term.focus();
-    ";
+    if (!window._scarpaLogHooked) {{
+        window._scarpaLogHooked = true;
+        window._logNextRow = 0;
+        window._lastSentActiveLine = '';
+
+        // Keep row index aligned when scrollback reaches capacity
+        term.onLineFeed(() => {{
+            if (term.buffer.active.baseY >= term.options.scrollback && window._logNextRow > 0) {{
+                window._logNextRow--;
+            }}
+        }});
+
+        // Send completed rows above the active cursor line to C# for logging
+        term.onWriteParsed(() => {{
+            const buf = term.buffer.active;
+            const cursorAbsRow = buf.baseY + buf.cursorY;
+            const lines = [];
+
+            while (window._logNextRow < cursorAbsRow) {{
+                const line = buf.getLine(window._logNextRow);
+                lines.push(line ? line.translateToString(true) : '');
+                window._logNextRow++;
+            }}
+
+            const activeObj = buf.getLine(cursorAbsRow);
+            const activeLine = activeObj ? activeObj.translateToString(true) : '';
+
+            if (lines.length > 0 || activeLine !== window._lastSentActiveLine) {{
+                window._lastSentActiveLine = activeLine;
+                window.chrome.webview.postMessage(JSON.stringify({{
+                    type: 'log_lines',
+                    lines: lines,
+                    activeLine: activeLine
+                }}));
+            }}
+        }});
+    }}
+
+    window.chrome.webview.postMessage(JSON.stringify({{ type: 'resize', cols: term.cols, rows: term.rows }}));
+    window.addEventListener('focus', () => term.focus());
+    document.addEventListener('click', () => term.focus());
+    
+    term.focus();
+";
 
             await TerminalView.CoreWebView2.ExecuteScriptAsync(script);
 
@@ -556,49 +643,57 @@ public sealed partial class TerminalControl : UserControl
 
     private void StartAntiIdle(ServerConfig cfg)
     {
+        // Cancel any previous anti-idle loop before starting a new one
+        _antiIdleCts.Cancel();
+        _antiIdleCts = new CancellationTokenSource();
+
         if (!cfg.AntiIdleEnabled || cfg.AntiIdleInterval <= 0) return;
 
-        // Sanitize the payload to prevent command injection by removing all newlines
-        string rawPayload = cfg.AntiIdleString ?? "";
-        string safePayload = rawPayload
-            .Replace("\\r", "")
-            .Replace("\\n", "")
-            .Replace("\r", "")
-            .Replace("\n", "");
+        // Translate escaped control sequences (\r, \n, \t, \0) into actual bytes
+        string payload = (cfg.AntiIdleString ?? "")
+            .Replace("\\r", "\r")
+            .Replace("\\n", "\n")
+            .Replace("\\t", "\t")
+            .Replace("\\0", "\0");
 
-        // Provide a safe fallback if the payload is empty
-        if (string.IsNullOrEmpty(safePayload) && !cfg.AntiIdleNoOp)
+        // Fallback to NUL byte if string mode is enabled with an empty string
+        if (string.IsNullOrEmpty(payload) && !cfg.AntiIdleNoOp)
         {
-            safePayload = " \x08"; // Space followed by backspace
+            payload = "\0";
         }
 
-        var bytes = Encoding.UTF8.GetBytes(safePayload);
+        var bytes = Encoding.UTF8.GetBytes(payload);
+        var token = _antiIdleCts.Token;
 
         Task.Run(async () =>
         {
             try
             {
-                while (_sshClient != null && _sshClient.IsConnected && !_antiIdleCts.Token.IsCancellationRequested)
+                while (_sshClient != null && _sshClient.IsConnected && !token.IsCancellationRequested)
                 {
-                    await Task.Delay(cfg.AntiIdleInterval * 1000, _antiIdleCts.Token);
+                    await Task.Delay(TimeSpan.FromSeconds(cfg.AntiIdleInterval), token);
+
+                    if (_sshClient == null || !_sshClient.IsConnected || token.IsCancellationRequested)
+                        break;
 
                     if (cfg.AntiIdleNoOp)
                     {
+                        // Transport-level SSH_MSG_IGNORE keep-alive packet
                         #pragma warning disable CS0618
                         _sshClient.SendKeepAlive();
-                        #pragma warning disable CS0618
+                        #pragma warning restore CS0618
                     }
                     else if (_shellStream != null && _shellStream.CanWrite)
                     {
-                        // Standard string injection fallback using the sanitized payload
                         _shellStream.Write(bytes, 0, bytes.Length);
                         _shellStream.Flush();
                     }
                 }
             }
             catch (TaskCanceledException) { }
+            catch (OperationCanceledException) { }
             catch (Exception) { /* Handle unexpected network disconnects gracefully */ }
-        });
+        }, token);
     }
 
     private async Task ReadStreamAsync()
@@ -612,10 +707,9 @@ public sealed partial class TerminalControl : UserControl
                 if (bytesRead == 0) break;
                 string text = Encoding.UTF8.GetString(buffer, 0, bytesRead);
 
-                WriteToLog(text);
                 SendToTerminal(text);
 
-                string cleanText = Regex.Replace(text, @"\x1B\[[0-?]*[ -/]*[@-~]|\x1B$$[^\x07\x1B]*(?:\x07|\x1B\\)", "");
+                string cleanText = AnsiEscapeRegex.Replace(text, "");
                 cleanText = Regex.Replace(cleanText, @"[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]", "");
 
                 _loginBuffer.Append(cleanText);
@@ -644,10 +738,19 @@ public sealed partial class TerminalControl : UserControl
         try
         {
             _antiIdleCts.Cancel();
-            if (_logWriter != null && _config.AppendDataToLog && !string.IsNullOrWhiteSpace(_config.LogDisconnectString))
+
+            if (_logWriter != null)
             {
-                if (!_isNewLine) _logWriter.Write(Environment.NewLine);
-                _logWriter.Write(ApplyLogSubstitutions(_config.LogDisconnectString) + Environment.NewLine);
+                if (!string.IsNullOrEmpty(_pendingActiveLogLine))
+                {
+                    _logWriter.WriteLine(FormatAndRedactLogLine(_pendingActiveLogLine));
+                    _pendingActiveLogLine = "";
+                }
+
+                if (_config.AppendDataToLog && !string.IsNullOrWhiteSpace(_config.LogDisconnectString))
+                {
+                    _logWriter.WriteLine(ApplyLogSubstitutions(_config.LogDisconnectString));
+                }
             }
 
             _logWriter?.Dispose();
@@ -682,6 +785,7 @@ public sealed partial class TerminalControl : UserControl
     public async Task ApplyLiveAppearanceAsync(ServerConfig newCfg)
     {
         _config = newCfg;
+        StartAntiIdle(_config);
 
         string fontName = "Consolas";
         int fontSize = 11;

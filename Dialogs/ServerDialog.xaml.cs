@@ -123,11 +123,11 @@ public sealed partial class ServerDialog : Microsoft.UI.Xaml.Window
             LogEachLineBox.Text = Config.LogEachLineString ?? "";
 
             // Terminal - Anti-idle
-            AntiIdleCheck.IsChecked = Config.AntiIdleEnabled;
             AntiIdleStringBox.Text = Config.AntiIdleString ?? "";
             AntiIdleIntervalBox.Value = Config.AntiIdleInterval > 0 ? Config.AntiIdleInterval : 10;
-            AntiIdleNoOpCheck.IsChecked = Config.AntiIdleNoOp;
-            AntiIdleStringBox.IsEnabled = !Config.AntiIdleNoOp;
+            AntiIdleCheck.IsChecked = Config.AntiIdleEnabled && !Config.AntiIdleNoOp;
+            AntiIdleNoOpCheck.IsChecked = Config.AntiIdleEnabled && Config.AntiIdleNoOp;
+            AntiIdleOption_Changed(this, new RoutedEventArgs());
 
             // Terminal - Startup Command
             StartupCmdCheck.IsChecked = Config.StartupCmdEnabled;
@@ -197,7 +197,7 @@ public sealed partial class ServerDialog : Microsoft.UI.Xaml.Window
             AntiIdleStringBox.Text = "\\n";
             AntiIdleIntervalBox.Value = 60;
             AntiIdleNoOpCheck.IsChecked = false;
-            AntiIdleStringBox.IsEnabled = true;
+            AntiIdleOption_Changed(this, new RoutedEventArgs());
 
             StartupCmdCheck.IsChecked = false;
 
@@ -476,7 +476,7 @@ public sealed partial class ServerDialog : Microsoft.UI.Xaml.Window
         Config.LogEachLineString = LogEachLineBox.Text;
 
         // Terminal Anti-idle
-        Config.AntiIdleEnabled = AntiIdleCheck.IsChecked == true;
+        Config.AntiIdleEnabled = AntiIdleCheck.IsChecked == true || AntiIdleNoOpCheck.IsChecked == true;
         Config.AntiIdleString = AntiIdleStringBox.Text;
         Config.AntiIdleInterval = double.IsNaN(AntiIdleIntervalBox.Value) ? 60 : (int)AntiIdleIntervalBox.Value;
         Config.AntiIdleNoOp = AntiIdleNoOpCheck.IsChecked == true;
@@ -1023,11 +1023,44 @@ public sealed partial class ServerDialog : Microsoft.UI.Xaml.Window
         }
         return false;
     }
-    private void AntiIdleNoOpCheck_Changed(object sender, RoutedEventArgs e)
+    private bool _isUpdatingAntiIdle = false;
+
+    private void AntiIdleOption_Changed(object sender, RoutedEventArgs e)
     {
-        if (AntiIdleStringBox != null && AntiIdleNoOpCheck != null)
+        if (_isUpdatingAntiIdle || AntiIdleCheck == null || AntiIdleStringBox == null || AntiIdleNoOpCheck == null)
+            return;
+
+        _isUpdatingAntiIdle = true;
+        try
         {
-            AntiIdleStringBox.IsEnabled = AntiIdleNoOpCheck.IsChecked != true;
+            if (ReferenceEquals(sender, AntiIdleNoOpCheck) && AntiIdleNoOpCheck.IsChecked == true)
+            {
+                AntiIdleCheck.IsChecked = false;
+            }
+            else if (ReferenceEquals(sender, AntiIdleCheck) && AntiIdleCheck.IsChecked == true)
+            {
+                AntiIdleNoOpCheck.IsChecked = false;
+            }
+            else if (AntiIdleNoOpCheck.IsChecked == true && AntiIdleCheck.IsChecked == true)
+            {
+                AntiIdleCheck.IsChecked = false;
+            }
+
+            bool sendString = AntiIdleCheck.IsChecked == true;
+            bool useNoOp = AntiIdleNoOpCheck.IsChecked == true;
+
+            // Keep both checkboxes clickable while visually greying out the inactive one
+            AntiIdleCheck.IsEnabled = true;
+            AntiIdleCheck.Opacity = useNoOp ? 0.45 : 1.0;
+
+            AntiIdleStringBox.IsEnabled = sendString;
+
+            AntiIdleNoOpCheck.IsEnabled = true;
+            AntiIdleNoOpCheck.Opacity = sendString ? 0.45 : 1.0;
+        }
+        finally
+        {
+            _isUpdatingAntiIdle = false;
         }
     }
 }

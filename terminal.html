@@ -131,12 +131,12 @@
                 }
                 // Ctrl+V
                 if (e.ctrlKey && e.code === 'KeyV') {
-                    e.preventDefault(); // <-- ADD THIS: Stops the browser's native double-paste
+                    e.preventDefault();
                     
                     if (window.chrome && window.chrome.webview) {
                         window.chrome.webview.postMessage(JSON.stringify({ type: 'paste' }));
                     }
-                    return false; // Stops xterm from sending ^V
+                    return false;
                 }
             }
             return true;

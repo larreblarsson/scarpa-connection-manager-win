@@ -349,23 +349,13 @@
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="90" />
                                     </Grid.ColumnDefinitions>
-                                    <ComboBox x:Name="TermFontBox" Grid.Column="0" HorizontalAlignment="Stretch" IsEditable="True" ToolTipService.ToolTip="Select or type a font">
-                                        <x:String>Arial</x:String>
-                                        <x:String>Bahnschrift</x:String>
-                                        <x:String>Calibri</x:String>
-                                        <x:String>Cambria</x:String>
-                                        <x:String>Cambria Math</x:String>
-                                        <x:String>Candara</x:String>
-                                        <x:String>Cascadia Code</x:String>
-                                        <x:String>Cascadia Mono</x:String>
-                                        <x:String>Comic Sans MS</x:String>
-                                        <x:String>Consolas</x:String>
-                                        <x:String>Constantia</x:String>
-                                        <x:String>Corbel</x:String>
-                                        <x:String>Courier New</x:String>
-                                        <x:String>Ebrima</x:String>
-                                        <x:String>Franklin Gothic</x:String>
-                                    </ComboBox>
+                                    <ComboBox x:Name="TermFontBox"
+                                        Grid.Column="0"
+                                        HorizontalAlignment="Stretch"
+                                        IsEditable="True"
+                                        ToolTipService.ToolTip="Select or type a font" />
+                                    
+                                    
                                     <ComboBox x:Name="TermFontSizeBox" Grid.Column="1" HorizontalAlignment="Stretch" IsEditable="True" ToolTipService.ToolTip="Font Size">
                                         <x:String>8</x:String>
                                         <x:String>9</x:String>

@@ -60,6 +60,10 @@ public sealed partial class ServerDialog : Microsoft.UI.Xaml.Window
         NavView.SelectedItem = NavView.MenuItems[0];
         foreach (var f in folders) FolderBox.Items.Add(f);
 
+        NavView.SelectedItem = NavView.MenuItems[0];
+        foreach (var f in folders) FolderBox.Items.Add(f);
+        TermFontBox.ItemsSource = GetSystemFontFamilies();
+
         if (existingConfig != null)
         {
             Config = existingConfig.Clone();
@@ -1024,6 +1028,130 @@ public sealed partial class ServerDialog : Microsoft.UI.Xaml.Window
         return false;
     }
     private bool _isUpdatingAntiIdle = false;
+
+    #region Windows System Font Enumeration (DirectWrite)
+
+    private static List<string> GetSystemFontFamilies()
+    {
+        var fonts = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        try
+        {
+            var factoryGuid = new Guid("b859ee5a-d838-4b5b-a2e8-1adc7d93db48");
+            int hr = DWriteCreateFactory(0, ref factoryGuid, out object factoryObj);
+            if (hr == 0 && factoryObj is IDWriteFactory factory)
+            {
+                factory.GetSystemFontCollection(out IDWriteFontCollection collection, false);
+                uint count = collection.GetFontFamilyCount();
+                string userLocale = System.Globalization.CultureInfo.CurrentUICulture.Name;
+
+                for (uint i = 0; i < count; i++)
+                {
+                    collection.GetFontFamily(i, out IDWriteFontFamily family);
+                    family.GetFamilyNames(out IDWriteLocalizedStrings names);
+
+                    uint nameIndex = 0;
+                    if (!names.FindLocaleName(userLocale, out nameIndex, out bool exists) || !exists)
+                    {
+                        if (!names.FindLocaleName("en-us", out nameIndex, out exists) || !exists)
+                        {
+                            nameIndex = 0;
+                        }
+                    }
+
+                    names.GetStringLength(nameIndex, out uint length);
+                    var sb = new System.Text.StringBuilder((int)length + 1);
+                    names.GetString(nameIndex, sb, length + 1);
+
+                    string fontName = sb.ToString();
+                    if (!string.IsNullOrWhiteSpace(fontName) && !fontName.StartsWith("@"))
+                    {
+                        fonts.Add(fontName);
+                    }
+                }
+            }
+        }
+        catch
+        {
+            // Fallback if DirectWrite enumeration fails
+            fonts.Add("Cascadia Code");
+            fonts.Add("Cascadia Mono");
+            fonts.Add("Consolas");
+            fonts.Add("Courier New");
+        }
+
+        var sortedFonts = fonts.ToList();
+        sortedFonts.Sort(StringComparer.CurrentCultureIgnoreCase);
+        return sortedFonts;
+    }
+
+    [System.Runtime.InteropServices.DllImport("dwrite.dll")]
+    private static extern int DWriteCreateFactory(
+        int factoryType,
+        ref Guid iid,
+        [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.IUnknown)] out object factory);
+
+    [System.Runtime.InteropServices.ComImport]
+    [System.Runtime.InteropServices.Guid("b859ee5a-d838-4b5b-a2e8-1adc7d93db48")]
+    [System.Runtime.InteropServices.InterfaceType(System.Runtime.InteropServices.ComInterfaceType.InterfaceIsIUnknown)]
+    private interface IDWriteFactory
+    {
+        int GetSystemFontCollection(
+            out IDWriteFontCollection fontCollection,
+            [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)] bool checkForUpdates);
+    }
+
+    [System.Runtime.InteropServices.ComImport]
+    [System.Runtime.InteropServices.Guid("a84cee02-3eea-4eee-a827-87c1a02a0fcc")]
+    [System.Runtime.InteropServices.InterfaceType(System.Runtime.InteropServices.ComInterfaceType.InterfaceIsIUnknown)]
+    private interface IDWriteFontCollection
+    {
+        [System.Runtime.InteropServices.PreserveSig]
+        uint GetFontFamilyCount();
+        int GetFontFamily(uint index, out IDWriteFontFamily fontFamily);
+    }
+
+    [System.Runtime.InteropServices.ComImport]
+    [System.Runtime.InteropServices.Guid("da20d8ef-812a-4c43-9802-62ec4abd7add")]
+    [System.Runtime.InteropServices.InterfaceType(System.Runtime.InteropServices.ComInterfaceType.InterfaceIsIUnknown)]
+    private interface IDWriteFontFamily
+    {
+        // IDWriteFontList base vtable slots
+        int GetFontCollection(out IDWriteFontCollection fontCollection);
+        [System.Runtime.InteropServices.PreserveSig]
+        uint GetFontCount();
+        int GetFont(uint index, out IntPtr font);
+
+        // IDWriteFontFamily slot
+        int GetFamilyNames(out IDWriteLocalizedStrings names);
+    }
+
+    [System.Runtime.InteropServices.ComImport]
+    [System.Runtime.InteropServices.Guid("08256209-099a-4b34-b86d-c22b110e7771")]
+    [System.Runtime.InteropServices.InterfaceType(System.Runtime.InteropServices.ComInterfaceType.InterfaceIsIUnknown)]
+    private interface IDWriteLocalizedStrings
+    {
+        [System.Runtime.InteropServices.PreserveSig]
+        uint GetCount();
+        [System.Runtime.InteropServices.PreserveSig]
+        [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+        bool FindLocaleName(
+            [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.LPWStr)] string localeName,
+            out uint index,
+            [System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)] out bool exists);
+        int GetLocaleNameLength(uint index, out uint length);
+        int GetLocaleName(
+            uint index,
+            [System.Runtime.InteropServices.Out, System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.LPWStr)] System.Text.StringBuilder localeName,
+            uint size);
+        int GetStringLength(uint index, out uint length);
+        int GetString(
+            uint index,
+            [System.Runtime.InteropServices.Out, System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.LPWStr)] System.Text.StringBuilder stringBuffer,
+            uint size);
+    }
+
+    #endregion
 
     private void AntiIdleOption_Changed(object sender, RoutedEventArgs e)
     {

@@ -41,7 +41,7 @@ public sealed partial class ServerDialog : Microsoft.UI.Xaml.Window
         }
 
         int windowWidth = 850;
-        int windowHeight = 1000;
+        int windowHeight = 1010;
 
         var displayArea = Microsoft.UI.Windowing.DisplayArea.GetFromWindowId(windowId, Microsoft.UI.Windowing.DisplayAreaFallback.Primary);
         if (displayArea != null)

@@ -15,51 +15,265 @@
             <KeyboardAccelerator Key="Delete" Invoked="DeleteKey_Invoked" />
         </Grid.KeyboardAccelerators>
 
-        <!-- The Modern Windows 11 Context Menu -->
+        <!-- Resources -->
         <Grid.Resources>
-            <!-- Reverted back to the native WinUI 3 CommandBarFlyout -->
-            <CommandBarFlyout x:Name="FileContextMenu">
-                <CommandBarFlyout.PrimaryCommands>
-                    <AppBarButton Label="Cut" Click="ContextCut_Click">
-                        <AppBarButton.Icon>
-                            <SymbolIcon Symbol="Cut" Foreground="DarkOrange"/>
-                        </AppBarButton.Icon>
-                    </AppBarButton>
-                    <AppBarButton Label="Copy" Click="ContextCopy_Click">
-                        <AppBarButton.Icon>
-                            <SymbolIcon Symbol="Copy" Foreground="DodgerBlue"/>
-                        </AppBarButton.Icon>
-                    </AppBarButton>
-                    <AppBarButton Label="Paste" Click="ContextPaste_Click">
-                        <AppBarButton.Icon>
-                            <SymbolIcon Symbol="Paste" Foreground="MediumSeaGreen"/>
-                        </AppBarButton.Icon>
-                    </AppBarButton>
-                    <AppBarButton Label="Rename" Click="ContextRename_Click">
-                        <AppBarButton.Icon>
-                            <SymbolIcon Symbol="Rename" Foreground="MediumPurple"/>
-                        </AppBarButton.Icon>
-                    </AppBarButton>
-                    <AppBarButton Label="Delete" Click="ContextDelete_Click">
-                        <AppBarButton.Icon>
-                            <SymbolIcon Symbol="Delete" Foreground="Crimson"/>
-                        </AppBarButton.Icon>
-                    </AppBarButton>
-                    <AppBarButton Label="New Folder" Click="ContextNewFolder_Click">
-                        <AppBarButton.Icon>
-                            <SymbolIcon Symbol="NewFolder" Foreground="Goldenrod"/>
-                        </AppBarButton.Icon>
-                    </AppBarButton>
-                </CommandBarFlyout.PrimaryCommands>
+            <!-- Windows 11 File Explorer Toolbar Button Style -->
+            <Style x:Key="ExplorerToolbarButtonStyle" TargetType="Button">
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="BorderThickness" Value="0" />
+                <Setter Property="Width" Value="34" />
+                <Setter Property="Height" Value="34" />
+                <Setter Property="Padding" Value="0" />
+                <Setter Property="CornerRadius" Value="4" />
+                <Setter Property="VerticalAlignment" Value="Center" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="RootBorder"
+                                    Background="{TemplateBinding Background}"
+                                    CornerRadius="{TemplateBinding CornerRadius}"
+                                    Padding="{TemplateBinding Padding}">
+                                <VisualStateManager.VisualStateGroups>
+                                    <VisualStateGroup x:Name="CommonStates">
+                                        <VisualState x:Name="Normal" />
+                                        <VisualState x:Name="PointerOver">
+                                            <VisualState.Setters>
+                                                <Setter Target="RootBorder.Background" Value="#0D000000" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                        <VisualState x:Name="Pressed">
+                                            <VisualState.Setters>
+                                                <Setter Target="RootBorder.Background" Value="#16000000" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                        <VisualState x:Name="Disabled">
+                                            <VisualState.Setters>
+                                                <Setter Target="ContentPresenter.Foreground" Value="#A6A6A6" />
+                                                <Setter Target="RootBorder.Opacity" Value="0.65" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                    </VisualStateGroup>
+                                </VisualStateManager.VisualStateGroups>
+                                <ContentPresenter x:Name="ContentPresenter"
+                                                  Foreground="{TemplateBinding Foreground}"
+                                                  HorizontalAlignment="Center"
+                                                  VerticalAlignment="Center" />
+                            </Border>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
 
-                <CommandBarFlyout.SecondaryCommands>
-                    <AppBarButton Label="Calculate Size" Click="ContextCalculateSize_Click">
-                        <AppBarButton.Icon>
-                            <SymbolIcon Symbol="Calculator" Foreground="Teal"/>
-                        </AppBarButton.Icon>
-                    </AppBarButton>
-                </CommandBarFlyout.SecondaryCommands>
-            </CommandBarFlyout>
+            <!-- Windows 11 Context Menu Top Quick-Action Button Style (Icon above Label) -->
+            <Style x:Key="ContextTopActionButtonStyle" TargetType="Button">
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="BorderThickness" Value="0" />
+                <Setter Property="HorizontalAlignment" Value="Stretch" />
+                <Setter Property="VerticalAlignment" Value="Stretch" />
+                <Setter Property="Padding" Value="4,8" />
+                <Setter Property="Margin" Value="2" />
+                <Setter Property="CornerRadius" Value="4" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="RootBorder"
+                                    Background="{TemplateBinding Background}"
+                                    CornerRadius="{TemplateBinding CornerRadius}"
+                                    Padding="{TemplateBinding Padding}">
+                                <VisualStateManager.VisualStateGroups>
+                                    <VisualStateGroup x:Name="CommonStates">
+                                        <VisualState x:Name="Normal" />
+                                        <VisualState x:Name="PointerOver">
+                                            <VisualState.Setters>
+                                                <Setter Target="RootBorder.Background" Value="#0D000000" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                        <VisualState x:Name="Pressed">
+                                            <VisualState.Setters>
+                                                <Setter Target="RootBorder.Background" Value="#16000000" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                    </VisualStateGroup>
+                                </VisualStateManager.VisualStateGroups>
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            </Border>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <!-- Windows 11 Context Menu List Item Style -->
+            <Style x:Key="ContextListItemButtonStyle" TargetType="Button">
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="BorderThickness" Value="0" />
+                <Setter Property="HorizontalAlignment" Value="Stretch" />
+                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                <Setter Property="Padding" Value="10,7" />
+                <Setter Property="Margin" Value="2,1" />
+                <Setter Property="CornerRadius" Value="4" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="RootBorder"
+                                    Background="{TemplateBinding Background}"
+                                    CornerRadius="{TemplateBinding CornerRadius}"
+                                    Padding="{TemplateBinding Padding}">
+                                <VisualStateManager.VisualStateGroups>
+                                    <VisualStateGroup x:Name="CommonStates">
+                                        <VisualState x:Name="Normal" />
+                                        <VisualState x:Name="PointerOver">
+                                            <VisualState.Setters>
+                                                <Setter Target="RootBorder.Background" Value="#0D000000" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                        <VisualState x:Name="Pressed">
+                                            <VisualState.Setters>
+                                                <Setter Target="RootBorder.Background" Value="#16000000" />
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                    </VisualStateGroup>
+                                </VisualStateManager.VisualStateGroups>
+                                <ContentPresenter HorizontalAlignment="Stretch" VerticalAlignment="Center" />
+                            </Border>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <!-- Windows 11 File Explorer ListView Hover & Selection Brushes -->
+            <SolidColorBrush x:Key="ListViewItemBackgroundPointerOver" Color="#EBF4FC" />
+            <SolidColorBrush x:Key="ListViewItemBackgroundPressed" Color="#DCEBFA" />
+            <SolidColorBrush x:Key="ListViewItemBackgroundSelected" Color="#DCEBFA" />
+            <SolidColorBrush x:Key="ListViewItemBackgroundSelectedPointerOver" Color="#CCE4F7" />
+            <SolidColorBrush x:Key="ListViewItemBackgroundSelectedPressed" Color="#CCE4F7" />
+
+            <!-- Windows 11 File Explorer Style Right-Click Flyout -->
+            <Flyout x:Name="FileContextMenu">
+                <Flyout.FlyoutPresenterStyle>
+                    <Style TargetType="FlyoutPresenter">
+                        <Setter Property="Padding" Value="4" />
+                        <Setter Property="CornerRadius" Value="8" />
+                        <Setter Property="Background" Value="#FCFCFC" />
+                        <Setter Property="BorderBrush" Value="#E0E0E0" />
+                        <Setter Property="BorderThickness" Value="1" />
+                        <Setter Property="MinWidth" Value="310" />
+                    </Style>
+                </Flyout.FlyoutPresenterStyle>
+
+                <StackPanel x:Name="FileContextMenuPanel">
+                    <!-- Top Row: Large Icons with Labels (Cut | Copy | Paste | Rename | Delete) -->
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="1" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="1" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="1" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="1" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+
+                        <Button Grid.Column="0" Style="{StaticResource ContextTopActionButtonStyle}" Click="ContextCut_Click">
+                            <StackPanel Spacing="5" HorizontalAlignment="Center">
+                                <FontIcon Glyph="&#xE8C6;" FontSize="18" Foreground="#1976D4" HorizontalAlignment="Center" />
+                                <TextBlock Text="Cut" FontSize="11" Foreground="#2B2B2B" HorizontalAlignment="Center" />
+                            </StackPanel>
+                        </Button>
+
+                        <Border Grid.Column="1" Background="#E5E5E5" Margin="0,8" />
+
+                        <Button Grid.Column="2" Style="{StaticResource ContextTopActionButtonStyle}" Click="ContextCopy_Click">
+                            <StackPanel Spacing="5" HorizontalAlignment="Center">
+                                <FontIcon Glyph="&#xE8C8;" FontSize="18" Foreground="#1976D4" HorizontalAlignment="Center" />
+                                <TextBlock Text="Copy" FontSize="11" Foreground="#2B2B2B" HorizontalAlignment="Center" />
+                            </StackPanel>
+                        </Button>
+
+                        <Border Grid.Column="3" Background="#E5E5E5" Margin="0,8" />
+
+                        <Button Grid.Column="4" Style="{StaticResource ContextTopActionButtonStyle}" Click="ContextPaste_Click">
+                            <StackPanel Spacing="5" HorizontalAlignment="Center">
+                                <FontIcon Glyph="&#xE77F;" FontSize="18" Foreground="#1976D4" HorizontalAlignment="Center" />
+                                <TextBlock Text="Paste" FontSize="11" Foreground="#2B2B2B" HorizontalAlignment="Center" />
+                            </StackPanel>
+                        </Button>
+
+                        <Border Grid.Column="5" Background="#E5E5E5" Margin="0,8" />
+
+                        <Button Grid.Column="6" Style="{StaticResource ContextTopActionButtonStyle}" Click="ContextRename_Click">
+                            <StackPanel Spacing="5" HorizontalAlignment="Center">
+                                <FontIcon Glyph="&#xE8AC;" FontSize="18" Foreground="#1976D4" HorizontalAlignment="Center" />
+                                <TextBlock Text="Rename" FontSize="11" Foreground="#2B2B2B" HorizontalAlignment="Center" />
+                            </StackPanel>
+                        </Button>
+
+                        <Border Grid.Column="7" Background="#E5E5E5" Margin="0,8" />
+
+                        <Button Grid.Column="8" Style="{StaticResource ContextTopActionButtonStyle}" Click="ContextDelete_Click">
+                            <StackPanel Spacing="5" HorizontalAlignment="Center">
+                                <FontIcon Glyph="&#xE74D;" FontSize="18" Foreground="#4A4A4A" HorizontalAlignment="Center" />
+                                <TextBlock Text="Delete" FontSize="11" Foreground="#2B2B2B" HorizontalAlignment="Center" />
+                            </StackPanel>
+                        </Button>
+                    </Grid>
+
+                    <!-- Divider -->
+                    <Border Height="1" Background="#E5E5E5" Margin="4,4" />
+
+                    <!-- Folder Action -->
+                    <Button Style="{StaticResource ContextListItemButtonStyle}" Click="ContextNewFolder_Click">
+                        <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                            <FontIcon Glyph="&#xE8F4;" FontSize="15" Foreground="#D49B2A" />
+                            <TextBlock Text="New Folder" FontSize="13" Foreground="#222222" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+
+                    <!-- Divider -->
+                    <Border Height="1" Background="#E5E5E5" Margin="4,4" />
+
+                    <!-- SFTP Transfer Actions -->
+                    <Button Style="{StaticResource ContextListItemButtonStyle}" Click="Download_Click">
+                        <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                            <FontIcon Glyph="&#xE896;" FontSize="15" Foreground="#1976D4" />
+                            <TextBlock Text="Download" FontSize="13" Foreground="#222222" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+
+                    <Button Style="{StaticResource ContextListItemButtonStyle}" Click="Upload_Click">
+                        <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                            <FontIcon Glyph="&#xE898;" FontSize="15" Foreground="#1976D4" />
+                            <TextBlock Text="Upload" FontSize="13" Foreground="#222222" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+
+                    <Button Style="{StaticResource ContextListItemButtonStyle}" Click="Resume_Click">
+                        <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                            <FontIcon Glyph="&#xE768;" FontSize="15" Foreground="#2E7D5B" />
+                            <TextBlock Text="Resume" FontSize="13" Foreground="#222222" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+
+                    <!-- Divider -->
+                    <Border Height="1" Background="#E5E5E5" Margin="4,4" />
+
+                    <!-- Utility Actions -->
+                    <Button Style="{StaticResource ContextListItemButtonStyle}" Click="Search_Click">
+                        <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                            <FontIcon Glyph="&#xE721;" FontSize="15" Foreground="#4A4A4A" />
+                            <TextBlock Text="Search" FontSize="13" Foreground="#222222" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+
+                    <Button Style="{StaticResource ContextListItemButtonStyle}" Click="ContextCalculateSize_Click">
+                        <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                            <FontIcon Glyph="&#xE8EF;" FontSize="15" Foreground="#4A4A4A" />
+                            <TextBlock Text="Calculate Size" FontSize="13" Foreground="#222222" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+            </Flyout>
 
             <MenuFlyout x:Name="HeaderContextMenu">
                 <MenuFlyoutItem Text="Size All Columns to Fit" IsEnabled="False" />
@@ -84,64 +298,126 @@
             </MenuFlyout>
         </Grid.Resources>
 
-        <!-- Tightened outer padding to reduce the side/top white space -->
-        <Grid Padding="10,10,10,0">
+        <!-- Edge-to-edge flush container with zero outer white space -->
+        <Grid Padding="0" Background="White">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
-            <Grid Grid.Row="0" Background="#F8F8F8" CornerRadius="6" Margin="0,0,0,6">
-                <CommandBar HorizontalAlignment="Left" DefaultLabelPosition="Right" Background="Transparent">
-                    <AppBarButton Label="Upload" Click="Upload_Click" ToolTipService.ToolTip="Upload selected local files to remote server">
-                        <AppBarButton.Icon>
-                            <SymbolIcon Symbol="Upload" Foreground="DodgerBlue"/>
-                        </AppBarButton.Icon>
-                    </AppBarButton>
-                    <AppBarButton Label="Download" Click="Download_Click" ToolTipService.ToolTip="Download selected remote files to local machine">
-                        <AppBarButton.Icon>
-                            <SymbolIcon Symbol="Download" Foreground="MediumSeaGreen"/>
-                        </AppBarButton.Icon>
-                    </AppBarButton>
-                    <AppBarButton Label="Resume" Click="Resume_Click" ToolTipService.ToolTip="Resume an interrupted file transfer">
-                        <AppBarButton.Icon>
-                            <SymbolIcon Symbol="Play" Foreground="LimeGreen"/>
-                        </AppBarButton.Icon>
-                    </AppBarButton>
 
-                    <AppBarSeparator/>
+            <!-- Windows 11 File Explorer Style Top Command Bar -->
+            <Border Grid.Row="0"
+                    Background="#F8F8F8"
+                    BorderBrush="#E5E5E5"
+                    BorderThickness="0,1,0,1"
+                    CornerRadius="0"
+                    Padding="8,4"
+                    Margin="0">
+                <StackPanel Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
+                    <!-- Group 1: Transfers (Download, Upload, Resume) -->
+                    <Button x:Name="ToolbarDownloadButton"
+                            Style="{StaticResource ExplorerToolbarButtonStyle}"
+                            Foreground="MediumSeaGreen"
+                            Click="Download_Click"
+                            ToolTipService.ToolTip="Download">
+                        <FontIcon Glyph="&#xE896;" FontSize="15" />
+                    </Button>
 
-                    <AppBarButton Label="New Folder" Click="NewFolder_Click" ToolTipService.ToolTip="Create a new folder">
-                        <AppBarButton.Icon>
-                            <SymbolIcon Symbol="Add" Foreground="Goldenrod"/>
-                        </AppBarButton.Icon>
-                    </AppBarButton>
-                    <AppBarButton Label="Delete" Click="Delete_Click" ToolTipService.ToolTip="Delete selected items">
-                        <AppBarButton.Icon>
-                            <SymbolIcon Symbol="Delete" Foreground="Crimson"/>
-                        </AppBarButton.Icon>
-                    </AppBarButton>
-                    <AppBarButton Label="Refresh" Click="Refresh_Click">
-                        <AppBarButton.Icon>
-                            <SymbolIcon Symbol="Refresh" Foreground="SteelBlue"/>
-                        </AppBarButton.Icon>
-                    </AppBarButton>
-                    <AppBarButton Label="Search" Click="Search_Click" ToolTipService.ToolTip="Search files and folders">
-                        <AppBarButton.Icon>
-                            <SymbolIcon Symbol="Find" Foreground="MediumPurple"/>
-                        </AppBarButton.Icon>
-                    </AppBarButton>
-                </CommandBar>
+                    <Button x:Name="ToolbarUploadButton"
+                            Style="{StaticResource ExplorerToolbarButtonStyle}"
+                            Foreground="DodgerBlue"
+                            Click="Upload_Click"
+                            ToolTipService.ToolTip="Upload">
+                        <FontIcon Glyph="&#xE898;" FontSize="15" />
+                    </Button>
 
-            </Grid>
+                    <Button x:Name="ToolbarResumeButton"
+                            Style="{StaticResource ExplorerToolbarButtonStyle}"
+                            Foreground="LimeGreen"
+                            Click="Resume_Click"
+                            ToolTipService.ToolTip="Resume">
+                        <FontIcon Glyph="&#xE768;" FontSize="15" />
+                    </Button>
+
+                    <!-- Vertical Separator -->
+                    <Border Width="1" Height="20" Background="#E0E0E0" Margin="6,0" VerticalAlignment="Center" />
+
+                    <!-- Group 2: Navigation & Search (Refresh, Search) -->
+                    <Button x:Name="ToolbarRefreshButton"
+                            Style="{StaticResource ExplorerToolbarButtonStyle}"
+                            Foreground="SteelBlue"
+                            Click="Refresh_Click"
+                            ToolTipService.ToolTip="Refresh">
+                        <FontIcon Glyph="&#xE72C;" FontSize="15" />
+                    </Button>
+
+                    <Button x:Name="ToolbarSearchButton"
+                            Style="{StaticResource ExplorerToolbarButtonStyle}"
+                            Foreground="MediumPurple"
+                            Click="Search_Click"
+                            ToolTipService.ToolTip="Search files and folders">
+                        <FontIcon Glyph="&#xE721;" FontSize="15" />
+                    </Button>
+
+                    <!-- Vertical Separator -->
+                    <Border Width="1" Height="20" Background="#E0E0E0" Margin="6,0" VerticalAlignment="Center" />
+
+                    <!-- Group 3: File Operations (Cut, Copy, Paste, Delete, Rename) -->
+                    <Button x:Name="ToolbarCutButton"
+                            Style="{StaticResource ExplorerToolbarButtonStyle}"
+                            Foreground="DarkOrange"
+                            Click="ContextCut_Click"
+                            ToolTipService.ToolTip="Cut">
+                        <FontIcon Glyph="&#xE8C6;" FontSize="15" />
+                    </Button>
+
+                    <Button x:Name="ToolbarCopyButton"
+                            Style="{StaticResource ExplorerToolbarButtonStyle}"
+                            Foreground="DodgerBlue"
+                            Click="ContextCopy_Click"
+                            ToolTipService.ToolTip="Copy">
+                        <FontIcon Glyph="&#xE8C8;" FontSize="15" />
+                    </Button>
+
+                    <Button x:Name="ToolbarPasteButton"
+                            Style="{StaticResource ExplorerToolbarButtonStyle}"
+                            Foreground="MediumSeaGreen"
+                            Click="ContextPaste_Click"
+                            ToolTipService.ToolTip="Paste">
+                        <FontIcon Glyph="&#xE77F;" FontSize="15" />
+                    </Button>
+
+                    <Button x:Name="ToolbarDeleteButton"
+                            Style="{StaticResource ExplorerToolbarButtonStyle}"
+                            Foreground="Crimson"
+                            Click="Delete_Click"
+                            ToolTipService.ToolTip="Delete">
+                        <FontIcon Glyph="&#xE74D;" FontSize="15" />
+                    </Button>
+
+                    <Button x:Name="ToolbarRenameButton"
+                            Style="{StaticResource ExplorerToolbarButtonStyle}"
+                            Foreground="MediumPurple"
+                            Click="ContextRename_Click"
+                            ToolTipService.ToolTip="Rename">
+                        <FontIcon Glyph="&#xE8AC;" FontSize="15" />
+                    </Button>
+                </StackPanel>
+            </Border>
+
+            <!-- Dual-Pane Container separated by a subtle 1px vertical hairline -->
             <Grid Grid.Row="1">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="1" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
 
+                <!-- Continuous 1px vertical hairline separating Local and Remote panels -->
+                <Border Grid.Column="1" Background="#E5E5E5" />
+
                 <!-- Left Pane: Local Files -->
-                <Grid Grid.Column="0">
+                <Grid Grid.Column="0" Background="White">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <!-- Address Bar -->
@@ -151,23 +427,44 @@
                         <!-- File List -->
                     </Grid.RowDefinitions>
 
-                    <!-- Row 0: Address Bar -->
-                    <Grid Grid.Row="0" Margin="0,0,0,10" Background="#F8F8F8" Padding="6" CornerRadius="6">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="Local: " FontWeight="SemiBold" VerticalAlignment="Center" Margin="5,0,10,0"/>
-                        <Border Grid.Column="1" BorderThickness="0" CornerRadius="4" HorizontalAlignment="Stretch" MinHeight="32" Tapped="LocalAddressBar_Tapped" Background="White">
-                            <Grid>
-                                <StackPanel x:Name="LocalPathContainer" Orientation="Horizontal" VerticalAlignment="Center" Margin="5,0,5,0" />
-                                <TextBox x:Name="LocalPathInput" Visibility="Collapsed" VerticalAlignment="Center" Margin="0" BorderThickness="0" Background="Transparent" KeyDown="LocalPathInput_KeyDown" LostFocus="LocalPathInput_LostFocus" />
-                            </Grid>
-                        </Border>
-                    </Grid>
+                    <!-- Row 0: Local Address Bar -->
+                    <Border Grid.Row="0"
+                            Background="White"
+                            BorderBrush="#E5E5E5"
+                            BorderThickness="0,0,0,1"
+                            CornerRadius="0"
+                            Padding="8,5"
+                            Margin="0">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <FontIcon Grid.Column="0"
+                                      Glyph="&#xE7F4;"
+                                      FontSize="15"
+                                      Foreground="#555555"
+                                      VerticalAlignment="Center"
+                                      Margin="4,0,10,0"
+                                      ToolTipService.ToolTip="Local machine" />
+                            <Border Grid.Column="1"
+                                    BorderBrush="#E5E5E5"
+                                    BorderThickness="1"
+                                    CornerRadius="0"
+                                    HorizontalAlignment="Stretch"
+                                    MinHeight="30"
+                                    Tapped="LocalAddressBar_Tapped"
+                                    Background="White">
+                                <Grid>
+                                    <StackPanel x:Name="LocalPathContainer" Orientation="Horizontal" VerticalAlignment="Center" Margin="6,0,6,0" />
+                                    <TextBox x:Name="LocalPathInput" Visibility="Collapsed" VerticalAlignment="Center" Margin="0" BorderThickness="0" CornerRadius="0" Background="Transparent" KeyDown="LocalPathInput_KeyDown" LostFocus="LocalPathInput_LostFocus" />
+                                </Grid>
+                            </Border>
+                        </Grid>
+                    </Border>
 
-                    <!-- Row 1: STICKY HEADER -->
-                    <Grid Grid.Row="1" Padding="5,5,0,5" BorderBrush="LightGray" BorderThickness="0,0,0,1" Background="Transparent" RightTapped="Header_RightTapped">
+                    <!-- Row 1: STICKY HEADER (Windows 11 File Explorer style) -->
+                    <Grid Grid.Row="1" Height="30" Padding="8,0,0,0" BorderBrush="#E5E5E5" BorderThickness="0,0,0,1" Background="White" RightTapped="Header_RightTapped">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="{Binding ElementName=RootWindow, Path=LocalNameColGridLength, Mode=OneWay}" />
                             <ColumnDefinition Width="{Binding ElementName=RootWindow, Path=LocalDateColGridLength, Mode=OneWay}" />
@@ -175,38 +472,42 @@
                             <ColumnDefinition Width="{Binding ElementName=RootWindow, Path=LocalSizeColGridLength, Mode=OneWay}" />
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
-                        <Grid Grid.Column="0">
-                            <TextBlock Text="Name" FontWeight="SemiBold" Foreground="Gray" VerticalAlignment="Center"/>
-                            <local:SplitterContainer Width="12" HorizontalAlignment="Right" Margin="0,0,-6,0" Canvas.ZIndex="10" Background="Transparent" DoubleTapped="ColumnSplitter_DoubleTapped" Tag="LocalName">
-                                <Border Width="1" Background="#DDDDDD" HorizontalAlignment="Center" VerticalAlignment="Stretch" Margin="0,4,0,4"/>
+                        <Grid Grid.Column="0" Background="Transparent" Tapped="LocalHeader_Tapped" PointerEntered="HeaderColumn_PointerEntered" PointerExited="HeaderColumn_PointerExited" Tag="Name">
+                            <FontIcon x:Name="LocalSortIconName" Glyph="&#xE70E;" FontSize="9" Foreground="#666666" Visibility="Visible" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,2,0,0"/>
+                            <TextBlock Text="Name" FontSize="12" Foreground="#555555" VerticalAlignment="Center" Margin="4,3,8,0"/>
+                            <local:SplitterContainer Width="12" HorizontalAlignment="Right" Margin="0,0,-6,0" Canvas.ZIndex="10" Background="Transparent" Tapped="ColumnSplitter_Tapped" DoubleTapped="ColumnSplitter_DoubleTapped" Tag="LocalName">
+                                <Border Width="1" Background="#E5E5E5" HorizontalAlignment="Center" VerticalAlignment="Stretch" Margin="0"/>
                                 <Thumb HorizontalAlignment="Stretch" DragDelta="ColumnSplitter_DragDelta" Tag="LocalName" Opacity="0" />
                             </local:SplitterContainer>
                         </Grid>
-                        <Grid Grid.Column="1" x:Name="LocalHeaderDate">
-                            <TextBlock Text="Date modified" FontWeight="SemiBold" Foreground="Gray" Margin="10,0,0,0" VerticalAlignment="Center"/>
-                            <local:SplitterContainer Width="12" HorizontalAlignment="Right" Margin="0,0,-6,0" Canvas.ZIndex="10" Background="Transparent" DoubleTapped="ColumnSplitter_DoubleTapped" Tag="LocalDate">
-                                <Border Width="1" Background="#DDDDDD" HorizontalAlignment="Center" VerticalAlignment="Stretch" Margin="0,4,0,4"/>
+                        <Grid Grid.Column="1" x:Name="LocalHeaderDate" Background="Transparent" Tapped="LocalHeader_Tapped" PointerEntered="HeaderColumn_PointerEntered" PointerExited="HeaderColumn_PointerExited" Tag="Date">
+                            <FontIcon x:Name="LocalSortIconDate" Glyph="&#xE70D;" FontSize="9" Foreground="#666666" Visibility="Collapsed" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,2,0,0"/>
+                            <TextBlock Text="Date modified" FontSize="12" Foreground="#555555" VerticalAlignment="Center" Margin="10,3,8,0"/>
+                            <local:SplitterContainer Width="12" HorizontalAlignment="Right" Margin="0,0,-6,0" Canvas.ZIndex="10" Background="Transparent" Tapped="ColumnSplitter_Tapped" DoubleTapped="ColumnSplitter_DoubleTapped" Tag="LocalDate">
+                                <Border Width="1" Background="#E5E5E5" HorizontalAlignment="Center" VerticalAlignment="Stretch" Margin="0"/>
                                 <Thumb HorizontalAlignment="Stretch" DragDelta="ColumnSplitter_DragDelta" Tag="LocalDate" Opacity="0" />
                             </local:SplitterContainer>
                         </Grid>
-                        <Grid Grid.Column="2" x:Name="LocalHeaderType">
-                            <TextBlock Text="Type" FontWeight="SemiBold" Foreground="Gray" Margin="10,0,0,0" VerticalAlignment="Center"/>
-                            <local:SplitterContainer Width="12" HorizontalAlignment="Right" Margin="0,0,-6,0" Canvas.ZIndex="10" Background="Transparent" DoubleTapped="ColumnSplitter_DoubleTapped" Tag="LocalType">
-                                <Border Width="1" Background="#DDDDDD" HorizontalAlignment="Center" VerticalAlignment="Stretch" Margin="0,4,0,4"/>
+                        <Grid Grid.Column="2" x:Name="LocalHeaderType" Background="Transparent" Tapped="LocalHeader_Tapped" PointerEntered="HeaderColumn_PointerEntered" PointerExited="HeaderColumn_PointerExited" Tag="Type">
+                            <FontIcon x:Name="LocalSortIconType" Glyph="&#xE70E;" FontSize="9" Foreground="#666666" Visibility="Collapsed" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,2,0,0"/>
+                            <TextBlock Text="Type" FontSize="12" Foreground="#555555" VerticalAlignment="Center" Margin="10,3,8,0"/>
+                            <local:SplitterContainer Width="12" HorizontalAlignment="Right" Margin="0,0,-6,0" Canvas.ZIndex="10" Background="Transparent" Tapped="ColumnSplitter_Tapped" DoubleTapped="ColumnSplitter_DoubleTapped" Tag="LocalType">
+                                <Border Width="1" Background="#E5E5E5" HorizontalAlignment="Center" VerticalAlignment="Stretch" Margin="0"/>
                                 <Thumb HorizontalAlignment="Stretch" DragDelta="ColumnSplitter_DragDelta" Tag="LocalType" Opacity="0" />
                             </local:SplitterContainer>
                         </Grid>
-                        <Grid Grid.Column="3" x:Name="LocalHeaderSize">
-                            <TextBlock Text="Size" FontWeight="SemiBold" Foreground="Gray" Margin="10,0,0,0" VerticalAlignment="Center"/>
-                            <local:SplitterContainer Width="12" HorizontalAlignment="Right" Margin="0,0,-6,0" Canvas.ZIndex="10" Background="Transparent" DoubleTapped="ColumnSplitter_DoubleTapped" Tag="LocalSize">
-                                <Border Width="1" Background="#DDDDDD" HorizontalAlignment="Center" VerticalAlignment="Stretch" Margin="0,4,0,4"/>
+                        <Grid Grid.Column="3" x:Name="LocalHeaderSize" Background="Transparent" Tapped="LocalHeader_Tapped" PointerEntered="HeaderColumn_PointerEntered" PointerExited="HeaderColumn_PointerExited" Tag="Size">
+                            <FontIcon x:Name="LocalSortIconSize" Glyph="&#xE70D;" FontSize="9" Foreground="#666666" Visibility="Collapsed" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,2,0,0"/>
+                            <TextBlock Text="Size" FontSize="12" Foreground="#555555" VerticalAlignment="Center" Margin="10,3,8,0"/>
+                            <local:SplitterContainer Width="12" HorizontalAlignment="Right" Margin="0,0,-6,0" Canvas.ZIndex="10" Background="Transparent" Tapped="ColumnSplitter_Tapped" DoubleTapped="ColumnSplitter_DoubleTapped" Tag="LocalSize">
+                                <Border Width="1" Background="#E5E5E5" HorizontalAlignment="Center" VerticalAlignment="Stretch" Margin="0"/>
                                 <Thumb HorizontalAlignment="Stretch" DragDelta="ColumnSplitter_DragDelta" Tag="LocalSize" Opacity="0" />
                             </local:SplitterContainer>
                         </Grid>
                     </Grid>
 
-                    <!-- Row 2: LISTVIEW (Header removed from inside) -->
-                    <ListView x:Name="LocalFileList" CharacterReceived="FileList_CharacterReceived" Grid.Row="2" BorderBrush="Gray" BorderThickness="1" 
+                    <!-- Row 2: LISTVIEW -->
+                    <ListView x:Name="LocalFileList" CharacterReceived="FileList_CharacterReceived" Grid.Row="2" Background="White" BorderBrush="Transparent" BorderThickness="0" 
                         SelectionChanged="FileList_SelectionChanged"
                         DoubleTapped="LocalFileList_DoubleTapped" SelectionMode="Extended"
                         GotFocus="LocalFileList_GotFocus" PointerPressed="LocalFileList_PointerPressed"
@@ -251,11 +552,8 @@
                     </ListView>
                 </Grid>
 
-                <!-- Thin, light gray vertical separator matching Windows 11 style -->
-                <Border Grid.Column="1" Width="1" Background="#E5E5E5" Margin="10,80,10,15" />
-
                 <!-- Right Pane: Remote Files -->
-                <Grid Grid.Column="2">
+                <Grid Grid.Column="2" Background="White">
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto" />
                         <!-- Address Bar -->
@@ -265,23 +563,44 @@
                         <!-- File List -->
                     </Grid.RowDefinitions>
 
-                    <!-- Row 0: Address Bar -->
-                    <Grid Grid.Row="0" Margin="0,0,0,10" Background="#F8F8F8" Padding="6" CornerRadius="6">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-                        <TextBlock Grid.Column="0" Text="Remote: " FontWeight="SemiBold" VerticalAlignment="Center" Margin="5,0,10,0"/>
-                        <Border Grid.Column="1" BorderThickness="0" CornerRadius="4" HorizontalAlignment="Stretch" MinHeight="32" Tapped="RemoteAddressBar_Tapped" Background="White">
-                            <Grid>
-                                <StackPanel x:Name="RemotePathContainer" Orientation="Horizontal" VerticalAlignment="Center" Margin="5,0,5,0" />
-                                <TextBox x:Name="RemotePathInput" Visibility="Collapsed" VerticalAlignment="Center" Margin="0" BorderThickness="0" Background="Transparent" KeyDown="RemotePathInput_KeyDown" LostFocus="RemotePathInput_LostFocus" />
-                            </Grid>
-                        </Border>
-                    </Grid>
+                    <!-- Row 0: Remote Address Bar -->
+                    <Border Grid.Row="0"
+                            Background="White"
+                            BorderBrush="#E5E5E5"
+                            BorderThickness="0,0,0,1"
+                            CornerRadius="0"
+                            Padding="8,5"
+                            Margin="0">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <FontIcon Grid.Column="0"
+                                      Glyph="&#xE968;"
+                                      FontSize="15"
+                                      Foreground="#555555"
+                                      VerticalAlignment="Center"
+                                      Margin="4,0,10,0"
+                                      ToolTipService.ToolTip="Remote server" />
+                            <Border Grid.Column="1"
+                                    BorderBrush="#E5E5E5"
+                                    BorderThickness="1"
+                                    CornerRadius="0"
+                                    HorizontalAlignment="Stretch"
+                                    MinHeight="30"
+                                    Tapped="RemoteAddressBar_Tapped"
+                                    Background="White">
+                                <Grid>
+                                    <StackPanel x:Name="RemotePathContainer" Orientation="Horizontal" VerticalAlignment="Center" Margin="6,0,6,0" />
+                                    <TextBox x:Name="RemotePathInput" Visibility="Collapsed" VerticalAlignment="Center" Margin="0" BorderThickness="0" CornerRadius="0" Background="Transparent" KeyDown="RemotePathInput_KeyDown" LostFocus="RemotePathInput_LostFocus" />
+                                </Grid>
+                            </Border>
+                        </Grid>
+                    </Border>
 
-                    <!-- Row 1: STICKY HEADER -->
-                    <Grid Grid.Row="1" Padding="5,5,0,5" BorderBrush="LightGray" BorderThickness="0,0,0,1" Background="Transparent" RightTapped="Header_RightTapped">
+                    <!-- Row 1: STICKY HEADER (Windows 11 File Explorer style) -->
+                    <Grid Grid.Row="1" Height="30" Padding="8,0,0,0" BorderBrush="#E5E5E5" BorderThickness="0,0,0,1" Background="White" RightTapped="Header_RightTapped">
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="{Binding ElementName=RootWindow, Path=RemoteNameColGridLength, Mode=OneWay}" />
                             <ColumnDefinition Width="{Binding ElementName=RootWindow, Path=RemoteDateColGridLength, Mode=OneWay}" />
@@ -289,38 +608,42 @@
                             <ColumnDefinition Width="{Binding ElementName=RootWindow, Path=RemoteSizeColGridLength, Mode=OneWay}" />
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
-                        <Grid Grid.Column="0">
-                            <TextBlock Text="Name" FontWeight="SemiBold" Foreground="Gray" VerticalAlignment="Center"/>
-                            <local:SplitterContainer Width="12" HorizontalAlignment="Right" Margin="0,0,-6,0" Canvas.ZIndex="10" Background="Transparent" DoubleTapped="ColumnSplitter_DoubleTapped" Tag="RemoteName">
-                                <Border Width="1" Background="#DDDDDD" HorizontalAlignment="Center" VerticalAlignment="Stretch" Margin="0,4,0,4"/>
+                        <Grid Grid.Column="0" Background="Transparent" Tapped="RemoteHeader_Tapped" PointerEntered="HeaderColumn_PointerEntered" PointerExited="HeaderColumn_PointerExited" Tag="Name">
+                            <FontIcon x:Name="RemoteSortIconName" Glyph="&#xE70E;" FontSize="9" Foreground="#666666" Visibility="Visible" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,2,0,0"/>
+                            <TextBlock Text="Name" FontSize="12" Foreground="#555555" VerticalAlignment="Center" Margin="4,3,8,0"/>
+                            <local:SplitterContainer Width="12" HorizontalAlignment="Right" Margin="0,0,-6,0" Canvas.ZIndex="10" Background="Transparent" Tapped="ColumnSplitter_Tapped" DoubleTapped="ColumnSplitter_DoubleTapped" Tag="RemoteName">
+                                <Border Width="1" Background="#E5E5E5" HorizontalAlignment="Center" VerticalAlignment="Stretch" Margin="0"/>
                                 <Thumb HorizontalAlignment="Stretch" DragDelta="ColumnSplitter_DragDelta" Tag="RemoteName" Opacity="0" />
                             </local:SplitterContainer>
                         </Grid>
-                        <Grid Grid.Column="1" x:Name="RemoteHeaderDate">
-                            <TextBlock Text="Date modified" FontWeight="SemiBold" Foreground="Gray" Margin="10,0,0,0" VerticalAlignment="Center"/>
-                            <local:SplitterContainer Width="12" HorizontalAlignment="Right" Margin="0,0,-6,0" Canvas.ZIndex="10" Background="Transparent" DoubleTapped="ColumnSplitter_DoubleTapped" Tag="RemoteDate">
-                                <Border Width="1" Background="#DDDDDD" HorizontalAlignment="Center" VerticalAlignment="Stretch" Margin="0,4,0,4"/>
+                        <Grid Grid.Column="1" x:Name="RemoteHeaderDate" Background="Transparent" Tapped="RemoteHeader_Tapped" PointerEntered="HeaderColumn_PointerEntered" PointerExited="HeaderColumn_PointerExited" Tag="Date">
+                            <FontIcon x:Name="RemoteSortIconDate" Glyph="&#xE70D;" FontSize="9" Foreground="#666666" Visibility="Collapsed" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,2,0,0"/>
+                            <TextBlock Text="Date modified" FontSize="12" Foreground="#555555" VerticalAlignment="Center" Margin="10,3,8,0"/>
+                            <local:SplitterContainer Width="12" HorizontalAlignment="Right" Margin="0,0,-6,0" Canvas.ZIndex="10" Background="Transparent" Tapped="ColumnSplitter_Tapped" DoubleTapped="ColumnSplitter_DoubleTapped" Tag="RemoteDate">
+                                <Border Width="1" Background="#E5E5E5" HorizontalAlignment="Center" VerticalAlignment="Stretch" Margin="0"/>
                                 <Thumb HorizontalAlignment="Stretch" DragDelta="ColumnSplitter_DragDelta" Tag="RemoteDate" Opacity="0" />
                             </local:SplitterContainer>
                         </Grid>
-                        <Grid Grid.Column="2" x:Name="RemoteHeaderType">
-                            <TextBlock Text="Type" FontWeight="SemiBold" Foreground="Gray" Margin="10,0,0,0" VerticalAlignment="Center"/>
-                            <local:SplitterContainer Width="12" HorizontalAlignment="Right" Margin="0,0,-6,0" Canvas.ZIndex="10" Background="Transparent" DoubleTapped="ColumnSplitter_DoubleTapped" Tag="RemoteType">
-                                <Border Width="1" Background="#DDDDDD" HorizontalAlignment="Center" VerticalAlignment="Stretch" Margin="0,4,0,4"/>
+                        <Grid Grid.Column="2" x:Name="RemoteHeaderType" Background="Transparent" Tapped="RemoteHeader_Tapped" PointerEntered="HeaderColumn_PointerEntered" PointerExited="HeaderColumn_PointerExited" Tag="Type">
+                            <FontIcon x:Name="RemoteSortIconType" Glyph="&#xE70E;" FontSize="9" Foreground="#666666" Visibility="Collapsed" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,2,0,0"/>
+                            <TextBlock Text="Type" FontSize="12" Foreground="#555555" VerticalAlignment="Center" Margin="10,3,8,0"/>
+                            <local:SplitterContainer Width="12" HorizontalAlignment="Right" Margin="0,0,-6,0" Canvas.ZIndex="10" Background="Transparent" Tapped="ColumnSplitter_Tapped" DoubleTapped="ColumnSplitter_DoubleTapped" Tag="RemoteType">
+                                <Border Width="1" Background="#E5E5E5" HorizontalAlignment="Center" VerticalAlignment="Stretch" Margin="0"/>
                                 <Thumb HorizontalAlignment="Stretch" DragDelta="ColumnSplitter_DragDelta" Tag="RemoteType" Opacity="0" />
                             </local:SplitterContainer>
                         </Grid>
-                        <Grid Grid.Column="3" x:Name="RemoteHeaderSize">
-                            <TextBlock Text="Size" FontWeight="SemiBold" Foreground="Gray" Margin="10,0,0,0" VerticalAlignment="Center"/>
-                            <local:SplitterContainer Width="12" HorizontalAlignment="Right" Margin="0,0,-6,0" Canvas.ZIndex="10" Background="Transparent" DoubleTapped="ColumnSplitter_DoubleTapped" Tag="RemoteSize">
-                                <Border Width="1" Background="#DDDDDD" HorizontalAlignment="Center" VerticalAlignment="Stretch" Margin="0,4,0,4"/>
+                        <Grid Grid.Column="3" x:Name="RemoteHeaderSize" Background="Transparent" Tapped="RemoteHeader_Tapped" PointerEntered="HeaderColumn_PointerEntered" PointerExited="HeaderColumn_PointerExited" Tag="Size">
+                            <FontIcon x:Name="RemoteSortIconSize" Glyph="&#xE70D;" FontSize="9" Foreground="#666666" Visibility="Collapsed" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,2,0,0"/>
+                            <TextBlock Text="Size" FontSize="12" Foreground="#555555" VerticalAlignment="Center" Margin="10,3,8,0"/>
+                            <local:SplitterContainer Width="12" HorizontalAlignment="Right" Margin="0,0,-6,0" Canvas.ZIndex="10" Background="Transparent" Tapped="ColumnSplitter_Tapped" DoubleTapped="ColumnSplitter_DoubleTapped" Tag="RemoteSize">
+                                <Border Width="1" Background="#E5E5E5" HorizontalAlignment="Center" VerticalAlignment="Stretch" Margin="0"/>
                                 <Thumb HorizontalAlignment="Stretch" DragDelta="ColumnSplitter_DragDelta" Tag="RemoteSize" Opacity="0" />
                             </local:SplitterContainer>
                         </Grid>
                     </Grid>
 
-                    <!-- Row 2: LISTVIEW (Header removed from inside) -->
-                    <ListView x:Name="RemoteFileList" CharacterReceived="FileList_CharacterReceived" Grid.Row="2" BorderBrush="Gray" BorderThickness="1" 
+                    <!-- Row 2: LISTVIEW -->
+                    <ListView x:Name="RemoteFileList" CharacterReceived="FileList_CharacterReceived" Grid.Row="2" Background="White" BorderBrush="Transparent" BorderThickness="0" 
                         SelectionChanged="FileList_SelectionChanged"
                         DoubleTapped="RemoteFileList_DoubleTapped" SelectionMode="Extended"
                         GotFocus="RemoteFileList_GotFocus" PointerPressed="RemoteFileList_PointerPressed"
@@ -335,9 +658,6 @@
                             </Style>
                         </ListView.ItemContainerStyle>
 
-                        
-                        
-                        
                         <ListView.ItemTemplate>
                             <DataTemplate>
                                 <Grid HorizontalAlignment="Stretch" Padding="5,5,0,5" Background="{Binding DropBackgroundBrush, Mode=OneWay}">
@@ -372,14 +692,12 @@
 
         <!-- Search Results Overlay Modal -->
         <Grid x:Name="SearchResultsOverlay" Background="#80000000" Visibility="Collapsed" Canvas.ZIndex="90">
-            <!-- Adjusted Width to 750 and Height to 450 to make the panel smaller -->
             <Border Background="{ThemeResource ApplicationPageBackgroundThemeBrush}" Width="750" Height="450" CornerRadius="8" VerticalAlignment="Center" HorizontalAlignment="Center" BorderBrush="Gray" BorderThickness="1">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
                         <RowDefinition Height="Auto"/>
-                        <!-- Added row for the footer -->
                     </Grid.RowDefinitions>
 
                     <!-- Header -->
@@ -388,7 +706,7 @@
                         <Button Content="&#xE711;" FontFamily="Segoe Fluent Icons" Background="Transparent" BorderThickness="0" HorizontalAlignment="Right" VerticalAlignment="Center" Click="CloseSearchResults_Click" Width="36" Height="36" ToolTipService.ToolTip="Close"/>
                     </Grid>
 
-                    <!-- Results List (Added top/bottom borders to separate from header/footer) -->
+                    <!-- Results List -->
                     <ListView x:Name="SearchResultsList" Grid.Row="1" BorderBrush="LightGray" BorderThickness="0,1,0,1" SelectionMode="Single" RightTapped="SearchResultsList_RightTapped" DoubleTapped="SearchResultsList_DoubleTapped">
                         <ListView.Header>
                             <Grid Padding="15,5,10,5" BorderBrush="LightGray" BorderThickness="0,0,0,1">

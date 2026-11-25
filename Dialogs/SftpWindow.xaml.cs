@@ -2,14 +2,16 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using ScarpaConnectionManager.Models;
+using ScarpaConnectionManager.Services;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography.X509Certificates;
 using System.Threading.Tasks;
-using ScarpaConnectionManager.Models;
-using ScarpaConnectionManager.Services;
+using Microsoft.UI.Xaml.Controls.Primitives;
 
 namespace scarpa_connection_manager_win.Dialogs;
 
@@ -170,6 +172,10 @@ public sealed partial class SftpWindow : Window, System.ComponentModel.INotifyPr
     private bool _showDateCol = true;
     private bool _showTypeCol = true;
     private bool _showSizeCol = true;
+    private string _localSortColumn = "Name";
+    private bool _localSortAscending = true;
+    private string _remoteSortColumn = "Name";
+    private bool _remoteSortAscending = true;
     private bool _isShowingWarning = false;
     private string _typeToFindBuffer = "";
     private DispatcherTimer _typeToFindTimer;
@@ -214,7 +220,20 @@ public sealed partial class SftpWindow : Window, System.ComponentModel.INotifyPr
 
     public SftpWindow(ServerConfig cfg, List<ServerConfig>? allServers = null)
     {
-        this.InitializeComponent();
+        this.InitializeComponent();
+
+        foreach (var child in FileContextMenuPanel.Children)
+        {
+            if (child is Button btn)
+            {
+                btn.Click += (_, _) => FileContextMenu.Hide();
+            }
+            else if (child is Panel panel)
+            {
+                foreach (var nestedBtn in panel.Children.OfType<Button>())
+                    nestedBtn.Click += (_, _) => FileContextMenu.Hide();
+            }
+        }
 
         _typeToFindTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(800) };
         _typeToFindTimer.Tick += (s, e) =>
@@ -229,7 +248,7 @@ public sealed partial class SftpWindow : Window, System.ComponentModel.INotifyPr
         var windowId = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hwnd);
         var appWindow = Microsoft.UI.Windowing.AppWindow.GetFromWindowId(windowId);
 
-        appWindow.Resize(new Windows.Graphics.SizeInt32(1100, 750));
+        appWindow.Resize(new Windows.Graphics.SizeInt32(1340, 800));
         string iconPath = System.IO.Path.Combine(System.AppContext.BaseDirectory, "Assets\\scarpa_icon.ico");
         appWindow.SetIcon(iconPath);
 
@@ -424,13 +443,17 @@ public sealed partial class SftpWindow : Window, System.ComponentModel.INotifyPr
                 _localFiles.Add(newLocalItem);
 
                 // Trigger the native icon extraction in the background
-                _ = LoadFileIconAsync(newLocalItem);
-            }
-        }
-        catch (Exception) { /* Silently ignore */ }
-    }
+                _ = LoadFileIconAsync(newLocalItem);
+            }
+        }
+        catch (Exception) { /* Silently ignore */ }
+        finally
+        {
+            UpdateToolbarButtonsState();
+        }
+    }
 
-    private void LoadRemoteDirectory(string path)
+    private void LoadRemoteDirectory(string path)
     {
         if (!_sftpService.IsConnected) return;
 
@@ -483,6 +506,7 @@ public sealed partial class SftpWindow : Window, System.ComponentModel.INotifyPr
                         _ = LoadFileIconAsync(newRemoteItem);
                     }
                 }
+                UpdateToolbarButtonsState();
             });
         }
         catch (Exception ex)
@@ -896,19 +920,21 @@ public sealed partial class SftpWindow : Window, System.ComponentModel.INotifyPr
 
     // --- Focus & UI State ---
     private void SetActivePane(bool isLocal)
-    {
-        _isLocalFocused = isLocal;
+    {
+        _isLocalFocused = isLocal;
 
-        var activeBrush = new SolidColorBrush(Microsoft.UI.Colors.DimGray);
-        var inactiveBrush = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
-        var topOnlyThickness = new Thickness(0, 2, 0, 0);
+        var activeBrush = new SolidColorBrush(Microsoft.UI.Colors.DimGray);
+        var inactiveBrush = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+        var topOnlyThickness = new Thickness(0, 2, 0, 0);
 
-        LocalFileList.BorderBrush = isLocal ? activeBrush : inactiveBrush;
-        LocalFileList.BorderThickness = topOnlyThickness;
+        LocalFileList.BorderBrush = isLocal ? activeBrush : inactiveBrush;
+        LocalFileList.BorderThickness = topOnlyThickness;
 
-        RemoteFileList.BorderBrush = !isLocal ? activeBrush : inactiveBrush;
-        RemoteFileList.BorderThickness = topOnlyThickness;
-    }
+        RemoteFileList.BorderBrush = !isLocal ? activeBrush : inactiveBrush;
+        RemoteFileList.BorderThickness = topOnlyThickness;
+
+        UpdateToolbarButtonsState();
+    }
 
     private void LocalFileList_GotFocus(object sender, RoutedEventArgs e) => SetActivePane(true);
     private void LocalFileList_PointerPressed(object sender, PointerRoutedEventArgs e)
@@ -982,17 +1008,18 @@ public sealed partial class SftpWindow : Window, System.ComponentModel.INotifyPr
     // --- Clipboard Operations ---
 
     private void CopySelected(ListView? listView, bool isLocal, bool isCut)
-    {
-        if (listView == null) return;
-        var selected = listView.SelectedItems.OfType<FileItem>().Where(x => x.Name != "..").ToList();
-        if (selected.Count == 0) return;
+    {
+        if (listView == null) return;
+        var selected = listView.SelectedItems.OfType<FileItem>().Where(x => x.Name != "..").ToList();
+        if (selected.Count == 0) return;
 
-        _clipboardFiles = selected;
-        _clipboardSource = isLocal ? "Local" : "Remote";
-        _isCut = isCut;
-    }
+        _clipboardFiles = selected;
+        _clipboardSource = isLocal ? "Local" : "Remote";
+        _isCut = isCut;
+        UpdateToolbarButtonsState();
+    }
 
-    private async void PasteClipboard(bool pasteToLocal)
+    private async void PasteClipboard(bool pasteToLocal)
     {
         if (_clipboardFiles.Count == 0 || this.Content?.XamlRoot == null) return;
 
@@ -1078,7 +1105,8 @@ public sealed partial class SftpWindow : Window, System.ComponentModel.INotifyPr
             _clipboardFiles.Clear();
             _isCut = false;
         }
-    }
+        UpdateToolbarButtonsState();
+    }
 
     private void CopyDirectoryLocal(string sourceDir, string destDir)
     {
@@ -1424,7 +1452,16 @@ public sealed partial class SftpWindow : Window, System.ComponentModel.INotifyPr
             ShowMode = Microsoft.UI.Xaml.Controls.Primitives.FlyoutShowMode.Transient
         };
 
-        FileContextMenu.ShowAt(listView, showOptions);
+        if (sender is FrameworkElement target)
+        {
+            var options = new FlyoutShowOptions
+            {
+                Position = e.GetPosition(target),
+                Placement = FlyoutPlacementMode.BottomEdgeAlignedLeft
+            };
+
+            FileContextMenu.ShowAt(target, options);
+        }
     }
 
     private void ContextCut_Click(object sender, RoutedEventArgs e)
@@ -1712,11 +1749,12 @@ public sealed partial class SftpWindow : Window, System.ComponentModel.INotifyPr
     // --- Click Tracking Logic ---
 
     private void FileList_SelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        _lastSelectionTime = DateTime.Now;
-    }
+    {
+        _lastSelectionTime = DateTime.Now;
+        UpdateToolbarButtonsState();
+    }
 
-    private void FileList_Tapped(object sender, TappedRoutedEventArgs e)
+    private void FileList_Tapped(object sender, TappedRoutedEventArgs e)
     {
         if (sender is not ListView listView) return;
 
@@ -2716,5 +2754,176 @@ public sealed partial class SftpWindow : Window, System.ComponentModel.INotifyPr
         {
             _isShowingWarning = false;
         }
+    }
+
+    // --- Column Sorting Methods ---
+    private void ColumnSplitter_Tapped(object sender, TappedRoutedEventArgs e)
+    {
+        // Prevent clicking/dragging a column splitter from triggering a column sort
+        e.Handled = true;
+    }
+
+    private void HeaderColumn_PointerEntered(object sender, PointerRoutedEventArgs e)
+    {
+        if (sender is Grid grid)
+            grid.Background = new SolidColorBrush(Microsoft.UI.ColorHelper.FromArgb(255, 220, 235, 250));
+    }
+
+    private void HeaderColumn_PointerExited(object sender, PointerRoutedEventArgs e)
+    {
+        if (sender is Grid grid)
+            grid.Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+    }
+
+    private void LocalHeader_Tapped(object sender, TappedRoutedEventArgs e)
+    {
+        if (sender is FrameworkElement el && el.Tag is string column)
+        {
+            SetActivePane(true);
+            if (_localSortColumn == column)
+            {
+                _localSortAscending = !_localSortAscending;
+            }
+            else
+            {
+                _localSortColumn = column;
+                // Windows Explorer convention: A-Z first for Name/Type, newest/largest first for Date/Size
+                _localSortAscending = (column == "Name" || column == "Type");
+            }
+
+            ApplyLocalSort();
+        }
+    }
+
+    private void RemoteHeader_Tapped(object sender, TappedRoutedEventArgs e)
+    {
+        if (sender is FrameworkElement el && el.Tag is string column)
+        {
+            SetActivePane(false);
+            if (_remoteSortColumn == column)
+            {
+                _remoteSortAscending = !_remoteSortAscending;
+            }
+            else
+            {
+                _remoteSortColumn = column;
+                _remoteSortAscending = (column == "Name" || column == "Type");
+            }
+
+            ApplyRemoteSort();
+        }
+    }
+
+    private void ApplyLocalSort()
+    {
+        SortFileCollection(_localFiles, LocalFileList, _localSortColumn, _localSortAscending);
+        UpdateSortHeaderIcons(isLocal: true);
+    }
+
+    private void ApplyRemoteSort()
+    {
+        SortFileCollection(_remoteFiles, RemoteFileList, _remoteSortColumn, _remoteSortAscending);
+        UpdateSortHeaderIcons(isLocal: false);
+    }
+
+    private static void SortFileCollection(ObservableCollection<FileItem> collection, ListView listView, string sortColumn, bool ascending)
+    {
+        if (collection.Count == 0) return;
+
+        var selectedItems = listView.SelectedItems.OfType<FileItem>().ToHashSet();
+        var parentItem = collection.FirstOrDefault(x => x.Name == "..");
+
+        var folders = SortItems(collection.Where(x => x.Name != ".." && x.IsDirectory), sortColumn, ascending).ToList();
+        var files = SortItems(collection.Where(x => x.Name != ".." && !x.IsDirectory), sortColumn, ascending).ToList();
+
+        collection.Clear();
+        if (parentItem != null) collection.Add(parentItem);
+        foreach (var folder in folders) collection.Add(folder);
+        foreach (var file in files) collection.Add(file);
+
+        foreach (var item in selectedItems)
+        {
+            if (collection.Contains(item))
+                listView.SelectedItems.Add(item);
+        }
+    }
+
+    private static IEnumerable<FileItem> SortItems(IEnumerable<FileItem> items, string sortColumn, bool ascending)
+    {
+        return sortColumn switch
+        {
+            "Date" => ascending
+                ? items.OrderBy(x => x.LastModified ?? DateTime.MinValue).ThenBy(x => x.Name, StringComparer.OrdinalIgnoreCase)
+                : items.OrderByDescending(x => x.LastModified ?? DateTime.MinValue).ThenBy(x => x.Name, StringComparer.OrdinalIgnoreCase),
+
+            "Type" => ascending
+                ? items.OrderBy(x => x.Type, StringComparer.OrdinalIgnoreCase).ThenBy(x => x.Name, StringComparer.OrdinalIgnoreCase)
+                : items.OrderByDescending(x => x.Type, StringComparer.OrdinalIgnoreCase).ThenBy(x => x.Name, StringComparer.OrdinalIgnoreCase),
+
+            "Size" => ascending
+                ? items.OrderBy(x => x.Size).ThenBy(x => x.Name, StringComparer.OrdinalIgnoreCase)
+                : items.OrderByDescending(x => x.Size).ThenBy(x => x.Name, StringComparer.OrdinalIgnoreCase),
+
+            _ => ascending
+                ? items.OrderBy(x => x.Name, StringComparer.OrdinalIgnoreCase)
+                : items.OrderByDescending(x => x.Name, StringComparer.OrdinalIgnoreCase),
+        };
+    }
+
+    private void UpdateSortHeaderIcons(bool isLocal)
+    {
+        string activeCol = isLocal ? _localSortColumn : _remoteSortColumn;
+        bool ascending = isLocal ? _localSortAscending : _remoteSortAscending;
+        string glyph = ascending ? "\uE70E" : "\uE70D";
+
+        var nameIcon = isLocal ? LocalSortIconName : RemoteSortIconName;
+        var dateIcon = isLocal ? LocalSortIconDate : RemoteSortIconDate;
+        var typeIcon = isLocal ? LocalSortIconType : RemoteSortIconType;
+        var sizeIcon = isLocal ? LocalSortIconSize : RemoteSortIconSize;
+
+        nameIcon.Visibility = activeCol == "Name" ? Visibility.Visible : Visibility.Collapsed;
+        dateIcon.Visibility = activeCol == "Date" ? Visibility.Visible : Visibility.Collapsed;
+        typeIcon.Visibility = activeCol == "Type" ? Visibility.Visible : Visibility.Collapsed;
+        sizeIcon.Visibility = activeCol == "Size" ? Visibility.Visible : Visibility.Collapsed;
+
+        if (activeCol == "Name") nameIcon.Glyph = glyph;
+        else if (activeCol == "Date") dateIcon.Glyph = glyph;
+        else if (activeCol == "Type") typeIcon.Glyph = glyph;
+        else if (activeCol == "Size") sizeIcon.Glyph = glyph;
+    }
+    
+    // --- Toolbar State Tracking ---
+    private bool _toolbarLocalActive = true;
+    private bool _toolbarHasClipboard = false;
+    private bool _toolbarCanResume = false;
+
+    private void UpdateToolbarButtonsState()
+    {
+        bool isConnected = _sftpService.IsConnected;
+        bool canModifyActivePane = _isLocalFocused ? !string.IsNullOrEmpty(_currentLocalPath) : isConnected;
+
+        var localSelected = LocalFileList.SelectedItems.OfType<FileItem>().Where(x => x.Name != "..").ToList();
+        var remoteSelected = RemoteFileList.SelectedItems.OfType<FileItem>().Where(x => x.Name != "..").ToList();
+        var activeSelected = _isLocalFocused ? localSelected : remoteSelected;
+
+        // Transfers: Upload requires Local focus + connection + selection; Download requires Remote focus + connection + selection
+        ToolbarUploadButton.IsEnabled = _isLocalFocused && isConnected && !string.IsNullOrEmpty(_currentLocalPath) && localSelected.Count > 0;
+        ToolbarDownloadButton.IsEnabled = !_isLocalFocused && isConnected && remoteSelected.Count > 0;
+
+        // Resume: matches Resume_Click (requires connection + at least one file selected in the active pane)
+        ToolbarResumeButton.IsEnabled = isConnected && activeSelected.Any(x => !x.IsDirectory);
+
+        // Search: always available locally, requires connection on Remote
+        ToolbarSearchButton.IsEnabled = _isLocalFocused || isConnected;
+
+        // File Operations: require valid pane state + selection (exactly 1 item for Rename)
+        ToolbarCutButton.IsEnabled = canModifyActivePane && activeSelected.Count > 0;
+        ToolbarCopyButton.IsEnabled = canModifyActivePane && activeSelected.Count > 0;
+        ToolbarDeleteButton.IsEnabled = canModifyActivePane && activeSelected.Count > 0;
+        ToolbarRenameButton.IsEnabled = canModifyActivePane && activeSelected.Count == 1;
+
+        // Paste: enabled only when clipboard has items from the SAME pane (since cross-pane paste is disabled)
+        string activePaneName = _isLocalFocused ? "Local" : "Remote";
+        ToolbarPasteButton.IsEnabled = canModifyActivePane && _clipboardFiles.Count > 0 && _clipboardSource == activePaneName;
     }
 }

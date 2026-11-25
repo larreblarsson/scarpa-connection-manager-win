@@ -2538,6 +2538,7 @@ public sealed partial class SftpWindow : Window, System.ComponentModel.INotifyPr
         }
     }
 
+
     // --- Search Logic ---
     private async void Search_Click(object sender, RoutedEventArgs e)
     {

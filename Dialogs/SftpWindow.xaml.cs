@@ -1446,22 +1446,21 @@ public sealed partial class SftpWindow : Window, System.ComponentModel.INotifyPr
             listView.SelectedItems.Clear();
         }
 
+        var validSelected = listView.SelectedItems.OfType<FileItem>()
+                                    .Where(x => x.Name != "..")
+                                    .ToList();
+        bool canOpen = validSelected.Count == 1;
+
+        ContextOpenButton.IsEnabled = canOpen;
+        ContextOpenButton.Opacity = canOpen ? 1.0 : 0.45;
+
         var showOptions = new Microsoft.UI.Xaml.Controls.Primitives.FlyoutShowOptions
         {
             Position = e.GetPosition(listView),
-            ShowMode = Microsoft.UI.Xaml.Controls.Primitives.FlyoutShowMode.Transient
+            Placement = Microsoft.UI.Xaml.Controls.Primitives.FlyoutPlacementMode.BottomEdgeAlignedLeft
         };
 
-        if (sender is FrameworkElement target)
-        {
-            var options = new FlyoutShowOptions
-            {
-                Position = e.GetPosition(target),
-                Placement = FlyoutPlacementMode.BottomEdgeAlignedLeft
-            };
-
-            FileContextMenu.ShowAt(target, options);
-        }
+        FileContextMenu.ShowAt(listView, showOptions);
     }
 
     private void ContextCut_Click(object sender, RoutedEventArgs e)
@@ -1498,8 +1497,37 @@ public sealed partial class SftpWindow : Window, System.ComponentModel.INotifyPr
         // 2. Trigger your existing new folder logic
         NewFolder_Click(sender, e);
     }
+    private async void ContextOpen_Click(object sender, RoutedEventArgs e)
+    {
+        FileContextMenu.Hide();
 
-    private void F2_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
+        var activeList = _isLocalFocused ? LocalFileList : RemoteFileList;
+        if (activeList.SelectedItems.Count != 1 ||
+            activeList.SelectedItem is not FileItem selected ||
+            selected.Name == ".." ||
+            selected.IsEditing)
+        {
+            return;
+        }
+
+        if (selected.IsDirectory)
+        {
+            if (_isLocalFocused)
+            {
+                LoadLocalDirectory(selected.FullPath);
+            }
+            else if (!string.IsNullOrEmpty(selected.FullPath))
+            {
+                _ = Task.Run(() => LoadRemoteDirectory(selected.FullPath));
+            }
+        }
+        else
+        {
+            await OpenFileAsync(selected, isLocal: _isLocalFocused);
+        }
+    }
+
+    private void F2_Invoked(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
     {
         ContextRename_Click(sender, new RoutedEventArgs());
         args.Handled = true;
@@ -2515,7 +2543,7 @@ public sealed partial class SftpWindow : Window, System.ComponentModel.INotifyPr
     {
         if (this.Content?.XamlRoot == null) return;
 
-        var inputBox = new TextBox { PlaceholderText = "e.g. *.txt or report_?", Width = 300 };
+        var inputBox = new TextBox { Width = 300 };
         var recursiveCheck = new CheckBox { Content = "Search subfolders recursively", IsChecked = false, Margin = new Thickness(0, 10, 0, 0) };
 
         var dialog = new ContentDialog

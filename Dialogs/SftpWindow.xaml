@@ -222,8 +222,28 @@
                     <!-- Divider -->
                     <Border Height="1" Background="#E5E5E5" Margin="4,4" />
 
+                    <!-- Open Action -->
+                    <Button x:Name="ContextOpenButton" Style="{StaticResource ContextListItemButtonStyle}" Click="ContextOpen_Click">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                                <FontIcon Glyph="&#xE8E5;" FontSize="15" Foreground="#2E7D5B" />
+                                <TextBlock Text="Open" FontSize="13" Foreground="#222222" VerticalAlignment="Center" />
+                            </StackPanel>
+                            <TextBlock Grid.Column="1"
+                                       Text="Enter"
+                                       FontSize="12"
+                                       Foreground="#767676"
+                                       VerticalAlignment="Center"
+                                       Margin="24,0,2,0" />
+                        </Grid>
+                    </Button>
+
                     <!-- Folder Action -->
-                    <Button Style="{StaticResource ContextListItemButtonStyle}" Click="ContextNewFolder_Click">
+                    <Button Style="{StaticResource ContextListItemButtonStyle}" Click="ContextNewFolder_Click">    
                         <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
                             <FontIcon Glyph="&#xE8F4;" FontSize="15" Foreground="#D49B2A" />
                             <TextBlock Text="New Folder" FontSize="13" Foreground="#222222" VerticalAlignment="Center" />

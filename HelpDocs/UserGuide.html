@@ -81,6 +81,14 @@
             padding-bottom: 10px;
         }
 
+        h4 {
+            font-size: 1.15rem;
+            margin-top: 25px;
+            margin-bottom: 10px;
+            color: #1A1A1A;
+            font-weight: 600;
+        }
+
         p {
             font-size: 1rem;
             margin-bottom: 20px;
@@ -129,9 +137,10 @@
             <li><a href="#appearance">3. Terminal Customization</a></li>
             <li><a href="#automation">4. Automation & Login</a></li>
             <li><a href="#networking">5. Network & Routing</a></li>
-            <li><a href="#rdp">6. Remote Desktop (RDP)</a></li>
-            <li><a href="#android-mirroring">7. Android Device Manager</a></li>
-            <li><a href="#security">8. Security Architecture</a></li>
+            <li><a href="#sftp">6. SFTP File Manager</a></li>
+            <li><a href="#rdp">7. Remote Desktop (RDP)</a></li>
+            <li><a href="#android-mirroring">8. Android Device Manager</a></li>
+            <li><a href="#security">9. Security Architecture</a></li>
         </ul>
     </nav>
 
@@ -166,10 +175,10 @@
         <p>The <strong>Terminal</strong> tab provides essential controls for session auditing, connection keep-alives, and automatic script execution.</p>
 
         <ul class="feature-list">
-            <li><strong>Session Logging:</strong> Enable session logging to capture your terminal output to a local file[cite: 6]. You can specify a precise <code>Log file path</code> and choose whether to <strong>Append to file</strong> or <strong>Overwrite file</strong> on subsequent connections[cite: 6].</li>
-            <li><strong>Append Data to Log:</strong> Inject custom telemetry or timestamps into your logs automatically. You can define specific text patterns and variables (such as <code>%H</code> for Hostname or <code>%D</code> for Date) to be written at connect, at disconnect, or prepended to each line[cite: 6].</li>
-            <li><strong>Anti-idle (Keep-Alive):</strong> Prevent strict firewalls from dropping your session due to inactivity. You can instruct the terminal to send a standard string (like <code>\r</code>) at a set interval, or check the <strong>Use NO-OP instead</strong> box[cite: 6]. Using NO-OP sends a silent Keep-Alive packet at the SSH protocol layer, ensuring your connection stays open without injecting unwanted characters into your visual command prompt.</li>
-            <li><strong>Scrollback Buffer & Startup Scripts:</strong> Configure how many lines of terminal history are retained in memory (default is 10,000)[cite: 6]. Additionally, you can utilize the <strong>Startup Command File</strong> section to automatically send the contents of a local script file to the remote server immediately after a successful login[cite: 6].</li>
+            <li><strong>Session Logging:</strong> Enable session logging to capture your terminal output to a local file. You can specify a precise <code>Log file path</code> and choose whether to <strong>Append to file</strong> or <strong>Overwrite file</strong> on subsequent connections.</li>
+            <li><strong>Append Data to Log:</strong> Inject custom telemetry or timestamps into your logs automatically. You can define specific text patterns and variables (such as <code>%H</code> for Hostname or <code>%D</code> for Date) to be written at connect, at disconnect, or prepended to each line.</li>
+            <li><strong>Anti-idle (Keep-Alive):</strong> Prevent strict firewalls from dropping your session due to inactivity. You can instruct the terminal to send a standard string (like <code>\r</code>) at a set interval, or check the <strong>Use NO-OP instead</strong> box. Using NO-OP sends a silent Keep-Alive packet at the SSH protocol layer, ensuring your connection stays open without injecting unwanted characters into your visual command prompt.</li>
+            <li><strong>Scrollback Buffer & Startup Scripts:</strong> Configure how many lines of terminal history are retained in memory (default is 10,000). Additionally, you can utilize the <strong>Startup Command File</strong> section to automatically send the contents of a local script file to the remote server immediately after a successful login.</li>
         </ul>
 
         <div class="image-container">
@@ -237,8 +246,42 @@
             <div class="image-caption">Creating a Local Port Forwarding tunnel mapping a source port to a remote destination.</div>
         </div>
 
-        <!-- Section 6: RDP -->
-        <h3 id="rdp">6. Remote Desktop (RDP)</h3>
+        <!-- Section 6: SFTP File Manager -->
+        <h3 id="sftp">6. SFTP File Manager</h3>
+        <p>Scarpa Connection Manager includes a built-in, dual-pane <strong>SFTP File Manager</strong> styled after Windows 11 File Explorer. Launching an SFTP session from any saved SSH connection automatically authenticates using that session's credentials—and transparently routes through any configured <strong>Jump Host</strong>—presenting your <strong>Local Machine</strong> on the left and the <strong>Remote Server</strong> on the right.</p>
+
+        <div class="image-container">
+            <img src="SFTP_Session.png" alt="SFTP File Manager Dual-Pane Interface">
+            <div class="image-caption">The dual-pane SFTP File Manager displaying the local filesystem on the left and the remote server directory on the right.</div>
+        </div>
+
+        <h4>Top Command Bar</h4>
+        <p>The top toolbar organizes common actions into three groups whose buttons automatically enable or disable based on the active pane and your current file selection:</p>
+        <ul class="feature-list">
+            <li><strong>Transfers (Download, Upload, Resume):</strong> Transfer selected files and folders between panes. <strong>Resume</strong> continues interrupted or partially transferred files from the exact byte offset where the transfer stopped rather than restarting from zero.</li>
+            <li><strong>Navigation &amp; Search (Refresh, Search):</strong> Reload both directory listings or launch a wildcard search (supporting <code>*</code> and <code>?</code> patterns) across the active local or remote directory, with an option to scan subfolders recursively.</li>
+            <li><strong>File Operations (Cut, Copy, Paste, Delete, Rename):</strong> Manage files and directories directly within either pane using standard clipboard operations, permanent deletion (with confirmation), or inline renaming.</li>
+        </ul>
+
+        <h4>Browsing, Address Bars &amp; Columns</h4>
+        <ul class="feature-list">
+            <li><strong>Interactive Breadcrumbs &amp; Direct Path Input:</strong> Click any folder segment in the breadcrumb bar to jump straight to that directory, or click the empty space inside the address bar to type or paste a path manually (pressing <code>Enter</code> to navigate or <code>Esc</code> to cancel).</li>
+            <li><strong>Quick Directory Navigation:</strong> Double-click folders (or press <code>Enter</code>) to open them, and use the <code>..</code> entry, the <code>Backspace</code> key, or your mouse's Back thumb button to move up one level.</li>
+            <li><strong>Sortable &amp; Resizable Columns:</strong> Click the <strong>Name</strong>, <strong>Date modified</strong>, <strong>Type</strong>, or <strong>Size</strong> headers to sort ascending or descending while keeping folders grouped above files. Drag column dividers to resize widths, double-click a divider to auto-fit column width, or right-click any column header to show or hide optional columns.</li>
+            <li><strong>Native Icons &amp; Type-to-Find:</strong> Displays native Windows shell icons for local and remote file types. Start typing the first few letters of any item's name while a list is focused to jump directly to the matching entry.</li>
+        </ul>
+
+        <h4>Drag-and-Drop, Context Menu &amp; Transfer Controls</h4>
+        <ul class="feature-list">
+            <li><strong>Drag-and-Drop Transfers &amp; Moves:</strong> Drag selected items from one pane to the other to upload or download, or drop them directly onto a specific folder row or breadcrumb segment to place them inside that destination directory.</li>
+            <li><strong>Windows 11 Context Menu:</strong> Right-clicking any file, folder, or empty space opens a compact flyout anchored at the cursor with a top quick-action strip (<strong>Cut</strong>, <strong>Copy</strong>, <strong>Paste</strong>, <strong>Rename</strong>, and <strong>Delete</strong>) alongside <strong>Open</strong>, <strong>New Folder</strong>, <strong>Download</strong>, <strong>Upload</strong>, <strong>Resume</strong>, <strong>Search</strong>, and <strong>Calculate Size</strong>.</li>
+            <li><strong>Open in Associated Application:</strong> Double-clicking a file or choosing <strong>Open</strong> launches local files directly, or seamlessly downloads remote files to a temporary workspace and opens them in their default Windows application.</li>
+            <li><strong>Folder Size Calculation &amp; Search Results:</strong> Use <strong>Calculate Size</strong> on selected local or remote folders to recursively compute their total size in place. Wildcard searches display matching files and folders in an interactive overlay where you can open items directly or choose <strong>Go to location</strong> to jump straight to their parent folder.</li>
+            <li><strong>Live Progress &amp; Overwrite Protection:</strong> Active transfers display a progress overlay with real-time percentage and megabyte counters, complete with <strong>Pause / Resume</strong> and <strong>Cancel</strong> buttons. When a destination file or folder already exists, a confirmation dialog lets you choose whether to replace or skip the item.</li>
+        </ul>
+
+        <!-- Section 7: RDP -->
+        <h3 id="rdp">7. Remote Desktop (RDP)</h3>
         <p>Scarpa Connection Manager goes beyond command-line interfaces by offering full support for graphical Windows sessions. Under the <strong>RDP</strong> tab, you can flip the toggle switch to enable Remote Desktop capabilities for the selected session.</p>
 
         <ul class="feature-list">
@@ -252,8 +295,8 @@
             <div class="image-caption">Configuring RDP parameters including display resolution, audio, clipboard syncing, and local drive redirection.</div>
         </div>
 
-        <!-- Section 7: Android Mirroring -->
-        <h3 id="android-mirroring">7. Android Device Manager</h3>
+        <!-- Section 8: Android Mirroring -->
+        <h3 id="android-mirroring">8. Android Device Manager</h3>
         <p>The integrated Android Device Manager provides a seamless way to view, control, and interact with physical Android devices right from your desktop. The main dashboard displays a list of all devices that are currently saved, authorized, or actively connected via USB or ADB over Wi-Fi. The <strong>Manual Refresh</strong> button quickly polls the system to detect newly plugged-in hardware.</p>
 
         <div class="image-container">
@@ -280,8 +323,8 @@
             <div class="image-caption">A live, highly responsive mirrored Android session allowing full mouse and keyboard interaction.</div>
         </div>
 
-        <!-- Section 8: Security Architecture -->
-        <h3 id="security">8. Security Architecture</h3>
+        <!-- Section 9: Security Architecture -->
+        <h3 id="security">9. Security Architecture</h3>
         <p>Security is a foundational pillar of the Scarpa Connection Manager, engineered specifically to ensure your infrastructure credentials and workflows remain strictly protected against memory exposure and local disk exploitation.</p>
 
         <ul class="feature-list">

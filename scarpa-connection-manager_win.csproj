@@ -100,7 +100,7 @@
     <Content Include="HelpDocs\SetInitialPassWord.png">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
-    <Content Include="HelpDocs\SFTP_GUI_Session.png">
+    <Content Include="HelpDocs\SFTP_Session.png">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
     <Content Include="HelpDocs\SSH_Session.png">
@@ -167,6 +167,7 @@
     <None Remove="HelpDocs\SetGlobalDefaults.png" />
     <None Remove="HelpDocs\SetInitialPassWord.png" />
     <None Remove="HelpDocs\SFTP_GUI_Session.png" />
+    <None Remove="HelpDocs\SFTP_Session.png" />
     <None Remove="HelpDocs\SSH_Session.png" />
     <None Remove="HelpDocs\UserGuide.html" />
     <None Remove="ServerDialog.xaml" />

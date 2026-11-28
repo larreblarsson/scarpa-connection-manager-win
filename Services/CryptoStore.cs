@@ -2,8 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
+using System.Runtime.InteropServices;
+using System.Security;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -40,13 +40,58 @@ public static class CryptoStore
         return Convert.ToHexString(kdf.GetBytes(32)).ToLowerInvariant();
     }
 
-    private static byte[] DeriveKey(string passphrase, byte[] salt)
+    private static byte[] DeriveKey(byte[] passphraseBytes, byte[] salt)
     {
-        using var kdf = new Rfc2898DeriveBytes(passphrase, salt, Pbkdf2Iterations, HashAlgorithmName.SHA256);
-        return kdf.GetBytes(32);
+        return Rfc2898DeriveBytes.Pbkdf2(passphraseBytes, salt, Pbkdf2Iterations, HashAlgorithmName.SHA256, 32);
+    }
+
+    private static T WithSecretUtf8Bytes<T>(SecureString secret, Func<byte[], T> action)
+    {
+        ArgumentNullException.ThrowIfNull(secret);
+
+        IntPtr bstr = IntPtr.Zero;
+        char[]? chars = null;
+        byte[]? utf8Bytes = null;
+        try
+        {
+            bstr = Marshal.SecureStringToBSTR(secret);
+            int length = secret.Length;
+            chars = new char[length];
+            Marshal.Copy(bstr, chars, 0, length);
+
+            utf8Bytes = Encoding.UTF8.GetBytes(chars);
+            return action(utf8Bytes);
+        }
+        finally
+        {
+            if (utf8Bytes is not null)
+                CryptographicOperations.ZeroMemory(utf8Bytes);
+            if (chars is not null)
+                Array.Clear(chars);
+            if (bstr != IntPtr.Zero)
+                Marshal.ZeroFreeBSTR(bstr);
+        }
+    }
+
+    public static List<ServerConfig> Load(SecureString passphrase)
+    {
+        return WithSecretUtf8Bytes(passphrase, LoadFromBytes);
     }
 
     public static List<ServerConfig> Load(string passphrase)
+    {
+        byte[] passphraseBytes = Encoding.UTF8.GetBytes(passphrase);
+        try
+        {
+            return LoadFromBytes(passphraseBytes);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(passphraseBytes);
+        }
+    }
+
+    private static List<ServerConfig> LoadFromBytes(byte[] passphraseBytes)
     {
         var path = AppPaths.ServerFile;
         if (!File.Exists(path)) return new List<ServerConfig>();
@@ -64,28 +109,58 @@ public static class CryptoStore
         var cipher = raw.AsSpan(offset).ToArray();
 
         var plain = new byte[cipher.Length];
+        byte[]? key = null;
         try
         {
-            using var aes = new AesGcm(DeriveKey(passphrase, salt), TagSize);
+            key = DeriveKey(passphraseBytes, salt);
+            using var aes = new AesGcm(key, TagSize);
             aes.Decrypt(nonce, cipher, tag, plain);
+
+            var list = JsonSerializer.Deserialize<List<ServerConfig>>(Encoding.UTF8.GetString(plain))
+                       ?? new List<ServerConfig>();
+            foreach (var s in list)
+            {
+                if (string.IsNullOrWhiteSpace(s.Folder)) s.Folder = AppPaths.RootFolder;
+                s.PortForwards ??= new List<PortForward>();
+                s.AutoSequence ??= new List<SequenceStep>();
+            }
+            return list;
         }
         catch (CryptographicException)
         {
             throw new UnauthorizedAccessException("Incorrect master passphrase.");
         }
-
-        var list = JsonSerializer.Deserialize<List<ServerConfig>>(Encoding.UTF8.GetString(plain))
-                   ?? new List<ServerConfig>();
-        foreach (var s in list)
+        finally
         {
-            if (string.IsNullOrWhiteSpace(s.Folder)) s.Folder = AppPaths.RootFolder;
-            s.PortForwards ??= new List<PortForward>();
-            s.AutoSequence ??= new List<SequenceStep>();
+            if (key is not null)
+                CryptographicOperations.ZeroMemory(key);
+            CryptographicOperations.ZeroMemory(plain);
         }
-        return list;
+    }
+
+    public static void Save(IEnumerable<ServerConfig> servers, SecureString passphrase)
+    {
+        WithSecretUtf8Bytes(passphrase, bytes =>
+        {
+            SaveWithBytes(servers, bytes);
+            return true;
+        });
     }
 
     public static void Save(IEnumerable<ServerConfig> servers, string passphrase)
+    {
+        byte[] passphraseBytes = Encoding.UTF8.GetBytes(passphrase);
+        try
+        {
+            SaveWithBytes(servers, passphraseBytes);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(passphraseBytes);
+        }
+    }
+
+    private static void SaveWithBytes(IEnumerable<ServerConfig> servers, byte[] passphraseBytes)
     {
         AppPaths.EnsureDirectories();
         var plain = Encoding.UTF8.GetBytes(JsonSerializer.Serialize(servers, JsonOpts));
@@ -93,110 +168,121 @@ public static class CryptoStore
         var nonce = RandomNumberGenerator.GetBytes(NonceSize);
         var cipher = new byte[plain.Length];
         var tag = new byte[TagSize];
+        byte[]? key = null;
 
-        using (var aes = new AesGcm(DeriveKey(passphrase, salt), TagSize))
-            aes.Encrypt(nonce, plain, cipher, tag);
+        try
+        {
+            key = DeriveKey(passphraseBytes, salt);
+            using (var aes = new AesGcm(key, TagSize))
+                aes.Encrypt(nonce, plain, cipher, tag);
 
-        using var ms = new MemoryStream();
-        ms.Write(Magic); ms.WriteByte(Version);
-        ms.Write(salt); ms.Write(nonce); ms.Write(tag); ms.Write(cipher);
+            using var ms = new MemoryStream();
+            ms.Write(Magic); ms.WriteByte(Version);
+            ms.Write(salt); ms.Write(nonce); ms.Write(tag); ms.Write(cipher);
 
-        var tmp = AppPaths.ServerFile + ".tmp";
-        File.WriteAllBytes(tmp, ms.ToArray());
-        File.Move(tmp, AppPaths.ServerFile, overwrite: true);
-        CryptographicOperations.ZeroMemory(plain);
+            var tmp = AppPaths.ServerFile + ".tmp";
+            File.WriteAllBytes(tmp, ms.ToArray());
+            File.Move(tmp, AppPaths.ServerFile, overwrite: true);
+        }
+        finally
+        {
+            if (key is not null)
+                CryptographicOperations.ZeroMemory(key);
+            CryptographicOperations.ZeroMemory(plain);
+        }
     }
 
     /// <summary>Plain-text JSON export (used by the Export menu, mirrors the Linux export).</summary>
-	public static void ExportPlain(IEnumerable<ServerConfig> servers, string path)
-	{
-		var root = new ScarpaExportRoot { Servers = servers.ToList() };
-		
-		// Ensure the Windows export matches the Linux snake_case format
-		var opts = new JsonSerializerOptions 
-		{ 
-			WriteIndented = true,
-			PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
-			DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
-		};
-		File.WriteAllText(path, JsonSerializer.Serialize(root, opts));
-	}
-	
-	public static ScarpaExportRoot ImportPlain(string path)
-	{
-		var json = File.ReadAllText(path);
-		var opts = new JsonSerializerOptions 
-		{ 
-			PropertyNameCaseInsensitive = true,
-			PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
-			NumberHandling = System.Text.Json.Serialization.JsonNumberHandling.AllowReadingFromString
-		};
-	
-		try
-		{
-			var root = JsonSerializer.Deserialize<ScarpaExportRoot>(json, opts);
-			return root ?? new ScarpaExportRoot();
-		}
-		catch (JsonException originalException)
-		{
-			try
-			{
-				// Fallback for raw arrays
-				var list = JsonSerializer.Deserialize<List<ServerConfig>>(json, opts) ?? new List<ServerConfig>();
-				return new ScarpaExportRoot { Servers = list };
-			}
-			catch
-			{
-				throw originalException; 
-			}
-		}
-	}
+    public static void ExportPlain(IEnumerable<ServerConfig> servers, string path)
+    {
+        var root = new ScarpaExportRoot { Servers = servers.ToList() };
+
+        // Ensure the Windows export matches the Linux snake_case format
+        var opts = new JsonSerializerOptions
+        {
+            WriteIndented = true,
+            PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
+            DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull
+        };
+        File.WriteAllText(path, JsonSerializer.Serialize(root, opts));
+    }
+
+    public static ScarpaExportRoot ImportPlain(string path)
+    {
+        var json = File.ReadAllText(path);
+        var opts = new JsonSerializerOptions
+        {
+            PropertyNameCaseInsensitive = true,
+            PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
+            NumberHandling = System.Text.Json.Serialization.JsonNumberHandling.AllowReadingFromString
+        };
+
+        try
+        {
+            var root = JsonSerializer.Deserialize<ScarpaExportRoot>(json, opts);
+            return root ?? new ScarpaExportRoot();
+        }
+        catch (JsonException originalException)
+        {
+            try
+            {
+                // Fallback for raw arrays
+                var list = JsonSerializer.Deserialize<List<ServerConfig>>(json, opts) ?? new List<ServerConfig>();
+                return new ScarpaExportRoot { Servers = list };
+            }
+            catch
+            {
+                throw originalException;
+            }
+        }
+    }
+
     // --- EXPORT / IMPORT METHODS ---
 
     public static void ExportClearText(List<ServerConfig> servers, string filePath)
     {
-        string json = System.Text.Json.JsonSerializer.Serialize(servers, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
-        System.IO.File.WriteAllText(filePath, json);
+        string json = JsonSerializer.Serialize(servers, new JsonSerializerOptions { WriteIndented = true });
+        File.WriteAllText(filePath, json);
     }
 
     public static List<ServerConfig> ImportClearText(string filePath)
     {
-        string json = System.IO.File.ReadAllText(filePath);
-        return System.Text.Json.JsonSerializer.Deserialize<List<ServerConfig>>(json) ?? new List<ServerConfig>();
+        string json = File.ReadAllText(filePath);
+        return JsonSerializer.Deserialize<List<ServerConfig>>(json) ?? new List<ServerConfig>();
     }
 
     public static void ExportEncrypted(List<ServerConfig> servers, string filePath, string password)
     {
-        string json = System.Text.Json.JsonSerializer.Serialize(servers);
+        string json = JsonSerializer.Serialize(servers);
 
         byte[] salt = new byte[16];
-        System.Security.Cryptography.RandomNumberGenerator.Fill(salt);
+        RandomNumberGenerator.Fill(salt);
 
-        using var pbkdf2 = new System.Security.Cryptography.Rfc2898DeriveBytes(password, salt, 100000, System.Security.Cryptography.HashAlgorithmName.SHA256);
-        using var aes = System.Security.Cryptography.Aes.Create();
+        using var pbkdf2 = new Rfc2898DeriveBytes(password, salt, 100000, HashAlgorithmName.SHA256);
+        using var aes = Aes.Create();
         aes.Key = pbkdf2.GetBytes(32);
         aes.GenerateIV();
 
         using var encryptor = aes.CreateEncryptor();
-        using var ms = new System.IO.MemoryStream();
+        using var ms = new MemoryStream();
 
         // Write Salt and IV to the beginning of the file so we can read them during import
         ms.Write(salt, 0, salt.Length);
         ms.Write(aes.IV, 0, aes.IV.Length);
 
-        using (var cs = new System.Security.Cryptography.CryptoStream(ms, encryptor, System.Security.Cryptography.CryptoStreamMode.Write))
-        using (var sw = new System.IO.StreamWriter(cs))
+        using (var cs = new CryptoStream(ms, encryptor, CryptoStreamMode.Write))
+        using (var sw = new StreamWriter(cs))
         {
             sw.Write(json);
         }
 
-        System.IO.File.WriteAllBytes(filePath, ms.ToArray());
+        File.WriteAllBytes(filePath, ms.ToArray());
     }
 
     public static List<ServerConfig> ImportEncrypted(string filePath, string password)
     {
-        byte[] encryptedBytes = System.IO.File.ReadAllBytes(filePath);
-        using var ms = new System.IO.MemoryStream(encryptedBytes);
+        byte[] encryptedBytes = File.ReadAllBytes(filePath);
+        using var ms = new MemoryStream(encryptedBytes);
 
         // Extract the Salt and IV from the beginning of the file
         byte[] salt = new byte[16];
@@ -205,17 +291,17 @@ public static class CryptoStore
         byte[] iv = new byte[16];
         ms.Read(iv, 0, iv.Length);
 
-        using var pbkdf2 = new System.Security.Cryptography.Rfc2898DeriveBytes(password, salt, 100000, System.Security.Cryptography.HashAlgorithmName.SHA256);
-        using var aes = System.Security.Cryptography.Aes.Create();
+        using var pbkdf2 = new Rfc2898DeriveBytes(password, salt, 100000, HashAlgorithmName.SHA256);
+        using var aes = Aes.Create();
         aes.Key = pbkdf2.GetBytes(32);
         aes.IV = iv;
 
         using var decryptor = aes.CreateDecryptor();
-        using var cs = new System.Security.Cryptography.CryptoStream(ms, decryptor, System.Security.Cryptography.CryptoStreamMode.Read);
-        using var sr = new System.IO.StreamReader(cs);
+        using var cs = new CryptoStream(ms, decryptor, CryptoStreamMode.Read);
+        using var sr = new StreamReader(cs);
 
         string decryptedJson = sr.ReadToEnd();
 
-        return System.Text.Json.JsonSerializer.Deserialize<List<ServerConfig>>(decryptedJson) ?? new List<ServerConfig>();
+        return JsonSerializer.Deserialize<List<ServerConfig>>(decryptedJson) ?? new List<ServerConfig>();
     }
 }

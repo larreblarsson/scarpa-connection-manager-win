@@ -101,6 +101,9 @@ public sealed partial class MainWindow : Window
     private Services.LocalWebServer? _helpServer;
     private string _searchBuffer = "";
     private DispatcherTimer? _searchTimer;
+    private DispatcherTimer? _idleLockTimer;
+    private bool _isVaultLocked;
+    private static readonly TimeSpan IdleLockTimeout = TimeSpan.FromMinutes(15);
 
     public MainWindow()
     {
@@ -178,7 +181,64 @@ public sealed partial class MainWindow : Window
         else if (!await UnlockVaultAsync()) { Close(); return; }
 
         RebuildTree();
+        InitializeIdleLock();
         Log($"Loaded {_servers.Count} server(s) from {AppPaths.ServerFile}");
+    }
+
+    private void InitializeIdleLock()
+    {
+        _idleLockTimer = new DispatcherTimer { Interval = IdleLockTimeout };
+        _idleLockTimer.Tick += async (_, _) => await LockVaultAsync();
+
+        if (this.Content is UIElement root)
+        {
+            root.AddHandler(UIElement.PointerMovedEvent, new PointerEventHandler((_, _) => ResetIdleTimer()), true);
+            root.AddHandler(UIElement.KeyDownEvent, new KeyEventHandler((_, _) => ResetIdleTimer()), true);
+        }
+
+        _idleLockTimer.Start();
+    }
+
+    private void ResetIdleTimer()
+    {
+        if (!_isVaultLocked && _idleLockTimer is not null)
+        {
+            _idleLockTimer.Stop();
+            _idleLockTimer.Start();
+        }
+    }
+
+    public async Task LockVaultAsync()
+    {
+        if (_isVaultLocked) return;
+
+        // WinUI 3 allows only one ContentDialog at a time; defer locking if another dialog is open
+        if (this.Content?.XamlRoot is not null &&
+            VisualTreeHelper.GetOpenPopupsForXamlRoot(this.Content.XamlRoot).Any(p => p.Child is ContentDialog))
+        {
+            _idleLockTimer?.Start();
+            return;
+        }
+
+        _isVaultLocked = true;
+        _idleLockTimer?.Stop();
+
+        App.ClearMasterPassword();
+        _servers.Clear();
+        RebuildTree();
+        Log("Vault locked due to inactivity.");
+
+        if (await UnlockVaultAsync())
+        {
+            _isVaultLocked = false;
+            RebuildTree();
+            Log("Vault unlocked.");
+            ResetIdleTimer();
+        }
+        else
+        {
+            Close();
+        }
     }
 
     // --- Custom Classic Multiple Selection Logic ---
@@ -496,10 +556,9 @@ public sealed partial class MainWindow : Window
 
             if (modified)
             {
-                CryptoStore.Save(_servers, App.ActiveMasterPassword.ToPlainString());
+                Persist();
                 RebuildTree();
             }
-
 
         });
     }
@@ -517,6 +576,7 @@ public sealed partial class MainWindow : Window
         if (!dlg.IsSuccess) return false;
 
         var salt = CryptoStore.GenerateSalt();
+        _settings.MasterSaltHex = Convert.ToHexString(salt);
         _settings.MasterHashHex = CryptoStore.HashPassphrase(dlg.Passphrase, salt);
         _settings.RememberMaster = dlg.RememberMe;
         SettingsService.Save(_settings);
@@ -525,7 +585,7 @@ public sealed partial class MainWindow : Window
         App.ActiveMasterPassword = dlg.Passphrase.ToSecureString(); // Lock it in RAM
         _servers = new List<ServerConfig>();
 
-        CryptoStore.Save(_servers, App.ActiveMasterPassword.ToPlainString());
+        CryptoStore.Save(_servers, App.ActiveMasterPassword);
 
         if (dlg.RememberMe) CredentialVault.Set(App.ActiveMasterPassword.ToPlainString());
         else CredentialVault.Clear();
@@ -566,7 +626,7 @@ public sealed partial class MainWindow : Window
 
             SettingsService.Save(_settings);
 
-            try { _servers = CryptoStore.Load(App.ActiveMasterPassword.ToPlainString()); return true; }
+            try { _servers = CryptoStore.Load(App.ActiveMasterPassword); return true; }
             catch (Exception ex)
             // --- END SECURITY FIX ---
             {
@@ -1006,8 +1066,20 @@ public sealed partial class MainWindow : Window
 
     private void Persist()
     {
-        try { CryptoStore.Save(_servers, App.ActiveMasterPassword.ToPlainString()); }
-        catch (Exception ex) { Log($"ERROR saving vault: {ex.Message}"); }
+        if (App.ActiveMasterPassword is null)
+        {
+            Log("ERROR saving vault: Vault is locked.");
+            return;
+        }
+
+        try
+        {
+            CryptoStore.Save(_servers, App.ActiveMasterPassword);
+        }
+        catch (Exception ex)
+        {
+            Log($"ERROR saving vault: {ex.Message}");
+        }
     }
 
     private async void AddServer_Click(object sender, RoutedEventArgs e)
@@ -1328,7 +1400,7 @@ public sealed partial class MainWindow : Window
 
         // 5. Save settings and re-encrypt the actual vault file!
         SettingsService.Save(_settings);
-        CryptoStore.Save(_servers, App.ActiveMasterPassword.ToPlainString());
+        CryptoStore.Save(_servers, App.ActiveMasterPassword);
 
         Log("Master passphrase successfully changed and vault re-encrypted.");
         await ShowAlertAsync("Success", "Master passphrase changed and vault re-encrypted successfully.");
@@ -1862,6 +1934,9 @@ public sealed partial class MainWindow : Window
 
     private void MainWindow_Closed(object sender, WindowEventArgs args)
     {
+        _idleLockTimer?.Stop();
+        App.ClearMasterPassword();
+        _servers.Clear();
         Application.Current.Exit();
     }
 

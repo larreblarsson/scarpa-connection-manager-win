@@ -1,20 +1,8 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.IO;
-using System.Linq;
-using System.Runtime.InteropServices.WindowsRuntime;
+using System.Security;
+using System.Threading.Tasks;
 using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Controls.Primitives;
-using Microsoft.UI.Xaml.Data;
-using Microsoft.UI.Xaml.Input;
-using Microsoft.UI.Xaml.Media;
-using Microsoft.UI.Xaml.Navigation;
-using Microsoft.UI.Xaml.Shapes;
-using Windows.ApplicationModel;
-using Windows.ApplicationModel.Activation;
-using Windows.Foundation;
-using Windows.Foundation.Collections;
 
 namespace scarpa_connection_manager_win
 {
@@ -23,30 +11,136 @@ namespace scarpa_connection_manager_win
     /// </summary>
     public partial class App : Application
     {
-        // 1. Add this public static property so the rest of the app can find the window
+        private static readonly object s_logLock = new();
+        private static SecureString? s_activeMasterPassword;
+        private Window? m_window;
+
         public static Window MainWindow { get; private set; } = null!;
 
-        // --- START SECURITY FIX: GLOBAL MASTER PASSWORD ---
-        // Store as SecureString to prevent memory scraping
-        public static System.Security.SecureString? ActiveMasterPassword { get; set; }
-        // --- END SECURITY FIX ---
+        /// <summary>
+        /// Holds the active master password in a read-only SecureString and disposes
+        /// any previous instance automatically when replaced or cleared.
+        /// </summary>
+        public static SecureString? ActiveMasterPassword
+        {
+            get => s_activeMasterPassword;
+            set
+            {
+                if (ReferenceEquals(s_activeMasterPassword, value))
+                {
+                    return;
+                }
 
-        private Window m_window = null!;
+                s_activeMasterPassword?.Dispose();
+
+                if (value is not null && !value.IsReadOnly())
+                {
+                    value.MakeReadOnly();
+                }
+
+                s_activeMasterPassword = value;
+            }
+        }
+
+        /// <summary>
+        /// Immediately disposes and clears the active master password (e.g., on vault lock or exit).
+        /// </summary>
+        public static void ClearMasterPassword()
+        {
+            ActiveMasterPassword = null;
+        }
 
         public App()
         {
-            this.InitializeComponent();
-            UnhandledException += (s, e) => System.IO.File.WriteAllText("crash.txt", e.Exception.ToString());
+            InitializeComponent();
+            RegisterGlobalExceptionHandlers();
         }
 
-        protected override void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
+        protected override void OnLaunched(LaunchActivatedEventArgs args)
         {
             m_window = new MainWindow();
+            m_window.Closed += OnMainWindowClosed;
 
-            // 2. Assign the static property right here
             MainWindow = m_window;
-
             m_window.Activate();
+        }
+
+        private void OnMainWindowClosed(object sender, WindowEventArgs args)
+        {
+            ClearMasterPassword();
+
+            if (m_window is not null)
+            {
+                m_window.Closed -= OnMainWindowClosed;
+                m_window = null;
+            }
+
+            MainWindow = null!;
+        }
+
+        private void RegisterGlobalExceptionHandlers()
+        {
+            // 1. UI thread exceptions (WinUI DispatcherQueue)
+            UnhandledException += (_, e) =>
+            {
+                LogCrash("WinUI.UnhandledException", e.Exception);
+            };
+
+            // 2. Background / worker thread exceptions
+            AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+            {
+                if (e.ExceptionObject is Exception ex)
+                {
+                    LogCrash($"AppDomain.UnhandledException (IsTerminating={e.IsTerminating})", ex);
+                }
+            };
+
+            // 3. Faulted background Tasks (e.g., async SSH/socket operations)
+            TaskScheduler.UnobservedTaskException += (_, e) =>
+            {
+                LogCrash("TaskScheduler.UnobservedTaskException", e.Exception);
+                e.SetObserved();
+            };
+        }
+
+        private static void LogCrash(string source, Exception? ex)
+        {
+            if (ex is null)
+            {
+                return;
+            }
+
+            try
+            {
+                lock (s_logLock)
+                {
+                    string logDir = Path.Combine(
+                        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                        "ScarpaConnectionManager");
+                    Directory.CreateDirectory(logDir);
+
+                    string logPath = Path.Combine(logDir, "crash.txt");
+
+                    // Rotate log if it exceeds 1 MB
+                    FileInfo info = new(logPath);
+                    if (info.Exists && info.Length > 1_048_576)
+                    {
+                        string backupPath = Path.Combine(logDir, "crash.old.txt");
+                        File.Move(logPath, backupPath, overwrite: true);
+                    }
+
+                    string entry =
+                        $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] [{source}]{Environment.NewLine}" +
+                        $"{ex}{Environment.NewLine}" +
+                        $"{new string('-', 60)}{Environment.NewLine}";
+
+                    File.AppendAllText(logPath, entry);
+                }
+            }
+            catch
+            {
+                // Never allow logging failures to escape and trigger recursive crashes
+            }
         }
     }
 }
